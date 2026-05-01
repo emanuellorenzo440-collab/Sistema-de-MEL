@@ -329,6 +329,7 @@ h3 {
 .dashboard-grid,
 .supervision-grid,
 .design-grid,
+.chart-layout,
 .concept-layout {
   display: grid;
   gap: 18px;
@@ -421,6 +422,10 @@ h3 {
   background: var(--red);
 }
 
+.bar-fill.info {
+  background: var(--blue);
+}
+
 .bar-value {
   color: var(--muted);
   font-weight: 800;
@@ -436,7 +441,10 @@ h3 {
 .suggestion-list,
 .form-template-grid,
 .concept-list,
-.concept-detail {
+.concept-detail,
+.chart-stack,
+.submission-list,
+.upload-preview {
   display: grid;
   gap: 12px;
 }
@@ -522,6 +530,8 @@ textarea {
 .result-item,
 .suggestion-item,
 .form-template,
+.chart-item,
+.submission-item,
 .program-summary,
 .concept-card,
 .concept-summary {
@@ -554,6 +564,8 @@ textarea {
 .result-item,
 .suggestion-item,
 .form-template,
+.chart-item,
+.submission-item,
 .concept-card,
 .concept-summary,
 .concept-detail-grid article {
@@ -610,6 +622,28 @@ textarea {
 .form-template-actions {
   display: flex;
   justify-content: flex-end;
+}
+
+.upload-grid {
+  align-items: end;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(260px, 1fr) auto;
+}
+
+.upload-preview {
+  margin-top: 14px;
+}
+
+.chart-row-head {
+  align-items: start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.bar-track.tall {
+  height: 18px;
 }
 
 .concept-detail-grid {
@@ -750,7 +784,7 @@ textarea {
   }
 
   .nav-list {
-    grid-template-columns: repeat(8, minmax(120px, 1fr));
+    grid-template-columns: repeat(9, minmax(120px, 1fr));
     overflow-x: auto;
   }
 
@@ -762,6 +796,7 @@ textarea {
   .dashboard-grid,
   .supervision-grid,
   .design-grid,
+  .chart-layout,
   .concept-layout,
   .concept-detail-grid,
   .form-template-grid,
@@ -782,6 +817,7 @@ textarea {
   .program-top,
   .action-top,
   .form-template-top,
+  .chart-row-head,
   .suggestion-item {
     align-items: stretch;
     flex-direction: column;
@@ -804,11 +840,13 @@ textarea {
   .dashboard-grid,
   .supervision-grid,
   .design-grid,
+  .chart-layout,
   .concept-layout,
   .concept-detail-grid,
   .form-grid,
   .indicator-board,
   .form-template-grid,
+  .upload-grid,
   .program-grid {
     grid-template-columns: 1fr;
   }

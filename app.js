@@ -1,4 +1,4 @@
-const STORAGE_KEY = "pulso-me-state-v2";
+const STORAGE_KEY = "pulso-me-state-v3";
 
 const seedState = {
   role: "Facilitador",
@@ -147,6 +147,7 @@ const seedState = {
   ],
   reports: [],
   actions: [],
+  formSubmissions: [],
   monitoringForms: [
     {
       id: "form-ge-1",
@@ -171,6 +172,12 @@ const seedState = {
         "Alertas de proteccion o bienestar",
         "Acuerdos para el proximo encuentro",
       ],
+      mappings: [
+        { field: "Chicas presentes de 13 a 17 anos", indicatorId: "ind-ge-1", mode: "number" },
+        { field: "Mentorias realizadas", indicatorId: "ind-ge-6", mode: "number" },
+        { field: "Proyecto o servicio comunitario relacionado", indicatorId: "ind-ge-4", mode: "presence" },
+        { field: "Evidencias disponibles", indicatorId: "ind-ge-5", mode: "presence" },
+      ],
     },
     {
       id: "form-ge-2",
@@ -191,6 +198,9 @@ const seedState = {
         "Necesidades de acompanamiento",
         "Observaciones de la mentora",
       ],
+      mappings: [
+        { field: "Codigo de participante", indicatorId: "ind-ge-1", mode: "presence" },
+      ],
     },
     {
       id: "form-ge-3",
@@ -209,6 +219,12 @@ const seedState = {
         "Testimonio de transformacion",
         "Recomendaciones para el siguiente ciclo",
       ],
+      mappings: [
+        { field: "Permanencia en el club", indicatorId: "ind-ge-2", mode: "presence" },
+        { field: "Cambio en autoestima", indicatorId: "ind-ge-3", mode: "presence" },
+        { field: "Cambio en habilidades sociales", indicatorId: "ind-ge-3", mode: "presence" },
+        { field: "Liderazgo o servicio realizado", indicatorId: "ind-ge-4", mode: "presence" },
+      ],
     },
     {
       id: "form-ge-4",
@@ -226,6 +242,10 @@ const seedState = {
         "Necesidades de capacitacion",
         "Acuerdos para la proxima semana",
         "Seguimiento requerido por coordinacion",
+      ],
+      mappings: [
+        { field: "Tema de agenda evaluado", indicatorId: "ind-ge-6", mode: "presence" },
+        { field: "Seguimiento requerido por coordinacion", indicatorId: "ind-ge-6", mode: "presence" },
       ],
     },
   ],
@@ -300,6 +320,14 @@ const elements = {
   indicatorSuggestions: $("#indicatorSuggestions"),
   formsProgramSelect: $("#formsProgramSelect"),
   formTemplateGrid: $("#formTemplateGrid"),
+  formUploadInput: $("#formUploadInput"),
+  uploadFormButton: $("#uploadFormButton"),
+  uploadStatus: $("#uploadStatus"),
+  uploadPreview: $("#uploadPreview"),
+  chartMetricGrid: $("#chartMetricGrid"),
+  indicatorCharts: $("#indicatorCharts"),
+  periodCharts: $("#periodCharts"),
+  submissionList: $("#submissionList"),
   conceptCount: $("#conceptCount"),
   conceptPaperList: $("#conceptPaperList"),
   conceptDetailTitle: $("#conceptDetailTitle"),
@@ -351,6 +379,7 @@ function normalizeState(savedState) {
   nextState.indicators = mergeByKey(savedState.indicators || [], seedState.indicators, (item) => item.id || item.name);
   nextState.monitoringForms = mergeByKey(savedState.monitoringForms || [], seedState.monitoringForms, (item) => item.id);
   nextState.conceptPapers = mergeByKey(savedState.conceptPapers || [], seedState.conceptPapers, (item) => item.id);
+  nextState.formSubmissions = savedState.formSubmissions || [];
   nextState.designProgram = savedState.designProgram || nextState.programs[0]?.name;
   nextState.formsProgram = savedState.formsProgram || nextState.designProgram || nextState.programs[0]?.name;
   nextState.selectedConceptPaper = savedState.selectedConceptPaper || nextState.conceptPapers[0]?.id;
@@ -728,6 +757,10 @@ function renderForms() {
 }
 
 function renderFormTemplate(form) {
+  const mappedIndicators = (form.mappings || [])
+    .map((mapping) => indicatorById(mapping.indicatorId)?.name)
+    .filter(Boolean);
+
   return `
     <article class="form-template">
       <div class="form-template-top">
@@ -740,10 +773,11 @@ function renderFormTemplate(form) {
       <div class="field-preview">
         ${form.fields.map((field) => `<span>${field}</span>`).join("")}
       </div>
+      <p class="item-meta">Al subirlo, alimenta automaticamente: ${mappedIndicators.length ? mappedIndicators.join(" · ") : "indicadores configurados manualmente"}</p>
       <div class="form-template-actions">
         <button class="ghost-action" data-download-form="${form.id}" type="button">
           <span aria-hidden="true">⇩</span>
-          Descargar CSV
+          Descargar plantilla CSV
         </button>
       </div>
     </article>
@@ -829,6 +863,104 @@ function renderPrograms() {
     .join("");
 }
 
+function reportsByPeriod() {
+  return state.reports.reduce((groups, report) => {
+    groups[report.period] = (groups[report.period] || 0) + Number(report.value || 0);
+    return groups;
+  }, {});
+}
+
+function renderCharts() {
+  const totalReports = state.reports.length;
+  const totalUploaded = state.formSubmissions.length;
+  const totalValue = state.reports.reduce((sum, report) => sum + Number(report.value || 0), 0);
+  const activeIndicators = state.indicators.filter((indicator) => indicator.value > 0).length;
+
+  const metrics = [
+    { label: "Datos cargados", value: totalReports, delta: "registros de indicadores", type: "info" },
+    { label: "Formularios subidos", value: totalUploaded, delta: "archivos procesados", type: totalUploaded ? "good" : "warning" },
+    { label: "Valor acumulado", value: totalValue.toLocaleString("es-DO"), delta: "suma reportada", type: totalValue ? "good" : "neutral" },
+    { label: "Indicadores con datos", value: activeIndicators, delta: "alimentados automaticamente", type: activeIndicators ? "good" : "warning" },
+  ];
+
+  elements.chartMetricGrid.innerHTML = metrics
+    .map(
+      (metric) => `
+        <article class="metric-card ${metric.type}">
+          <p class="eyebrow">${metric.label}</p>
+          <div class="value">${metric.value}</div>
+          <div class="delta">${metric.delta}</div>
+        </article>
+      `,
+    )
+    .join("");
+
+  elements.indicatorCharts.innerHTML = state.indicators
+    .map((indicator) => {
+      const progress = percent(indicator.value, indicator.target);
+      const risk = statusForProgress(progress);
+      return `
+        <article class="chart-item">
+          <div class="chart-row-head">
+            <div>
+              <h3>${indicator.name}</h3>
+              <p class="item-meta">${indicator.value.toLocaleString("es-DO")} de ${indicator.target.toLocaleString("es-DO")} ${indicator.unit}</p>
+            </div>
+            <span class="status-pill ${risk}">${progress}%</span>
+          </div>
+          <div class="bar-track tall">
+            <div class="bar-fill ${risk}" style="width: ${progress}%"></div>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+
+  const periodData = reportsByPeriod();
+  const maxPeriodValue = Math.max(1, ...Object.values(periodData));
+  const periodEntries = Object.entries(periodData).sort(([a], [b]) => a.localeCompare(b));
+
+  elements.periodCharts.innerHTML = periodEntries.length
+    ? periodEntries
+        .map(([period, value]) => {
+          const width = Math.round((value / maxPeriodValue) * 100);
+          return `
+            <article class="chart-item">
+              <div class="chart-row-head">
+                <h3>${period}</h3>
+                <span class="status-pill info">${value.toLocaleString("es-DO")}</span>
+              </div>
+              <div class="bar-track tall">
+                <div class="bar-fill info" style="width: ${width}%"></div>
+              </div>
+            </article>
+          `;
+        })
+        .join("")
+    : `<p class="item-meta">Cuando subas formularios o reportes datos, aqui apareceran los resultados por periodo.</p>`;
+
+  elements.submissionList.innerHTML = state.formSubmissions.length
+    ? state.formSubmissions
+        .slice()
+        .sort((a, b) => b.importedAt.localeCompare(a.importedAt))
+        .map(
+          (submission) => `
+            <article class="submission-item">
+              <div class="chart-row-head">
+                <div>
+                  <h3>${submission.formTitle}</h3>
+                  <p class="item-meta">${submission.program} · ${submission.fileName}</p>
+                </div>
+                <span class="status-pill good">${submission.reportCount} registros</span>
+              </div>
+              <p class="item-meta">Subido: ${submission.importedAt.slice(0, 10)} · Periodo: ${submission.period}</p>
+            </article>
+          `,
+        )
+        .join("")
+    : `<p class="item-meta">Todavia no se han subido formularios completados.</p>`;
+}
+
 function updateRoleUi() {
   const role = state.role || "Facilitador";
   elements.roleBadge.textContent = role;
@@ -845,6 +977,7 @@ function renderAll() {
   renderIndicators();
   renderDesignStudio();
   renderForms();
+  renderCharts();
   renderConceptPapers();
   renderReviewQueue();
   renderActions();
@@ -858,6 +991,7 @@ function switchView(viewName) {
     indicators: "Matriz de indicadores",
     design: "Diseno de monitoreo y evaluacion",
     forms: "Formularios descargables",
+    charts: "Graficas automaticas",
     concepts: "Concept papers",
     supervision: "Supervision y validacion",
     programs: "Programas",
@@ -950,16 +1084,208 @@ function slugify(value) {
 }
 
 function formRows(form) {
+  const automaticIndicators = (form.mappings || [])
+    .map((mapping) => indicatorById(mapping.indicatorId)?.name)
+    .filter(Boolean)
+    .join(" | ");
+
   return [
+    ["formulario_id", form.id],
     ["programa", form.program],
     ["formulario", form.title],
     ["tipo", form.type],
     ["frecuencia", form.frequency],
     ["responsable", form.owner],
+    ["indicadores_automaticos", automaticIndicators],
     [],
-    ["campo", "respuesta"],
-    ...form.fields.map((field) => [field, ""]),
+    ["fecha", "periodo", "provincia", "responsable", "evidencia", "observaciones", ...form.fields],
+    [new Date().toISOString().slice(0, 10), currentMonth(), "", "", "", "", ...form.fields.map(() => "")],
   ];
+}
+
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let cell = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const nextChar = text[index + 1];
+
+    if (char === '"' && inQuotes && nextChar === '"') {
+      cell += '"';
+      index += 1;
+      continue;
+    }
+
+    if (char === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+
+    if (char === "," && !inQuotes) {
+      row.push(cell);
+      cell = "";
+      continue;
+    }
+
+    if ((char === "\n" || char === "\r") && !inQuotes) {
+      if (char === "\r" && nextChar === "\n") {
+        index += 1;
+      }
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = "";
+      continue;
+    }
+
+    cell += char;
+  }
+
+  row.push(cell);
+  rows.push(row);
+  return rows.filter((csvRow) => csvRow.some((value) => String(value).trim()));
+}
+
+function metadataFromRows(rows) {
+  const metadata = {};
+  rows.forEach((row) => {
+    const key = String(row[0] || "").trim().toLowerCase();
+    if (["formulario_id", "programa", "formulario", "tipo", "frecuencia", "responsable"].includes(key)) {
+      metadata[key] = String(row[1] || "").trim();
+    }
+  });
+  return metadata;
+}
+
+function parseMetricValue(rawValue, mode) {
+  const value = String(rawValue || "").trim();
+  if (!value) return 0;
+
+  if (mode === "number") {
+    const parsed = Number(value.replace(/[^\d.-]/g, ""));
+    return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+  }
+
+  const normalized = value.toLowerCase();
+  if (["no", "n/a", "na", "ninguno", "ninguna", "0"].includes(normalized)) {
+    return 0;
+  }
+
+  const parsed = Number(value.replace(/[^\d.-]/g, ""));
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return parsed;
+  }
+
+  return 1;
+}
+
+function rowsToReports(rows, fileName) {
+  const metadata = metadataFromRows(rows);
+  const form = state.monitoringForms.find((item) => item.id === metadata.formulario_id || item.title === metadata.formulario);
+  if (!form) {
+    throw new Error("No pude identificar el formulario. Descarga una plantilla nueva desde el sistema.");
+  }
+
+  const headerIndex = rows.findIndex((row) => String(row[0] || "").trim().toLowerCase() === "fecha");
+  if (headerIndex === -1) {
+    throw new Error("El archivo no tiene la fila de encabezados de captura.");
+  }
+
+  const headers = rows[headerIndex].map((header) => String(header || "").trim());
+  const dataRows = rows.slice(headerIndex + 1).filter((row) => row.some((cell) => String(cell || "").trim()));
+  const reports = [];
+  const submissionId = `sub-${Date.now()}`;
+
+  dataRows.forEach((row, rowIndex) => {
+    const record = {};
+    headers.forEach((header, index) => {
+      record[header] = row[index] || "";
+    });
+
+    (form.mappings || []).forEach((mapping) => {
+      const indicator = indicatorById(mapping.indicatorId);
+      const value = parseMetricValue(record[mapping.field], mapping.mode);
+      if (!indicator || value <= 0) return;
+
+      reports.push({
+        id: `rep-${Date.now()}-${rowIndex}-${mapping.indicatorId}`,
+        date: record.fecha || new Date().toISOString().slice(0, 10),
+        period: record.periodo || currentMonth(),
+        program: form.program,
+        province: record.provincia || "Centros de programa",
+        indicatorId: indicator.id,
+        value,
+        women: indicator.unit === "chicas" ? value : 0,
+        men: 0,
+        youth: indicator.unit === "chicas" ? value : 0,
+        owner: record.responsable || metadata.responsable || form.owner,
+        evidence: record.evidencia || fileName,
+        notes: record.observaciones || `${form.title}: ${mapping.field}`,
+        status: "Pendiente",
+        sourceFormId: form.id,
+        submissionId,
+      });
+    });
+  });
+
+  return { form, reports, submissionId };
+}
+
+function importCompletedForm(file) {
+  if (!file) {
+    showToast("Selecciona un archivo CSV.");
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const rows = parseCsv(String(reader.result || ""));
+      const { form, reports, submissionId } = rowsToReports(rows, file.name);
+
+      if (!reports.length) {
+        elements.uploadPreview.innerHTML = `<p class="item-meta">El formulario fue leido, pero no encontre valores que alimenten indicadores.</p>`;
+        showToast("No se importaron indicadores.");
+        return;
+      }
+
+      reports.forEach((report) => {
+        const indicator = indicatorById(report.indicatorId);
+        if (indicator) {
+          indicator.value += report.value;
+        }
+        state.reports.unshift(report);
+      });
+
+      state.formSubmissions.unshift({
+        id: submissionId,
+        fileName: file.name,
+        formId: form.id,
+        formTitle: form.title,
+        program: form.program,
+        period: reports[0].period,
+        reportCount: reports.length,
+        importedAt: new Date().toISOString(),
+      });
+      state.filters.period = reports[0].period;
+      saveState();
+      renderAll();
+      switchView("charts");
+      elements.uploadStatus.textContent = `${reports.length} registros`;
+      elements.uploadStatus.className = "status-pill good";
+      elements.uploadPreview.innerHTML = `<p class="item-meta">${reports.length} registros importados desde ${file.name}. Las graficas ya fueron actualizadas.</p>`;
+      showToast("Formulario subido y graficas actualizadas.");
+    } catch (error) {
+      elements.uploadStatus.textContent = "Error";
+      elements.uploadStatus.className = "status-pill danger";
+      elements.uploadPreview.innerHTML = `<p class="item-meta">${error.message}</p>`;
+      showToast("No pude importar el formulario.");
+    }
+  };
+  reader.readAsText(file);
 }
 
 function downloadFormTemplate(formId) {
@@ -1102,6 +1428,14 @@ function bindEvents() {
   $("#createMonitoringFormButton").addEventListener("click", () => createFormTemplate("Monitoreo"));
   $("#createEvaluationFormButton").addEventListener("click", () => createFormTemplate("Evaluacion"));
   $("#downloadAllFormsButton").addEventListener("click", downloadAllForms);
+  elements.formUploadInput.addEventListener("change", () => {
+    const file = elements.formUploadInput.files?.[0];
+    elements.uploadStatus.textContent = file ? file.name : "Sin archivo";
+    elements.uploadStatus.className = `status-pill ${file ? "info" : "neutral"}`;
+  });
+  elements.uploadFormButton.addEventListener("click", () => {
+    importCompletedForm(elements.formUploadInput.files?.[0]);
+  });
 
   elements.formTemplateGrid.addEventListener("click", (event) => {
     const formId = event.target.closest("[data-download-form]")?.dataset.downloadForm;

@@ -11,3 +11,11 @@ Abre `index.html` en el navegador.
 - `index.html`: estructura de la interfaz.
 - `styles.css`: estilos visuales y responsive.
 - `app.js`: datos base, navegacion, formularios y descargas CSV.
+
+## Flujo de formularios
+
+1. Entra a `Formularios`.
+2. Descarga una plantilla CSV.
+3. Llena las columnas de recoleccion de datos.
+4. Sube el CSV completado en `Subir formularios completados`.
+5. Revisa las graficas automaticas en `Graficas`.

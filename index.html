@@ -38,6 +38,10 @@
             <span aria-hidden="true">☑</span>
             Formularios
           </button>
+          <button class="nav-item" data-view="charts" type="button">
+            <span aria-hidden="true">▥</span>
+            Graficas
+          </button>
           <button class="nav-item" data-view="concepts" type="button">
             <span aria-hidden="true">◇</span>
             Concept Papers
@@ -289,6 +293,63 @@
               <select id="formsProgramSelect"></select>
             </label>
             <div class="form-template-grid" id="formTemplateGrid"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">Carga de datos</p>
+                <h2>Subir formularios completados</h2>
+              </div>
+              <span class="status-pill neutral" id="uploadStatus">Sin archivo</span>
+            </div>
+            <div class="upload-grid">
+              <label class="span-2">
+                Archivo CSV completado
+                <input id="formUploadInput" type="file" accept=".csv,text/csv" />
+              </label>
+              <button class="primary-action" id="uploadFormButton" type="button">
+                <span aria-hidden="true">↑</span>
+                Subir al sistema
+              </button>
+            </div>
+            <div class="upload-preview" id="uploadPreview"></div>
+          </section>
+        </section>
+
+        <section class="view" id="chartsView" data-view-panel="charts">
+          <div class="metric-grid" id="chartMetricGrid"></div>
+
+          <div class="chart-layout">
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <p class="eyebrow">Indicadores</p>
+                  <h2>Avance automatico por indicador</h2>
+                </div>
+              </div>
+              <div class="chart-stack" id="indicatorCharts"></div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <p class="eyebrow">Periodos</p>
+                  <h2>Resultados reportados</h2>
+                </div>
+              </div>
+              <div class="chart-stack" id="periodCharts"></div>
+            </section>
+          </div>
+
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">Importaciones</p>
+                <h2>Formularios subidos al sistema</h2>
+              </div>
+            </div>
+            <div class="submission-list" id="submissionList"></div>
           </section>
         </section>
 
