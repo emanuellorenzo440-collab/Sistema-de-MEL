@@ -26,3 +26,6 @@ Acciones realizadas:
 - Se agrego selector de tipo de grafico para indicadores y periodos.
 - Las graficas ahora responden a los reportes y a los filtros activos.
 - Se agrego index raiz para redirigir GitHub Pages al frontend.
+- Se agrego estadistica automatica basada en reportes.
+- Se agrego bot analista con recomendaciones de mejora para programas.
+- Se agregaron comparativa por programa y tendencia temporal.

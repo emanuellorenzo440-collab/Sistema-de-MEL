@@ -575,6 +575,156 @@ function buildPeriodChartSeries(reports) {
     }));
 }
 
+function buildProgramChartSeries(reports) {
+  return Object.entries(
+    reports.reduce((groups, report) => {
+      groups[report.program] = (groups[report.program] || 0) + Number(report.value || 0);
+      return groups;
+    }, {}),
+  )
+    .sort(([, left], [, right]) => right - left)
+    .map(([program, value]) => ({
+      key: program,
+      label: program,
+      value,
+      valueText: Number(value).toLocaleString("es-DO"),
+      meta: "valor agregado del programa",
+      tone: "info",
+    }));
+}
+
+function buildStatusChartSeries(reports) {
+  return Object.entries(
+    reports.reduce((groups, report) => {
+      groups[report.status] = (groups[report.status] || 0) + 1;
+      return groups;
+    }, {}),
+  ).map(([status, value]) => ({
+    key: status,
+    label: status,
+    value,
+    valueText: Number(value).toLocaleString("es-DO"),
+    meta: "reportes en este estado",
+    tone: status === "Aprobado" ? "good" : status === "Necesita correccion" ? "warning" : status === "Rechazado" ? "danger" : "info",
+  }));
+}
+
+function buildAutomaticStats(reports) {
+  const totalValue = reports.reduce((sum, report) => sum + Number(report.value || 0), 0);
+  const averageValue = reports.length ? totalValue / reports.length : 0;
+  const periodSeries = buildPeriodChartSeries(reports);
+  const programSeries = buildProgramChartSeries(reports);
+  const statusSeries = buildStatusChartSeries(reports);
+  const approved = reports.filter((report) => report.status === "Aprobado").length;
+  const participants = reports.reduce((sum, report) => sum + Number(report.women || 0) + Number(report.men || 0), 0);
+  const strongestPeriod = periodSeries.slice().sort((left, right) => right.value - left.value)[0];
+  const topPeriod = strongestPeriod?.label || "Sin datos";
+  const topProgram = programSeries[0]?.label || "Sin datos";
+  const pendingCount = statusSeries.find((item) => item.label === "Pendiente")?.value || 0;
+  const approvalRate = reports.length ? Math.round((approved / reports.length) * 100) : 0;
+
+  return [
+    { label: "Promedio por reporte", value: averageValue.toLocaleString("es-DO", { maximumFractionDigits: 1 }), meta: "valor medio por registro", tone: averageValue ? "good" : "neutral" },
+    { label: "Periodo mas fuerte", value: topPeriod, meta: strongestPeriod ? `${strongestPeriod.valueText} reportado` : "sin actividad aun", tone: strongestPeriod ? "info" : "neutral" },
+    { label: "Programa lider", value: topProgram, meta: programSeries[0] ? `${programSeries[0].valueText} acumulado` : "sin comparativa aun", tone: programSeries[0] ? "good" : "neutral" },
+    { label: "Tasa de aprobacion", value: `${approvalRate}%`, meta: `${approved} aprobados y ${pendingCount} pendientes`, tone: approvalRate >= 70 ? "good" : approvalRate >= 40 ? "warning" : "danger" },
+    { label: "Participacion reportada", value: participants.toLocaleString("es-DO"), meta: "mujeres y hombres acumulados", tone: participants ? "info" : "neutral" },
+    { label: "Estados activos", value: statusSeries.length, meta: "tipos de estado presentes en reportes", tone: statusSeries.length ? "info" : "neutral" },
+  ];
+}
+
+function buildTrendSummary(periodSeries) {
+  if (periodSeries.length < 2) return null;
+  const last = periodSeries[periodSeries.length - 1];
+  const previous = periodSeries[periodSeries.length - 2];
+  if (!previous.value) {
+    return { direction: "stable", delta: 0, last, previous };
+  }
+  const delta = Math.round(((last.value - previous.value) / previous.value) * 100);
+  return { direction: delta > 10 ? "up" : delta < -10 ? "down" : "stable", delta, last, previous };
+}
+
+function buildAnalysisBotInsights(reports) {
+  if (!reports.length) {
+    return [
+      {
+        tone: "info",
+        title: "Sin datos para analizar",
+        summary: "Todavia no hay reportes con los filtros activos para generar recomendaciones utiles.",
+        action: "Sube reportes o ajusta los filtros para activar el analisis.",
+      },
+    ];
+  }
+
+  const insights = [];
+  const periodSeries = buildPeriodChartSeries(reports);
+  const programSeries = buildProgramChartSeries(reports);
+  const indicatorSeries = buildIndicatorChartSeries(reports);
+  const statusSeries = buildStatusChartSeries(reports);
+  const pendingCount = statusSeries.find((item) => item.label === "Pendiente")?.value || 0;
+  const correctionCount = statusSeries.find((item) => item.label === "Necesita correccion")?.value || 0;
+  const totalReports = reports.length;
+  const trend = buildTrendSummary(periodSeries);
+  const lowIndicator = indicatorSeries.find((item) => item.tone === "danger") || indicatorSeries.find((item) => item.tone === "warning");
+  const topProgram = programSeries[0];
+
+  if (pendingCount / totalReports >= 0.35) {
+    insights.push({
+      tone: "warning",
+      title: "Acelerar validacion de datos",
+      summary: `${pendingCount} de ${totalReports} reportes siguen pendientes. El cuello de botella esta en la revision.`,
+      action: "Define una rutina semanal de validacion y prioriza los reportes del periodo actual.",
+    });
+  }
+
+  if (correctionCount > 0) {
+    insights.push({
+      tone: "warning",
+      title: "Reducir devoluciones por calidad",
+      summary: `${correctionCount} reportes necesitan correccion, lo que puede afectar la confianza del tablero.`,
+      action: "Refuerza plantillas, ejemplos y revisiones rapidas antes de enviar los reportes a supervision.",
+    });
+  }
+
+  if (trend?.direction === "down") {
+    insights.push({
+      tone: "danger",
+      title: "Recuperar ritmo de captura",
+      summary: `El ultimo periodo (${trend.last.label}) cayo ${Math.abs(trend.delta)}% frente al periodo anterior (${trend.previous.label}).`,
+      action: "Revisa si hubo menos actividad de campo, atraso en carga o problemas con formularios en ese periodo.",
+    });
+  }
+
+  if (trend?.direction === "up") {
+    insights.push({
+      tone: "good",
+      title: "Escalar la mejora reciente",
+      summary: `El ultimo periodo (${trend.last.label}) mejoro ${trend.delta}% respecto al anterior.`,
+      action: "Documenta que cambio en el proceso y replica esa practica en los programas con menor avance.",
+    });
+  }
+
+  if (lowIndicator) {
+    insights.push({
+      tone: lowIndicator.tone,
+      title: "Intervenir el indicador mas fragil",
+      summary: `${lowIndicator.label} muestra ${lowIndicator.meta} y merece seguimiento cercano.`,
+      action: "Revisa causas operativas, calidad de captura y acciones concretas del programa relacionadas con este indicador.",
+    });
+  }
+
+  if (topProgram) {
+    insights.push({
+      tone: "info",
+      title: "Usar al programa lider como referencia",
+      summary: `${topProgram.label} concentra el mayor valor agregado en los reportes visibles.`,
+      action: "Identifica practicas de ejecucion, seguimiento o carga de datos que puedan replicarse en otros programas.",
+    });
+  }
+
+  return insights.slice(0, 4);
+}
+
 function renderBarSeries(series, emptyMessage) {
   if (!series.length) {
     return `<p class="item-meta">${emptyMessage}</p>`;
@@ -644,6 +794,46 @@ function buildCircularGradient(series) {
     .join(", ");
 }
 
+function renderLineSeries(series, emptyMessage) {
+  if (!series.length) {
+    return `<p class="item-meta">${emptyMessage}</p>`;
+  }
+
+  const width = 520;
+  const height = 220;
+  const padding = 28;
+  const maxValue = Math.max(1, ...series.map((item) => item.value));
+  const stepX = series.length > 1 ? (width - padding * 2) / (series.length - 1) : 0;
+  const points = series.map((item, index) => {
+    const x = padding + stepX * index;
+    const y = height - padding - ((item.value / maxValue) * (height - padding * 2));
+    return { ...item, x, y };
+  });
+  const polylinePoints = points.map((point) => `${point.x},${point.y}`).join(" ");
+  const gridLines = Array.from({ length: 4 }, (_, index) => {
+    const y = padding + (((height - padding * 2) / 3) * index);
+    return `<line x1="${padding}" y1="${y}" x2="${width - padding}" y2="${y}" class="line-chart-grid"></line>`;
+  }).join("");
+
+  return `
+    <div class="line-chart-shell">
+      <svg viewBox="0 0 ${width} ${height}" class="line-chart-svg" aria-label="Tendencia de reportes">
+        ${gridLines}
+        <polyline fill="none" stroke="var(--teal)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" points="${polylinePoints}"></polyline>
+        ${points.map((point) => `<circle cx="${point.x}" cy="${point.y}" r="6" fill="var(--amber)"></circle>`).join("")}
+      </svg>
+      <div class="line-chart-labels">
+        ${points.map((point) => `
+          <article class="line-chart-label-item">
+            <strong>${point.valueText}</strong>
+            <p>${point.label}</p>
+          </article>
+        `).join("")}
+      </div>
+    </div>
+  `;
+}
+
 function renderCircularSeries(series, emptyMessage, variant) {
   if (!series.length) {
     return `<p class="item-meta">${emptyMessage}</p>`;
@@ -676,6 +866,7 @@ function renderCircularSeries(series, emptyMessage, variant) {
 
 function renderSeriesByType(series, type, emptyMessage) {
   if (type === "columns") return renderColumnSeries(series, emptyMessage);
+  if (type === "line") return renderLineSeries(series, emptyMessage);
   if (type === "pie") return renderCircularSeries(series, emptyMessage, "pie");
   if (type === "donut") return renderCircularSeries(series, emptyMessage, "donut");
   return renderBarSeries(series, emptyMessage);
@@ -686,7 +877,12 @@ function renderCharts() {
   const totalReports = reports.length;
   const totalUploaded = state.formSubmissions.length;
   const totalValue = reports.reduce((sum, report) => sum + Number(report.value || 0), 0);
-  const activeIndicators = buildIndicatorChartSeries(reports).length;
+  const indicatorSeries = buildIndicatorChartSeries(reports);
+  const periodSeries = buildPeriodChartSeries(reports);
+  const programSeries = buildProgramChartSeries(reports);
+  const stats = buildAutomaticStats(reports);
+  const botInsights = buildAnalysisBotInsights(reports);
+  const activeIndicators = indicatorSeries.length;
   const indicatorType = state.chartPreferences?.indicatorType || "bars";
   const periodType = state.chartPreferences?.periodType || "donut";
 
@@ -710,19 +906,56 @@ function renderCharts() {
     .join("");
 
   elements.indicatorCharts.innerHTML = renderSeriesByType(
-    buildIndicatorChartSeries(reports),
+    indicatorSeries,
     indicatorType,
     "Cuando existan reportes con los filtros actuales, aqui veras el comportamiento por indicador.",
   );
 
   elements.periodCharts.innerHTML = renderSeriesByType(
-    buildPeriodChartSeries(reports),
+    periodSeries,
     periodType,
     "Cuando subas formularios o reportes de datos, aqui apareceran los resultados por periodo.",
   );
 
-  elements.submissionList.innerHTML = state.formSubmissions.length
-    ? state.formSubmissions
+  elements.programCharts.innerHTML = renderSeriesByType(
+    programSeries,
+    programSeries.length > 1 ? "donut" : "bars",
+    "Cuando existan reportes de distintos programas, aqui veras la comparativa agregada.",
+  );
+
+  elements.trendCharts.innerHTML = renderLineSeries(
+    periodSeries,
+    "A medida que entren reportes, aqui veras la tendencia del tiempo.",
+  );
+
+  elements.chartStatsGrid.innerHTML = stats
+    .map(
+      (stat) => `
+        <article class="stat-card ${stat.tone}">
+          <p class="eyebrow">${stat.label}</p>
+          <div class="value">${stat.value}</div>
+          <div class="delta">${stat.meta}</div>
+        </article>
+      `,
+    )
+    .join("");
+
+  elements.analysisBotList.innerHTML = botInsights
+    .map(
+      (insight) => `
+        <article class="analysis-bot-item ${insight.tone}">
+          <div class="analysis-bot-head">
+            <strong>${insight.title}</strong>
+            <span class="status-pill ${insight.tone}">${insight.tone === "danger" ? "Alta prioridad" : insight.tone === "warning" ? "Atencion" : insight.tone === "good" ? "Oportunidad" : "Analisis"}</span>
+          </div>
+          <p>${insight.summary}</p>
+          <div class="analysis-bot-action">${insight.action}</div>
+        </article>
+      `,
+    )
+    .join("");
+
+  elements.submissionList.innerHTML = state.formSubmissions.length    ? state.formSubmissions
         .slice()
         .sort((a, b) => b.importedAt.localeCompare(a.importedAt))
         .map(

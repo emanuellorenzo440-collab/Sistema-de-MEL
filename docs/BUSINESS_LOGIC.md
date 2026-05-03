@@ -101,6 +101,13 @@ Director Nacional:
 - El usuario puede elegir el tipo de visualizacion sin cambiar los datos base.
 - Los indicadores mostrados en graficas deben agregarse a partir de reportes, no de valores decorativos.
 
+## Reglas de analitica
+
+- El sistema debe generar estadistica automatica basada en la informacion entrante de reportes.
+- El sistema debe poder sugerir posibles mejoras de programa a partir de indicadores, tendencia y estados de reportes.
+- El bot analista no reemplaza decisiones humanas; prioriza alertas, patrones y oportunidades.
+- Las recomendaciones deben cambiar cuando cambian filtros o nuevos reportes.
+
 ## Reglas pendientes por definir
 
 - Si los indicadores se actualizan con reportes pendientes o solo aprobados.

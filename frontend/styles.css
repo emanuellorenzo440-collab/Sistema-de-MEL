@@ -851,12 +851,17 @@ textarea {
   .upload-grid,
   .program-grid,
   .chart-filter-grid,
-  .circular-chart-layout {
+  .circular-chart-layout,
+  .stats-grid {
     grid-template-columns: 1fr;
   }
 
   .chart-column-frame {
     height: 180px;
+  }
+
+  .analysis-bot-head {
+    flex-direction: column;
   }
 
   .span-2 {
@@ -990,4 +995,133 @@ textarea {
   height: 14px;
   margin-top: 4px;
   width: 14px;
+}
+
+
+.analytics-layout {
+  align-items: start;
+}
+
+.stats-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+}
+
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  min-height: 120px;
+  padding: 14px;
+}
+
+.stat-card.good {
+  border-top: 4px solid var(--green);
+}
+
+.stat-card.warning {
+  border-top: 4px solid var(--amber);
+}
+
+.stat-card.danger {
+  border-top: 4px solid var(--red);
+}
+
+.stat-card.info {
+  border-top: 4px solid var(--blue);
+}
+
+.stat-card.neutral {
+  border-top: 4px solid var(--line);
+}
+
+.analysis-bot-list {
+  display: grid;
+  gap: 12px;
+}
+
+.analysis-bot-item {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--blue);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.analysis-bot-item.warning {
+  border-left-color: var(--amber);
+}
+
+.analysis-bot-item.danger {
+  border-left-color: var(--red);
+}
+
+.analysis-bot-item.good {
+  border-left-color: var(--green);
+}
+
+.analysis-bot-head {
+  align-items: start;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.analysis-bot-item p {
+  color: var(--muted);
+  margin-bottom: 0;
+}
+
+.analysis-bot-action {
+  background: #f3f6f5;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  padding: 10px 12px;
+}
+
+.line-chart-shell {
+  display: grid;
+  gap: 12px;
+}
+
+.line-chart-svg {
+  background: #f8faf9;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  width: 100%;
+}
+
+.line-chart-grid {
+  stroke: #dfe6e4;
+  stroke-dasharray: 4 6;
+  stroke-width: 1;
+}
+
+.line-chart-labels {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+}
+
+.line-chart-label-item {
+  background: #f8faf9;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  text-align: center;
+}
+
+.line-chart-label-item p {
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin-bottom: 0;
 }
