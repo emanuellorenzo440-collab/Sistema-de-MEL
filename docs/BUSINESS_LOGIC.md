@@ -22,6 +22,7 @@ La fuente final de verdad debe ser la base de datos. El frontend puede guardar i
 - Program: programa o proyecto monitoreado.
 - Indicator: meta medible asociada a un programa.
 - Report: dato capturado contra un indicador.
+- ReportStatusHistory: historial de decisiones sobre un reporte.
 - MonitoringForm: plantilla para recolectar informacion.
 - FormSubmission: archivo o formulario importado.
 - ConceptPaper: documento base del programa.
@@ -38,6 +39,7 @@ La fuente final de verdad debe ser la base de datos. El frontend puede guardar i
 - El sistema debe distinguir carga automatica CSV de archivos de soporte.
 - La importacion automatica debe mapear campos a indicadores.
 - La evidencia debe poder existir como texto, enlace o archivo en una fase futura.
+- Toda decision sobre un reporte debe guardar actor, rol, observacion y fecha.
 
 ## Estados sugeridos
 
@@ -109,6 +111,14 @@ Director Nacional:
 - El sistema debe poder sugerir posibles mejoras de programa a partir de indicadores, tendencia y estados de reportes.
 - El bot analista no reemplaza decisiones humanas; prioriza alertas, patrones y oportunidades.
 - Las recomendaciones deben cambiar cuando cambian filtros o nuevos reportes.
+- La API debe poder entregar la misma lectura ejecutiva que el frontend, para no duplicar logica critica.
+
+## Reglas de integracion
+
+- Si la API esta disponible, el frontend debe leer reportes y analitica desde backend.
+- Si la API no esta disponible, el frontend puede caer temporalmente a modo local sin romper la experiencia.
+- El historial de estados debe permitir explicar por que un dato entro o salio de la lectura ejecutiva.
+- actorId es obligatorio para cambios de estado cuando el backend recibe una decision de revision.
 
 ## Reglas pendientes por definir
 
@@ -116,4 +126,3 @@ Director Nacional:
 - Versionado de formularios.
 - Flujo de carga y almacenamiento de archivos.
 - Reglas de cierre mensual o trimestral.
-
