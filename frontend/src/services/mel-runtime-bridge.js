@@ -3,6 +3,7 @@ import { seedState } from "../data/seed-state.js";
 import {
   createApiReport,
   createApiReportsBulk,
+  fetchApiAnalyticsOverview,
   fetchApiReports,
   getApiBaseUrl,
   isApiConfigured,
@@ -10,8 +11,10 @@ import {
 } from "./mel-api.js";
 
 const SYNC_INTERVAL_MS = 6000;
+const CHART_COLORS = ["#14b8a6", "#2563eb", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6"];
 let syncTimer = null;
 let syncInFlight = false;
+let analyticsInFlight = false;
 
 function clone(value) {
   return structuredClone(value);
@@ -29,6 +32,12 @@ function slugify(value) {
 function asNumber(value, fallback = 0) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function percent(value, total) {
+  const safeTotal = asNumber(total);
+  if (!safeTotal) return 0;
+  return Math.round((asNumber(value) / safeTotal) * 100);
 }
 
 function readStoredState() {
@@ -173,6 +182,323 @@ function updateConnectionBadge(connected, message) {
   badge.className = `status-pill ${connected ? "good" : "warning"}`;
 }
 
+function readAnalyticsFilters() {
+  const program = document.querySelector("#programFilter")?.value;
+  const province = document.querySelector("#provinceFilter")?.value;
+  const period = document.querySelector("#periodFilter")?.value;
+  const scope = document.querySelector("#chartDataScopeSelect")?.value;
+  return {
+    program: program && program !== "Todos" ? program : undefined,
+    province: province && province !== "Todas" ? province : undefined,
+    period: period && period !== "Todos" ? period : undefined,
+    scope: scope || undefined,
+  };
+}
+
+function readChartTypes() {
+  return {
+    indicatorType: document.querySelector("#indicatorChartTypeSelect")?.value || "bars",
+    periodType: document.querySelector("#periodChartTypeSelect")?.value || "donut",
+  };
+}
+
+function colorForIndex(index) {
+  return CHART_COLORS[index % CHART_COLORS.length];
+}
+
+function formatValue(value) {
+  const numeric = asNumber(value, null);
+  if (numeric === null) return String(value || "0");
+  return numeric.toLocaleString("es-DO");
+}
+
+function renderEmpty(containerId, message) {
+  const container = document.querySelector(`#${containerId}`);
+  if (!container) return;
+  container.innerHTML = `<p class="item-meta">${message}</p>`;
+}
+
+function renderMetricCards(metrics = []) {
+  const container = document.querySelector("#chartMetricGrid");
+  if (!container) return;
+  if (!metrics.length) {
+    container.innerHTML = `<p class="item-meta">Todavia no hay una lectura analitica disponible.</p>`;
+    return;
+  }
+
+  container.innerHTML = metrics
+    .map(
+      (metric) => `
+        <article class="metric-card ${metric.type || "info"}">
+          <p class="eyebrow">${metric.label}</p>
+          <div class="value">${metric.value}</div>
+          <div class="delta">${metric.delta || ""}</div>
+        </article>
+      `,
+    )
+    .join("");
+}
+
+function renderHorizontalBars(items = []) {
+  return items
+    .map((item, index) => {
+      const safeTarget = asNumber(item.target);
+      const progress = safeTarget ? Math.min(percent(item.value, safeTarget), 100) : 100;
+      return `
+        <div class="bar-row">
+          <div class="bar-name">${item.label}</div>
+          <div class="bar-track" aria-label="${progress}% de avance">
+            <div class="bar-fill info" style="width:${Math.max(progress, 6)}%; background:${colorForIndex(index)};"></div>
+          </div>
+          <div class="bar-value">${formatValue(item.value)}</div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function renderColumns(items = []) {
+  const maxValue = Math.max(...items.map((item) => asNumber(item.value)), 1);
+  return `
+    <div style="display:grid;grid-template-columns:repeat(${items.length},minmax(0,1fr));gap:12px;align-items:end;min-height:240px;">
+      ${items
+        .map((item, index) => {
+          const height = Math.max(18, Math.round((asNumber(item.value) / maxValue) * 180));
+          return `
+            <div style="display:flex;flex-direction:column;gap:8px;align-items:center;justify-content:flex-end;">
+              <strong style="font-size:0.85rem;">${formatValue(item.value)}</strong>
+              <div style="width:100%;max-width:72px;height:${height}px;border-radius:8px 8px 0 0;background:${colorForIndex(index)};"></div>
+              <span class="item-meta" style="text-align:center;">${item.label}</span>
+            </div>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function renderLine(items = []) {
+  const width = 640;
+  const height = 220;
+  const padding = 28;
+  const maxValue = Math.max(...items.map((item) => asNumber(item.value)), 1);
+  const step = items.length > 1 ? (width - padding * 2) / (items.length - 1) : 0;
+  const points = items
+    .map((item, index) => {
+      const x = padding + step * index;
+      const y = height - padding - (asNumber(item.value) / maxValue) * (height - padding * 2);
+      return `${x},${y}`;
+    })
+    .join(" ");
+
+  return `
+    <div style="display:grid;gap:12px;">
+      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Tendencia de reportes" style="width:100%;height:auto;overflow:visible;">
+        <polyline fill="none" stroke="#2563eb" stroke-width="4" points="${points}" />
+        ${items
+          .map((item, index) => {
+            const x = padding + step * index;
+            const y = height - padding - (asNumber(item.value) / maxValue) * (height - padding * 2);
+            return `<circle cx="${x}" cy="${y}" r="5" fill="#14b8a6"></circle>`;
+          })
+          .join("")}
+      </svg>
+      <div style="display:grid;grid-template-columns:repeat(${items.length},minmax(0,1fr));gap:12px;">
+        ${items
+          .map(
+            (item) => `
+              <div style="text-align:center;">
+                <strong style="display:block;">${formatValue(item.value)}</strong>
+                <span class="item-meta">${item.label}</span>
+              </div>
+            `,
+          )
+          .join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderCircular(items = [], variant = "donut") {
+  const total = Math.max(items.reduce((sum, item) => sum + asNumber(item.value), 0), 1);
+  let offset = 0;
+  const segments = items.map((item, index) => {
+    const share = Math.max(asNumber(item.value) / total, 0);
+    const start = Math.round(offset * 360);
+    offset += share;
+    const end = Math.round(offset * 360);
+    return `${colorForIndex(index)} ${start}deg ${end}deg`;
+  });
+
+  return `
+    <div style="display:grid;gap:18px;justify-items:center;">
+      <div style="width:220px;height:220px;border-radius:50%;background:conic-gradient(${segments.join(",")});position:relative;">
+        ${
+          variant === "donut"
+            ? '<div style="position:absolute;inset:28px;border-radius:50%;background:#ffffff;"></div>'
+            : ""
+        }
+      </div>
+      <div style="display:grid;gap:8px;width:100%;">
+        ${items
+          .map(
+            (item, index) => `
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+                <span style="display:flex;align-items:center;gap:8px;">
+                  <span style="display:inline-block;width:12px;height:12px;border-radius:999px;background:${colorForIndex(index)};"></span>
+                  <span>${item.label}</span>
+                </span>
+                <strong>${formatValue(item.value)} (${percent(item.value, total)}%)</strong>
+              </div>
+            `,
+          )
+          .join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderSeries(containerId, items = [], type = "bars", emptyMessage = "No hay datos disponibles.") {
+  const container = document.querySelector(`#${containerId}`);
+  if (!container) return;
+  if (!items.length) {
+    container.innerHTML = `<p class="item-meta">${emptyMessage}</p>`;
+    return;
+  }
+
+  const limited = items.slice(0, 6);
+  if (type === "columns") {
+    container.innerHTML = renderColumns(limited);
+    return;
+  }
+  if (type === "line") {
+    container.innerHTML = renderLine(limited);
+    return;
+  }
+  if (type === "pie") {
+    container.innerHTML = renderCircular(limited, "pie");
+    return;
+  }
+  if (type === "donut") {
+    container.innerHTML = renderCircular(limited, "donut");
+    return;
+  }
+
+  container.innerHTML = renderHorizontalBars(limited);
+}
+
+function renderStats(stats = []) {
+  const container = document.querySelector("#chartStatsGrid");
+  if (!container) return;
+  if (!stats.length) {
+    container.innerHTML = `<p class="item-meta">Todavia no hay estadisticas disponibles.</p>`;
+    return;
+  }
+
+  container.innerHTML = stats
+    .map(
+      (item) => `
+        <article class="metric-card info">
+          <p class="eyebrow">${item.label}</p>
+          <div class="value">${item.value}</div>
+        </article>
+      `,
+    )
+    .join("");
+}
+
+function renderInsights(insights = []) {
+  const container = document.querySelector("#analysisBotList");
+  if (!container) return;
+  if (!insights.length) {
+    container.innerHTML = `<p class="item-meta">El bot analista mostrara hallazgos cuando lleguen datos suficientes.</p>`;
+    return;
+  }
+
+  container.innerHTML = insights
+    .map(
+      (insight) => `
+        <article class="risk-item ${insight.severity === "danger" ? "danger" : ""}">
+          <strong>${insight.title}</strong>
+          <span class="risk-meta">${insight.message}</span>
+        </article>
+      `,
+    )
+    .join("");
+}
+
+function renderRemoteSubmissionList() {
+  const state = normalizeState(readStoredState());
+  const container = document.querySelector("#submissionList");
+  if (!container) return;
+  if (!state.formSubmissions.length) {
+    container.innerHTML = `<p class="item-meta">Todavia no hay formularios importados.</p>`;
+    return;
+  }
+
+  container.innerHTML = state.formSubmissions
+    .map(
+      (submission) => `
+        <article class="action-item">
+          <div class="action-top">
+            <div>
+              <h3>${submission.formTitle || submission.fileName}</h3>
+              <p class="item-meta">${submission.program} · ${submission.period || "Sin periodo"}</p>
+            </div>
+            <span class="status-pill info">${submission.reportCount || 0} registros</span>
+          </div>
+          <p class="item-meta">${submission.fileName} · ${submission.processing || "automatico"}</p>
+        </article>
+      `,
+    )
+    .join("");
+}
+
+async function refreshAnalyticsOverview() {
+  if (!isApiConfigured() || analyticsInFlight) return;
+  analyticsInFlight = true;
+  try {
+    const filters = readAnalyticsFilters();
+    const chartTypes = readChartTypes();
+    const overview = await fetchApiAnalyticsOverview(filters);
+
+    renderMetricCards(overview.metrics || []);
+    renderSeries(
+      "indicatorCharts",
+      overview.charts?.indicators || [],
+      chartTypes.indicatorType,
+      "Todavia no hay indicadores aprobados para este filtro.",
+    );
+    renderSeries(
+      "periodCharts",
+      overview.charts?.periods || [],
+      chartTypes.periodType,
+      overview.scope?.applied === "approved"
+        ? "Todavia no hay reportes aprobados en este periodo."
+        : "Todavia no hay reportes visibles en este periodo.",
+    );
+    renderSeries(
+      "programCharts",
+      overview.charts?.programs || [],
+      "bars",
+      "Todavia no hay comparativa por programa disponible.",
+    );
+    renderSeries(
+      "trendCharts",
+      overview.charts?.periods || [],
+      "line",
+      "Todavia no hay tendencia suficiente para mostrar.",
+    );
+    renderStats(overview.stats || []);
+    renderInsights(overview.insights || []);
+    renderRemoteSubmissionList();
+  } catch (error) {
+    console.error(error);
+  } finally {
+    analyticsInFlight = false;
+  }
+}
+
 async function pullRemoteReports() {
   const remoteReports = await fetchApiReports({ scope: "all" });
   const currentState = normalizeState(readStoredState());
@@ -235,6 +561,7 @@ async function pushReviewDecision(reportId) {
   });
 
   await pullRemoteReports();
+  await refreshAnalyticsOverview();
 }
 
 async function runSyncPass() {
@@ -243,6 +570,7 @@ async function runSyncPass() {
   try {
     await pushMissingReports();
     await pullRemoteReports();
+    await refreshAnalyticsOverview();
     updateConnectionBadge(true);
   } catch (error) {
     console.error(error);
@@ -250,6 +578,37 @@ async function runSyncPass() {
   } finally {
     syncInFlight = false;
   }
+}
+
+function scheduleAnalyticsRefresh(delay = 0) {
+  window.setTimeout(() => {
+    void refreshAnalyticsOverview();
+  }, delay);
+}
+
+function bindAnalyticsRefreshTriggers() {
+  [
+    "#programFilter",
+    "#provinceFilter",
+    "#periodFilter",
+    "#chartDataScopeSelect",
+    "#indicatorChartTypeSelect",
+    "#periodChartTypeSelect",
+  ].forEach((selector) => {
+    const element = document.querySelector(selector);
+    if (!element) return;
+    element.addEventListener("change", () => {
+      scheduleAnalyticsRefresh(50);
+    });
+  });
+
+  document.querySelectorAll(".nav-item").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (button.dataset.view === "charts") {
+        scheduleAnalyticsRefresh(50);
+      }
+    });
+  });
 }
 
 export async function bootstrapApiBridge() {
@@ -314,6 +673,8 @@ export function startRuntimeBridge() {
     });
   }
 
+  bindAnalyticsRefreshTriggers();
+
   if (!syncTimer) {
     syncTimer = window.setInterval(() => {
       void runSyncPass();
@@ -326,5 +687,6 @@ export function startRuntimeBridge() {
     }
   });
 
+  scheduleAnalyticsRefresh(100);
   void runSyncPass();
 }
