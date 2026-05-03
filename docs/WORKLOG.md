@@ -29,7 +29,11 @@ Acciones realizadas:
 - Se agrego estadistica automatica basada en reportes.
 - Se agrego bot analista con recomendaciones de mejora para programas.
 - Se agregaron comparativa por programa y tendencia temporal.
-
 - Se agrego selector de base analitica para elegir entre todos los reportes visibles y solo reportes aprobados.
 - La vista recomendada de analitica queda predeterminada en reportes aprobados.
 - Las metricas, graficas y recomendaciones del bot ahora se recalculan segun la base analitica seleccionada.
+- Se formalizo la misma regla en backend, contratos compartidos y base de datos.
+- Se agrego historial de estados para aprobacion, correccion y rechazo de reportes.
+- La API ahora expone endpoints para crear reportes, importarlos en lote, revisar estados y consultar analitica.
+- Se agrego cliente de API para que el frontend pueda conectarse al backend cuando este disponible.
+- Se habilito CORS para desarrollo local entre frontend y backend.
