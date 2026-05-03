@@ -321,12 +321,41 @@
         <section class="view" id="chartsView" data-view-panel="charts">
           <div class="metric-grid" id="chartMetricGrid"></div>
 
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">Exploracion visual</p>
+                <h2>Elige como ver los reportes</h2>
+              </div>
+            </div>
+            <div class="chart-filter-grid">
+              <label class="chart-control">
+                Tipo de grafico para indicadores
+                <select id="indicatorChartTypeSelect">
+                  <option value="bars">Barras</option>
+                  <option value="columns">Columnas</option>
+                  <option value="donut">Circular</option>
+                  <option value="pie">Pastel</option>
+                </select>
+              </label>
+              <label class="chart-control">
+                Tipo de grafico para periodos
+                <select id="periodChartTypeSelect">
+                  <option value="donut">Circular</option>
+                  <option value="bars">Barras</option>
+                  <option value="columns">Columnas</option>
+                  <option value="pie">Pastel</option>
+                </select>
+              </label>
+            </div>
+            <p class="item-meta">Las graficas responden a los filtros activos y se alimentan de los reportes cargados en el sistema.</p>
+          </section>
           <div class="chart-layout">
             <section class="panel">
               <div class="panel-header">
                 <div>
                   <p class="eyebrow">Indicadores</p>
-                  <h2>Avance automatico por indicador</h2>
+                  <h2>Reportes agregados por indicador</h2>
                 </div>
               </div>
               <div class="chart-stack" id="indicatorCharts"></div>
@@ -336,7 +365,7 @@
               <div class="panel-header">
                 <div>
                   <p class="eyebrow">Periodos</p>
-                  <h2>Resultados reportados</h2>
+                  <h2>Resultados reportados por periodo</h2>
                 </div>
               </div>
               <div class="chart-stack" id="periodCharts"></div>
@@ -421,6 +450,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="app.js"></script>
+    <script type="module" src="src/main.js"></script>
   </body>
 </html>

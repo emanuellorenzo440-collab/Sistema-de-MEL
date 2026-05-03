@@ -1,614 +1,24 @@
-const STORAGE_KEY = "pulso-me-state-v3";
-
-const seedState = {
-  role: "Facilitador",
-  filters: {
-    program: "Todos",
-    province: "Todas",
-    period: "Todos",
-  },
-  designProgram: "Girls Empowerment",
-  formsProgram: "Girls Empowerment",
-  selectedConceptPaper: "cp-ge-2026",
-  programs: [
-    {
-      name: "Girls Empowerment",
-      lead: "Alanna Pujols",
-      provinces: ["Centros de programa"],
-      beneficiaries: 1500,
-      budget: "US$ 4,369",
-      focus: "Club de chicas con enfoque en desarrollo integral de adolescentes de 13 a 17 anos",
-      expectedResults: [
-        "Adolescentes fortalecen identidad, valores, autoestima, resiliencia y habilidades para la vida en un espacio seguro.",
-        "Chicas participan en encuentros semanales con devocionales, talleres tematicos, mentorias y actividades recreativas.",
-        "Participantes aumentan liderazgo, integracion social, servicio comunitario y capacidad para tomar decisiones responsables.",
-        "Mentoras y centros aplican una metodologia de evaluacion con seguimiento semanal y linea base documentada.",
-      ],
-      primaryPopulation: "Adolescentes de 13 a 17 anos, familias, comunidad local e iglesia",
-      indicatorBlueprints: [
-        {
-          name: "Chicas inscritas y activas en el club",
-          target: 1500,
-          unit: "chicas",
-          owner: "Coordinacion Girls Empowerment",
-          due: "2026-12",
-          source: "Beneficiarias directas",
-        },
-        {
-          name: "Chicas permanecen activas durante el ciclo del club",
-          target: 1200,
-          unit: "chicas",
-          owner: "Facilitadoras y mentoras",
-          due: "2026-12",
-          source: "Permanencia y asistencia",
-        },
-        {
-          name: "Participantes mejoran autoestima y habilidades sociales en evaluacion post",
-          target: 1050,
-          unit: "chicas",
-          owner: "Equipo M&E",
-          due: "2026-12",
-          source: "Evaluacion antes y despues",
-        },
-        {
-          name: "Chicas participan en proyectos comunitarios o actividades de servicio",
-          target: 900,
-          unit: "chicas",
-          owner: "Mentoras del club",
-          due: "2026-12",
-          source: "Servicio comunitario",
-        },
-        {
-          name: "Sesiones semanales implementadas con evidencia completa",
-          target: 52,
-          unit: "sesiones",
-          owner: "Facilitadoras",
-          due: "2026-12",
-          source: "Monitoreo semanal",
-        },
-        {
-          name: "Mentoras evaluadas y acompanadas segun agenda del manual",
-          target: 52,
-          unit: "seguimientos",
-          owner: "Coordinacion Girls Empowerment",
-          due: "2026-12",
-          source: "Evaluacion a mentoras",
-        },
-      ],
-    },
-    {
-      name: "Club de Chicos",
-      lead: "Equipo de mentores",
-      provinces: ["Centros de programa"],
-      beneficiaries: 1500,
-      budget: "No especificado",
-      focus: "Club de chicos con enfoque en desarrollo espiritual, emocional, social y fisico de adolescentes de 11 a 17 anos",
-      expectedResults: [
-        "Adolescentes fortalecen caracter, identidad y valores cristianos para vivir de manera saludable.",
-        "Chicos desarrollan autoestima, autocontrol y habilidades para tomar decisiones responsables.",
-        "Participantes construyen confianza, vinculo y capacidad para expresar emociones e ideas sin temor.",
-        "Mentores aplican seguimiento cercano y herramientas practicas para abordar temas de desarrollo integral.",
-      ],
-      primaryPopulation: "Adolescentes varones de 11 a 17 anos, mentores, familias y comunidad",
-      indicatorBlueprints: [
-        {
-          name: "Chicos inscritos y activos en el club",
-          target: 1500,
-          unit: "chicos",
-          owner: "Coordinacion Club de Chicos",
-          due: "2026-12",
-          source: "Beneficiarios directos",
-        },
-        {
-          name: "Participantes fortalecen autoestima e identidad",
-          target: 1050,
-          unit: "chicos",
-          owner: "Equipo M&E",
-          due: "2026-12",
-          source: "Evaluacion pre y post",
-        },
-        {
-          name: "Chicos desarrollan habilidades para decisiones responsables",
-          target: 900,
-          unit: "chicos",
-          owner: "Mentores del club",
-          due: "2026-12",
-          source: "Evaluacion final",
-        },
-        {
-          name: "Sesiones semanales implementadas con evidencia completa",
-          target: 52,
-          unit: "sesiones",
-          owner: "Mentores",
-          due: "2026-12",
-          source: "Monitoreo semanal",
-        },
-        {
-          name: "Mentores acompanados segun agenda del manual",
-          target: 52,
-          unit: "seguimientos",
-          owner: "Coordinacion Club de Chicos",
-          due: "2026-12",
-          source: "Seguimiento a mentores",
-        },
-        {
-          name: "Participantes expresan confianza y manejo emocional saludable",
-          target: 900,
-          unit: "chicos",
-          owner: "Equipo M&E",
-          due: "2026-12",
-          source: "Observacion y evaluacion",
-        },
-      ],
-    },
-  ],
-  indicators: [
-    {
-      id: "ind-ge-1",
-      program: "Girls Empowerment",
-      name: "Chicas inscritas y activas en el club",
-      target: 1500,
-      value: 0,
-      unit: "chicas",
-      owner: "Coordinacion Girls Empowerment",
-      due: "2026-12",
-      type: "Logro",
-    },
-    {
-      id: "ind-ge-2",
-      program: "Girls Empowerment",
-      name: "Chicas permanecen activas durante el ciclo del club",
-      target: 1200,
-      value: 0,
-      unit: "chicas",
-      owner: "Facilitadoras y mentoras",
-      due: "2026-12",
-      type: "Logro",
-    },
-    {
-      id: "ind-ge-3",
-      program: "Girls Empowerment",
-      name: "Participantes mejoran autoestima y habilidades sociales en evaluacion post",
-      target: 1050,
-      value: 0,
-      unit: "chicas",
-      owner: "Equipo M&E",
-      due: "2026-12",
-      type: "Logro",
-    },
-    {
-      id: "ind-ge-4",
-      program: "Girls Empowerment",
-      name: "Chicas participan en proyectos comunitarios o actividades de servicio",
-      target: 900,
-      value: 0,
-      unit: "chicas",
-      owner: "Mentoras del club",
-      due: "2026-12",
-      type: "Logro",
-    },
-    {
-      id: "ind-ge-5",
-      program: "Girls Empowerment",
-      name: "Sesiones semanales implementadas con evidencia completa",
-      target: 52,
-      value: 0,
-      unit: "sesiones",
-      owner: "Facilitadoras",
-      due: "2026-12",
-      type: "Monitoreo",
-    },
-    {
-      id: "ind-ge-6",
-      program: "Girls Empowerment",
-      name: "Mentoras evaluadas y acompanadas segun agenda del manual",
-      target: 52,
-      value: 0,
-      unit: "seguimientos",
-      owner: "Coordinacion Girls Empowerment",
-      due: "2026-12",
-      type: "Monitoreo",
-    },
-    {
-      id: "ind-bc-1",
-      program: "Club de Chicos",
-      name: "Chicos inscritos y activos en el club",
-      target: 1500,
-      value: 0,
-      unit: "chicos",
-      owner: "Coordinacion Club de Chicos",
-      due: "2026-12",
-      type: "Logro",
-    },
-    {
-      id: "ind-bc-2",
-      program: "Club de Chicos",
-      name: "Participantes fortalecen autoestima e identidad",
-      target: 1050,
-      value: 0,
-      unit: "chicos",
-      owner: "Equipo M&E",
-      due: "2026-12",
-      type: "Logro",
-    },
-    {
-      id: "ind-bc-3",
-      program: "Club de Chicos",
-      name: "Chicos desarrollan habilidades para decisiones responsables",
-      target: 900,
-      value: 0,
-      unit: "chicos",
-      owner: "Mentores del club",
-      due: "2026-12",
-      type: "Logro",
-    },
-    {
-      id: "ind-bc-4",
-      program: "Club de Chicos",
-      name: "Sesiones semanales implementadas con evidencia completa",
-      target: 52,
-      value: 0,
-      unit: "sesiones",
-      owner: "Mentores",
-      due: "2026-12",
-      type: "Monitoreo",
-    },
-    {
-      id: "ind-bc-5",
-      program: "Club de Chicos",
-      name: "Mentores acompanados segun agenda del manual",
-      target: 52,
-      value: 0,
-      unit: "seguimientos",
-      owner: "Coordinacion Club de Chicos",
-      due: "2026-12",
-      type: "Monitoreo",
-    },
-    {
-      id: "ind-bc-6",
-      program: "Club de Chicos",
-      name: "Participantes expresan confianza y manejo emocional saludable",
-      target: 900,
-      value: 0,
-      unit: "chicos",
-      owner: "Equipo M&E",
-      due: "2026-12",
-      type: "Logro",
-    },
-  ],
-  reports: [],
-  actions: [],
-  formSubmissions: [],
-  monitoringForms: [
-    {
-      id: "form-ge-1",
-      program: "Girls Empowerment",
-      type: "Monitoreo",
-      title: "Monitoreo semanal del Club de Chicas",
-      frequency: "Semanal",
-      owner: "Facilitadoras y mentoras",
-      fields: [
-        "Centro o comunidad",
-        "Fecha del encuentro",
-        "Mentora responsable",
-        "Tema trabajado segun manual",
-        "Chicas inscritas",
-        "Chicas presentes de 13 a 17 anos",
-        "Chicas ausentes",
-        "Devocional realizado",
-        "Taller o actividad complementaria",
-        "Mentorias realizadas",
-        "Proyecto o servicio comunitario relacionado",
-        "Evidencias disponibles",
-        "Alertas de proteccion o bienestar",
-        "Acuerdos para el proximo encuentro",
-      ],
-      mappings: [
-        { field: "Chicas presentes de 13 a 17 anos", indicatorId: "ind-ge-1", mode: "number" },
-        { field: "Mentorias realizadas", indicatorId: "ind-ge-6", mode: "number" },
-        { field: "Proyecto o servicio comunitario relacionado", indicatorId: "ind-ge-4", mode: "presence" },
-        { field: "Evidencias disponibles", indicatorId: "ind-ge-5", mode: "presence" },
-      ],
-    },
-    {
-      id: "form-ge-2",
-      program: "Girls Empowerment",
-      type: "Evaluacion",
-      title: "Linea base Creando Comunidad",
-      frequency: "Inicio del ciclo",
-      owner: "Equipo M&E",
-      fields: [
-        "Codigo de participante",
-        "Centro o comunidad",
-        "Edad",
-        "Consentimiento o asentimiento confirmado",
-        "Autoestima inicial",
-        "Habilidades sociales iniciales",
-        "Participacion comunitaria inicial",
-        "Interes en liderazgo o servicio",
-        "Necesidades de acompanamiento",
-        "Observaciones de la mentora",
-      ],
-      mappings: [
-        { field: "Codigo de participante", indicatorId: "ind-ge-1", mode: "presence" },
-      ],
-    },
-    {
-      id: "form-ge-3",
-      program: "Girls Empowerment",
-      type: "Evaluacion",
-      title: "Evaluacion final de cambios y logros",
-      frequency: "Fin del ciclo",
-      owner: "Equipo M&E",
-      fields: [
-        "Codigo de participante",
-        "Permanencia en el club",
-        "Cambio en autoestima",
-        "Cambio en habilidades sociales",
-        "Liderazgo o servicio realizado",
-        "Decision responsable o habilidad aplicada",
-        "Testimonio de transformacion",
-        "Recomendaciones para el siguiente ciclo",
-      ],
-      mappings: [
-        { field: "Permanencia en el club", indicatorId: "ind-ge-2", mode: "presence" },
-        { field: "Cambio en autoestima", indicatorId: "ind-ge-3", mode: "presence" },
-        { field: "Cambio en habilidades sociales", indicatorId: "ind-ge-3", mode: "presence" },
-        { field: "Liderazgo o servicio realizado", indicatorId: "ind-ge-4", mode: "presence" },
-      ],
-    },
-    {
-      id: "form-ge-4",
-      program: "Girls Empowerment",
-      type: "Monitoreo",
-      title: "Seguimiento semanal a mentoras",
-      frequency: "Semanal",
-      owner: "Coordinacion Girls Empowerment",
-      fields: [
-        "Mentora o centro",
-        "Semana reportada",
-        "Tema de agenda evaluado",
-        "Dudas aclaradas",
-        "Estrategias propuestas",
-        "Necesidades de capacitacion",
-        "Acuerdos para la proxima semana",
-        "Seguimiento requerido por coordinacion",
-      ],
-      mappings: [
-        { field: "Tema de agenda evaluado", indicatorId: "ind-ge-6", mode: "presence" },
-        { field: "Seguimiento requerido por coordinacion", indicatorId: "ind-ge-6", mode: "presence" },
-      ],
-    },
-    {
-      id: "form-bc-1",
-      program: "Club de Chicos",
-      type: "Monitoreo",
-      title: "Monitoreo semanal del Club de Chicos",
-      frequency: "Semanal",
-      owner: "Mentores del club",
-      fields: [
-        "Centro o comunidad",
-        "Fecha del encuentro",
-        "Mentor responsable",
-        "Tema trabajado",
-        "Chicos inscritos",
-        "Chicos presentes de 11 a 17 anos",
-        "Chicos ausentes",
-        "Actividad recreativa o deportiva",
-        "Reflexion espiritual desarrollada",
-        "Casos o alertas identificadas",
-        "Evidencias disponibles",
-        "Acuerdos para la proxima semana",
-      ],
-      mappings: [
-        { field: "Chicos presentes de 11 a 17 anos", indicatorId: "ind-bc-1", mode: "number" },
-        { field: "Evidencias disponibles", indicatorId: "ind-bc-4", mode: "presence" },
-      ],
-    },
-    {
-      id: "form-bc-2",
-      program: "Club de Chicos",
-      type: "Evaluacion",
-      title: "Linea base del Club de Chicos",
-      frequency: "Inicio del ciclo",
-      owner: "Equipo M&E",
-      fields: [
-        "Codigo de participante",
-        "Centro o comunidad",
-        "Edad",
-        "Autoestima inicial",
-        "Identidad y valores iniciales",
-        "Manejo emocional inicial",
-        "Entorno familiar o social",
-        "Necesidades de acompanamiento",
-        "Observaciones del mentor",
-      ],
-      mappings: [
-        { field: "Codigo de participante", indicatorId: "ind-bc-1", mode: "presence" },
-      ],
-    },
-    {
-      id: "form-bc-3",
-      program: "Club de Chicos",
-      type: "Evaluacion",
-      title: "Evaluacion final del Club de Chicos",
-      frequency: "Fin del ciclo",
-      owner: "Equipo M&E",
-      fields: [
-        "Codigo de participante",
-        "Permanencia en el club",
-        "Cambio en autoestima e identidad",
-        "Cambio en manejo emocional",
-        "Decision responsable o meta alcanzada",
-        "Relaciones sociales y respeto a otros",
-        "Testimonio de crecimiento",
-        "Recomendaciones para el siguiente ciclo",
-      ],
-      mappings: [
-        { field: "Permanencia en el club", indicatorId: "ind-bc-1", mode: "presence" },
-        { field: "Cambio en autoestima e identidad", indicatorId: "ind-bc-2", mode: "presence" },
-        { field: "Cambio en manejo emocional", indicatorId: "ind-bc-6", mode: "presence" },
-        { field: "Decision responsable o meta alcanzada", indicatorId: "ind-bc-3", mode: "presence" },
-      ],
-    },
-    {
-      id: "form-bc-4",
-      program: "Club de Chicos",
-      type: "Monitoreo",
-      title: "Seguimiento semanal a mentores del Club de Chicos",
-      frequency: "Semanal",
-      owner: "Coordinacion Club de Chicos",
-      fields: [
-        "Mentor o centro",
-        "Semana reportada",
-        "Tema de agenda evaluado",
-        "Herramientas utilizadas",
-        "Dudas aclaradas",
-        "Necesidades de apoyo",
-        "Acuerdos para la proxima semana",
-        "Seguimiento requerido por coordinacion",
-      ],
-      mappings: [
-        { field: "Tema de agenda evaluado", indicatorId: "ind-bc-5", mode: "presence" },
-        { field: "Seguimiento requerido por coordinacion", indicatorId: "ind-bc-5", mode: "presence" },
-      ],
-    },
-  ],
-  conceptPapers: [
-    {
-      id: "cp-ge-2026",
-      program: "Girls Empowerment",
-      title: "Girls Empowerment Concept Paper 2026",
-      presenter: "Facilitadora Alanna Pujols",
-      fileName: "CONCEPT PAPER- 2026 (ACTU.).pdf",
-      path: "/Users/levilorenzo/Downloads/CONCEPT PAPER- 2026 (ACTU.).pdf",
-      year: "2026",
-      status: "Cargado",
-      objective:
-        "Promover el desarrollo integral de adolescentes en un espacio seguro, dinamico y cristocentrico donde fortalezcan identidad, valores y habilidades para la vida.",
-      beneficiaries: "1,500 adolescentes de 13 a 17 anos como beneficiarias directas; familias, comunidad local e iglesia como beneficiarios indirectos.",
-      budget: "US$ 4,369",
-      methodology: [
-        "Reuniones semanales con dinamicas biblicas, reflexiones y debates.",
-        "Talleres sobre autoestima, comunicacion, manejo de emociones, salud, arte y creatividad.",
-        "Mentorias personales con acompanamiento de mujeres adultas cristianas.",
-        "Actividades comunitarias y espacios recreativos.",
-        "Capacitacion metodologica de dos semanas y evaluacion semanal de mentoras.",
-      ],
-      expectedImpact: [
-        "Adolescentes con una fe mas firme y activa.",
-        "Jovenes con mejor autoestima y habilidades de liderazgo.",
-        "Chicas con herramientas para tomar decisiones responsables.",
-        "Mayor integracion social y espiritu de servicio en la comunidad.",
-      ],
-      measurableResults: [
-        "Numero de chicas participantes y nivel de permanencia en el club.",
-        "Incremento en participacion en proyectos comunitarios.",
-        "Evaluaciones de autoestima y habilidades sociales antes y despues del programa.",
-        "Testimonios de transformacion personal y espiritual.",
-      ],
-      recommendedForms: ["Monitoreo semanal", "Linea base", "Evaluacion final", "Seguimiento a mentoras"],
-      achievementIndicators: [
-        "Chicas inscritas y activas en el club",
-        "Chicas permanecen activas durante el ciclo del club",
-        "Participantes mejoran autoestima y habilidades sociales en evaluacion post",
-        "Chicas participan en proyectos comunitarios o actividades de servicio",
-      ],
-    },
-    {
-      id: "cp-bc-2026",
-      program: "Club de Chicos",
-      title: "Club de Chicos Concept Paper 2026",
-      presenter: "Equipo de mentores",
-      fileName: "Manual de mentores 6.pdf",
-      path: "/Users/levilorenzo/Downloads/Manual de mentores 6.pdf",
-      year: "2026",
-      status: "Cargado",
-      objective:
-        "Fomentar y desarrollar en los ninos valores espirituales y morales para que puedan vivir de una manera saludable.",
-      beneficiaries: "1,500 ninos y adolescentes de 11 a 17 anos como beneficiarios directos, junto con mentores, familias y comunidad.",
-      budget: "No especificado",
-      methodology: [
-        "Capacitacion y seguimiento a mentores de iglesias locales y comunidad.",
-        "Encuentros del club con acompanamiento cercano de mentores responsables de grupos de adolescentes.",
-        "Talleres, actividades recreativas y deportivas, y material espiritual para desarrollo integral.",
-        "Abordaje de temas sobre emociones, sexualidad, vida social, autoeficacia y espiritualidad.",
-      ],
-      expectedImpact: [
-        "Formacion de caracter basado en valores cristianos.",
-        "Mejora en autoestima e identidad.",
-        "Habilidades para afrontar presion social y decisiones dificiles.",
-        "Mayor confianza, vinculo, manejo emocional y respeto hacia otros.",
-      ],
-      measurableResults: [
-        "Numero de chicos inscritos y activos en el club.",
-        "Participantes muestran crecimiento espiritual, autoestima e identidad fortalecida.",
-        "Adolescentes demuestran mayor autocontrol y decisiones responsables.",
-        "Mentores aplican seguimiento semanal con evidencia y acuerdos de mejora.",
-      ],
-      recommendedForms: ["Monitoreo semanal", "Linea base", "Evaluacion final", "Seguimiento a mentores"],
-      achievementIndicators: [
-        "Chicos inscritos y activos en el club",
-        "Participantes fortalecen autoestima e identidad",
-        "Chicos desarrollan habilidades para decisiones responsables",
-        "Participantes expresan confianza y manejo emocional saludable",
-      ],
-    },
-  ],
-};
+import { STORAGE_KEY } from "../core/config.js";
+import { $, $$, elements } from "../core/dom.js";
+import { loadStoredState, saveStoredState } from "../core/storage.js";
+import { seedState } from "../data/seed-state.js";
+import {
+  currentMonth,
+  escapeHtml,
+  fileExtension,
+  localFileUrl,
+  percent,
+  renderBullets,
+  setOptions,
+  slugify,
+  statusForProgress,
+  unique,
+} from "../shared/utils.js";
 
 let state = loadState();
 
-const $ = (selector) => document.querySelector(selector);
-const $$ = (selector) => Array.from(document.querySelectorAll(selector));
-
-const elements = {
-  pageTitle: $("#pageTitle"),
-  roleSelect: $("#roleSelect"),
-  roleBadge: $("#roleBadge"),
-  programFilter: $("#programFilter"),
-  provinceFilter: $("#provinceFilter"),
-  periodFilter: $("#periodFilter"),
-  metricGrid: $("#metricGrid"),
-  programChart: $("#programChart"),
-  riskList: $("#riskList"),
-  recentReports: $("#recentReports"),
-  reportForm: $("#reportForm"),
-  reportProgram: $("#reportProgram"),
-  reportProvince: $("#reportProvince"),
-  reportIndicator: $("#reportIndicator"),
-  reportPeriod: $("#reportPeriod"),
-  indicatorBoard: $("#indicatorBoard"),
-  designProgramSelect: $("#designProgramSelect"),
-  expectedResults: $("#expectedResults"),
-  indicatorSuggestions: $("#indicatorSuggestions"),
-  formsProgramSelect: $("#formsProgramSelect"),
-  formTemplateGrid: $("#formTemplateGrid"),
-  formUploadInput: $("#formUploadInput"),
-  uploadFormButton: $("#uploadFormButton"),
-  uploadStatus: $("#uploadStatus"),
-  uploadPreview: $("#uploadPreview"),
-  chartMetricGrid: $("#chartMetricGrid"),
-  indicatorCharts: $("#indicatorCharts"),
-  periodCharts: $("#periodCharts"),
-  submissionList: $("#submissionList"),
-  conceptCount: $("#conceptCount"),
-  conceptPaperList: $("#conceptPaperList"),
-  conceptDetailTitle: $("#conceptDetailTitle"),
-  conceptPaperDetail: $("#conceptPaperDetail"),
-  reviewList: $("#reviewList"),
-  actionList: $("#actionList"),
-  programGrid: $("#programGrid"),
-  toast: $("#toast"),
-};
-
 function loadState() {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    return saved ? normalizeState(JSON.parse(saved)) : structuredClone(seedState);
-  } catch {
-    return structuredClone(seedState);
-  }
+  return loadStoredState(STORAGE_KEY, seedState, normalizeState);
 }
 
 function normalizeState(savedState) {
@@ -644,6 +54,7 @@ function normalizeState(savedState) {
   nextState.monitoringForms = mergeByKey(savedState.monitoringForms || [], seedState.monitoringForms, (item) => item.id);
   nextState.conceptPapers = mergeByKey(savedState.conceptPapers || [], seedState.conceptPapers, (item) => item.id);
   nextState.formSubmissions = savedState.formSubmissions || [];
+  nextState.chartPreferences = { ...seedState.chartPreferences, ...(savedState.chartPreferences || {}) };
   nextState.designProgram = savedState.designProgram || nextState.programs[0]?.name;
   nextState.formsProgram = savedState.formsProgram || nextState.designProgram || nextState.programs[0]?.name;
   nextState.selectedConceptPaper = savedState.selectedConceptPaper || nextState.conceptPapers[0]?.id;
@@ -651,30 +62,11 @@ function normalizeState(savedState) {
 }
 
 function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-}
-
-function percent(value, target) {
-  if (!target) return 0;
-  return Math.min(100, Math.round((value / target) * 100));
-}
-
-function statusForProgress(progress) {
-  if (progress >= 80) return "good";
-  if (progress >= 60) return "warning";
-  return "danger";
+  saveStoredState(STORAGE_KEY, state);
 }
 
 function indicatorById(id) {
   return state.indicators.find((indicator) => indicator.id === id);
-}
-
-function unique(values) {
-  return [...new Set(values)].sort((a, b) => a.localeCompare(b));
-}
-
-function currentMonth() {
-  return new Date().toISOString().slice(0, 7);
 }
 
 function getFilteredReports() {
@@ -684,10 +76,6 @@ function getFilteredReports() {
     const periodMatch = state.filters.period === "Todos" || report.period === state.filters.period;
     return programMatch && provinceMatch && periodMatch;
   });
-}
-
-function setOptions(select, values, selectedValue) {
-  select.innerHTML = values.map((value) => `<option ${value === selectedValue ? "selected" : ""}>${value}</option>`).join("");
 }
 
 function renderFilters() {
@@ -710,6 +98,12 @@ function renderFilters() {
   setOptions(elements.formsProgramSelect, programNames, state.formsProgram || state.designProgram || selectedProgram);
   elements.reportPeriod.value = state.filters.period === "Todos" ? currentMonth() : state.filters.period;
   elements.roleSelect.value = state.role || "Facilitador";
+  if (elements.indicatorChartTypeSelect) {
+    elements.indicatorChartTypeSelect.value = state.chartPreferences?.indicatorType || "bars";
+  }
+  if (elements.periodChartTypeSelect) {
+    elements.periodChartTypeSelect.value = state.chartPreferences?.periodType || "donut";
+  }
 }
 
 function canValidate() {
@@ -899,14 +293,6 @@ function buildSuggestedIndicators(program) {
 
 function selectedConceptPaper() {
   return state.conceptPapers.find((paper) => paper.id === state.selectedConceptPaper) || state.conceptPapers[0];
-}
-
-function localFileUrl(path) {
-  return encodeURI(`file://${path}`);
-}
-
-function renderBullets(items) {
-  return (items || []).map((item) => `<li>${item}</li>`).join("");
 }
 
 function renderConceptPapers() {
@@ -1140,24 +526,175 @@ function renderPrograms() {
     .join("");
 }
 
-function reportsByPeriod() {
-  return state.reports.reduce((groups, report) => {
+function reportsByPeriod(reports = state.reports) {
+  return reports.reduce((groups, report) => {
     groups[report.period] = (groups[report.period] || 0) + Number(report.value || 0);
     return groups;
   }, {});
 }
 
+function chartColor(index) {
+  const palette = ["var(--teal)", "var(--blue)", "var(--green)", "var(--amber)", "var(--red)", "var(--violet)"];
+  return palette[index % palette.length];
+}
+
+function buildIndicatorChartSeries(reports) {
+  const totals = reports.reduce((groups, report) => {
+    groups[report.indicatorId] = (groups[report.indicatorId] || 0) + Number(report.value || 0);
+    return groups;
+  }, {});
+
+  return state.indicators
+    .filter((indicator) => state.filters.program === "Todos" || indicator.program === state.filters.program)
+    .map((indicator) => {
+      const value = totals[indicator.id] || 0;
+      const progress = percent(value, indicator.target);
+      return {
+        key: indicator.id,
+        label: indicator.name,
+        value,
+        valueText: value.toLocaleString("es-DO"),
+        meta: `${progress}% de ${indicator.target.toLocaleString("es-DO")} ${indicator.unit}`,
+        tone: statusForProgress(progress),
+      };
+    })
+    .filter((item) => item.value > 0)
+    .sort((left, right) => right.value - left.value);
+}
+
+function buildPeriodChartSeries(reports) {
+  return Object.entries(reportsByPeriod(reports))
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([period, value]) => ({
+      key: period,
+      label: period,
+      value,
+      valueText: Number(value).toLocaleString("es-DO"),
+      meta: "valor reportado",
+      tone: "info",
+    }));
+}
+
+function renderBarSeries(series, emptyMessage) {
+  if (!series.length) {
+    return `<p class="item-meta">${emptyMessage}</p>`;
+  }
+
+  const maxValue = Math.max(1, ...series.map((item) => item.value));
+  return series
+    .map((item) => {
+      const width = Math.max(6, Math.round((item.value / maxValue) * 100));
+      return `
+        <article class="chart-item">
+          <div class="chart-row-head">
+            <div>
+              <h3>${item.label}</h3>
+              <p class="item-meta">${item.valueText} · ${item.meta}</p>
+            </div>
+            <span class="status-pill ${item.tone}">${item.valueText}</span>
+          </div>
+          <div class="bar-track tall">
+            <div class="bar-fill ${item.tone}" style="width: ${width}%"></div>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function renderColumnSeries(series, emptyMessage) {
+  if (!series.length) {
+    return `<p class="item-meta">${emptyMessage}</p>`;
+  }
+
+  const maxValue = Math.max(1, ...series.map((item) => item.value));
+  return `
+    <div class="chart-columns">
+      ${series
+        .map((item, index) => {
+          const height = Math.max(10, Math.round((item.value / maxValue) * 100));
+          return `
+            <article class="chart-column-item">
+              <div class="chart-column-frame">
+                <div class="chart-column-fill ${item.tone}" style="height: ${height}%; background: ${chartColor(index)};"></div>
+              </div>
+              <strong>${item.valueText}</strong>
+              <p>${item.label}</p>
+            </article>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function buildCircularGradient(series) {
+  const total = series.reduce((sum, item) => sum + item.value, 0);
+  if (!total) return "";
+
+  let start = 0;
+  return series
+    .map((item, index) => {
+      const slice = (item.value / total) * 360;
+      const end = start + slice;
+      const segment = `${chartColor(index)} ${start}deg ${end}deg`;
+      start = end;
+      return segment;
+    })
+    .join(", ");
+}
+
+function renderCircularSeries(series, emptyMessage, variant) {
+  if (!series.length) {
+    return `<p class="item-meta">${emptyMessage}</p>`;
+  }
+
+  const total = series.reduce((sum, item) => sum + item.value, 0);
+  const gradient = buildCircularGradient(series);
+
+  return `
+    <div class="circular-chart-layout">
+      <div class="circular-chart ${variant}" style="--chart-gradient: conic-gradient(${gradient});">
+        ${variant === "donut" ? `<div class="circular-chart-center"><strong>${total.toLocaleString("es-DO")}</strong><span>Total</span></div>` : ""}
+      </div>
+      <div class="chart-legend">
+        ${series
+          .map((item, index) => `
+            <article class="chart-legend-item">
+              <span class="legend-swatch" style="background: ${chartColor(index)};"></span>
+              <div>
+                <strong>${item.label}</strong>
+                <p>${item.valueText} · ${item.meta}</p>
+              </div>
+            </article>
+          `)
+          .join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderSeriesByType(series, type, emptyMessage) {
+  if (type === "columns") return renderColumnSeries(series, emptyMessage);
+  if (type === "pie") return renderCircularSeries(series, emptyMessage, "pie");
+  if (type === "donut") return renderCircularSeries(series, emptyMessage, "donut");
+  return renderBarSeries(series, emptyMessage);
+}
+
 function renderCharts() {
-  const totalReports = state.reports.length;
+  const reports = getFilteredReports();
+  const totalReports = reports.length;
   const totalUploaded = state.formSubmissions.length;
-  const totalValue = state.reports.reduce((sum, report) => sum + Number(report.value || 0), 0);
-  const activeIndicators = state.indicators.filter((indicator) => indicator.value > 0).length;
+  const totalValue = reports.reduce((sum, report) => sum + Number(report.value || 0), 0);
+  const activeIndicators = buildIndicatorChartSeries(reports).length;
+  const indicatorType = state.chartPreferences?.indicatorType || "bars";
+  const periodType = state.chartPreferences?.periodType || "donut";
 
   const metrics = [
-    { label: "Datos cargados", value: totalReports, delta: "registros de indicadores", type: "info" },
+    { label: "Datos cargados", value: totalReports, delta: "registros con filtros activos", type: "info" },
     { label: "Formularios subidos", value: totalUploaded, delta: "archivos procesados", type: totalUploaded ? "good" : "warning" },
-    { label: "Valor acumulado", value: totalValue.toLocaleString("es-DO"), delta: "suma reportada", type: totalValue ? "good" : "neutral" },
-    { label: "Indicadores con datos", value: activeIndicators, delta: "alimentados automaticamente", type: activeIndicators ? "good" : "warning" },
+    { label: "Valor acumulado", value: totalValue.toLocaleString("es-DO"), delta: "suma reportada con filtros", type: totalValue ? "good" : "neutral" },
+    { label: "Indicadores con datos", value: activeIndicators, delta: "alimentados por reportes", type: activeIndicators ? "good" : "warning" },
   ];
 
   elements.chartMetricGrid.innerHTML = metrics
@@ -1172,49 +709,17 @@ function renderCharts() {
     )
     .join("");
 
-  elements.indicatorCharts.innerHTML = state.indicators
-    .map((indicator) => {
-      const progress = percent(indicator.value, indicator.target);
-      const risk = statusForProgress(progress);
-      return `
-        <article class="chart-item">
-          <div class="chart-row-head">
-            <div>
-              <h3>${indicator.name}</h3>
-              <p class="item-meta">${indicator.value.toLocaleString("es-DO")} de ${indicator.target.toLocaleString("es-DO")} ${indicator.unit}</p>
-            </div>
-            <span class="status-pill ${risk}">${progress}%</span>
-          </div>
-          <div class="bar-track tall">
-            <div class="bar-fill ${risk}" style="width: ${progress}%"></div>
-          </div>
-        </article>
-      `;
-    })
-    .join("");
+  elements.indicatorCharts.innerHTML = renderSeriesByType(
+    buildIndicatorChartSeries(reports),
+    indicatorType,
+    "Cuando existan reportes con los filtros actuales, aqui veras el comportamiento por indicador.",
+  );
 
-  const periodData = reportsByPeriod();
-  const maxPeriodValue = Math.max(1, ...Object.values(periodData));
-  const periodEntries = Object.entries(periodData).sort(([a], [b]) => a.localeCompare(b));
-
-  elements.periodCharts.innerHTML = periodEntries.length
-    ? periodEntries
-        .map(([period, value]) => {
-          const width = Math.round((value / maxPeriodValue) * 100);
-          return `
-            <article class="chart-item">
-              <div class="chart-row-head">
-                <h3>${period}</h3>
-                <span class="status-pill info">${value.toLocaleString("es-DO")}</span>
-              </div>
-              <div class="bar-track tall">
-                <div class="bar-fill info" style="width: ${width}%"></div>
-              </div>
-            </article>
-          `;
-        })
-        .join("")
-    : `<p class="item-meta">Cuando subas formularios o reportes datos, aqui apareceran los resultados por periodo.</p>`;
+  elements.periodCharts.innerHTML = renderSeriesByType(
+    buildPeriodChartSeries(reports),
+    periodType,
+    "Cuando subas formularios o reportes de datos, aqui apareceran los resultados por periodo.",
+  );
 
   elements.submissionList.innerHTML = state.formSubmissions.length
     ? state.formSubmissions
@@ -1351,24 +856,6 @@ function downloadCsv(rows, fileName) {
   link.download = fileName;
   link.click();
   URL.revokeObjectURL(url);
-}
-
-function slugify(value) {
-  return value
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
 }
 
 function formRows(form) {
@@ -1545,10 +1032,6 @@ function parseMetricValue(rawValue, mode) {
   }
 
   return 1;
-}
-
-function fileExtension(fileName) {
-  return String(fileName || "").split(".").pop()?.toLowerCase() || "";
 }
 
 function rowsToReports(rows, fileName) {
@@ -1860,6 +1343,18 @@ function bindEvents() {
     renderAll();
   });
 
+  elements.indicatorChartTypeSelect.addEventListener("change", () => {
+    state.chartPreferences.indicatorType = elements.indicatorChartTypeSelect.value;
+    saveState();
+    renderCharts();
+  });
+
+  elements.periodChartTypeSelect.addEventListener("change", () => {
+    state.chartPreferences.periodType = elements.periodChartTypeSelect.value;
+    saveState();
+    renderCharts();
+  });
+
   $("#generateIndicatorsButton").addEventListener("click", createIndicatorsFromProgram);
   $("#createMonitoringFormButton").addEventListener("click", () => createFormTemplate("Monitoreo"));
   $("#createEvaluationFormButton").addEventListener("click", () => createFormTemplate("Evaluacion"));
@@ -1961,5 +1456,11 @@ function bindEvents() {
   });
 }
 
-renderAll();
-bindEvents();
+export function createMonitoringApp() {
+  return {
+    start() {
+      renderAll();
+      bindEvents();
+    },
+  };
+}

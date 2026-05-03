@@ -1,0 +1,38 @@
+# Decisiones
+
+## 2026-05-03 - Separacion por capas
+
+Decision: organizar el proyecto en frontend, backend, database, shared y docs.
+
+Razon: el sistema debe crecer como una plataforma completa, no como una sola pagina estatica dificil de mantener.
+
+Impacto:
+
+- El frontend queda aislado en frontend/.
+- El backend tiene una base inicial en backend/.
+- La base de datos tiene un esquema inicial en database/.
+- Los contratos viven en shared/.
+
+## 2026-05-03 - El usuario define experiencia, Codex define logica
+
+Decision: los pedidos del usuario se tratan como intencion de experiencia y producto. Codex traduce esa intencion a logica de negocio, UX/UI, arquitectura, responsividad y documentacion.
+
+Razon: permite que el usuario describa como debe sentirse el sistema sin tener que disenar todos los detalles tecnicos.
+
+Impacto:
+
+- Cada cambio debe considerar producto completo.
+- La documentacion debe mantenerse al dia.
+- Las decisiones tecnicas deben proteger escalabilidad futura.
+
+## 2026-05-03 - Excelencia sobre prisa
+
+Decision: el proyecto debe optimizarse para calidad de producto, claridad de experiencia y solidez de negocio aunque tome mas tiempo llegar a la version final.
+
+Razon: un sistema de MEL util para usuarios reales necesita confianza, consistencia, buena experiencia movil y reglas de negocio bien pensadas; acelerar sin ese cuidado produciria deuda y frustracion.
+
+Impacto:
+
+- Se permiten iteraciones mas profundas si mejoran el sistema.
+- Codex debe proponer mejoras cuando detecte una opcion claramente superior.
+- Cada cambio debe evaluarse por impacto en usuario, negocio y continuidad tecnica.
