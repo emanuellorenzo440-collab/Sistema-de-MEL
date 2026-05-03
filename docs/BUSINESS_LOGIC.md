@@ -99,6 +99,8 @@ Director Nacional:
 - Las graficas deben alimentarse de reportes registrados en el sistema.
 - Las graficas deben responder a los filtros activos de programa, provincia y periodo.
 - El usuario puede elegir el tipo de visualizacion sin cambiar los datos base.
+- El usuario puede cambiar la base del analisis entre todos los reportes visibles y solo reportes aprobados.
+- La vista recomendada para lectura ejecutiva debe usar solo reportes aprobados.
 - Los indicadores mostrados en graficas deben agregarse a partir de reportes, no de valores decorativos.
 
 ## Reglas de analitica
@@ -110,7 +112,6 @@ Director Nacional:
 
 ## Reglas pendientes por definir
 
-- Si los indicadores se actualizan con reportes pendientes o solo aprobados.
 - Politica de edicion de reportes despues de aprobacion.
 - Versionado de formularios.
 - Flujo de carga y almacenamiento de archivos.

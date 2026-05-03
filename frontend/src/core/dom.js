@@ -28,6 +28,7 @@ export const elements = {
   uploadStatus: $("#uploadStatus"),
   uploadPreview: $("#uploadPreview"),
   chartMetricGrid: $("#chartMetricGrid"),
+  chartDataScopeSelect: $("#chartDataScopeSelect"),
   indicatorChartTypeSelect: $("#indicatorChartTypeSelect"),
   periodChartTypeSelect: $("#periodChartTypeSelect"),
   indicatorCharts: $("#indicatorCharts"),

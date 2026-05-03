@@ -6,6 +6,7 @@ export const seedState = {
     period: "Todos",
   },
   chartPreferences: {
+    dataScope: "approved",
     indicatorType: "bars",
     periodType: "donut",
   },

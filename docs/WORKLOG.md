@@ -29,3 +29,7 @@ Acciones realizadas:
 - Se agrego estadistica automatica basada en reportes.
 - Se agrego bot analista con recomendaciones de mejora para programas.
 - Se agregaron comparativa por programa y tendencia temporal.
+
+- Se agrego selector de base analitica para elegir entre todos los reportes visibles y solo reportes aprobados.
+- La vista recomendada de analitica queda predeterminada en reportes aprobados.
+- Las metricas, graficas y recomendaciones del bot ahora se recalculan segun la base analitica seleccionada.

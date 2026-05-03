@@ -59,14 +59,14 @@ node --check backend/src/server.js
 5. Agregar autenticacion y roles.
 6. Revisar la experiencia movil pantalla por pantalla.
 7. Crear pruebas basicas de importacion CSV y validacion de reportes.
-8. Definir si las graficas deben mostrar todos los reportes o solo aprobados en vistas ejecutivas.
+8. Llevar la misma regla de analitica aprobada al backend y futuros dashboards conectados a API.
 
 ## Riesgos conocidos
 
 - El frontend todavia usa localStorage como persistencia temporal.
 - La API es una base inicial, no una API completa.
 - El esquema SQL todavia no tiene migrador automatizado.
-- Falta definir si indicadores se alimentan con reportes pendientes o solo aprobados.
+- Falta consolidar esta misma regla de analitica en backend cuando el frontend deje de depender de localStorage.
 
 ## Regla para continuar
 

@@ -36,3 +36,16 @@ Impacto:
 - Se permiten iteraciones mas profundas si mejoran el sistema.
 - Codex debe proponer mejoras cuando detecte una opcion claramente superior.
 - Cada cambio debe evaluarse por impacto en usuario, negocio y continuidad tecnica.
+
+
+## 2026-05-03 - Analitica ejecutiva basada en reportes aprobados
+
+Decision: la seccion de graficas y analitica debe poder cambiar entre todos los reportes visibles y solo reportes aprobados, pero la base recomendada y predeterminada para lectura ejecutiva sera solo aprobados.
+
+Razon: evita mezclar datos pendientes con lectura de direccion y mejora la confianza del analisis automatico y del bot analista.
+
+Impacto:
+
+- La analitica puede usarse tanto en operacion como en supervision ejecutiva.
+- El usuario mantiene control del alcance del analisis sin perder claridad.
+- Las metricas y recomendaciones reflejan mejor datos validados.

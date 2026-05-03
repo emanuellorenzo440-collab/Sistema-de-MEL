@@ -78,6 +78,18 @@ function getFilteredReports() {
   });
 }
 
+function getChartDataScope() {
+  return state.chartPreferences?.dataScope === "all" ? "all" : "approved";
+}
+
+function getAnalyticsReports() {
+  const reports = getFilteredReports();
+  if (getChartDataScope() === "all") {
+    return reports;
+  }
+  return reports.filter((report) => report.status === "Aprobado");
+}
+
 function renderFilters() {
   const programs = ["Todos", ...state.programs.map((program) => program.name)];
   const provinces = ["Todas", ...unique(state.programs.flatMap((program) => program.provinces))];
@@ -103,6 +115,9 @@ function renderFilters() {
   }
   if (elements.periodChartTypeSelect) {
     elements.periodChartTypeSelect.value = state.chartPreferences?.periodType || "donut";
+  }
+  if (elements.chartDataScopeSelect) {
+    elements.chartDataScopeSelect.value = getChartDataScope();
   }
 }
 
@@ -873,21 +888,63 @@ function renderSeriesByType(series, type, emptyMessage) {
 }
 
 function renderCharts() {
-  const reports = getFilteredReports();
+  const visibleReports = getFilteredReports();
+  const reports = getAnalyticsReports();
+  const chartScope = getChartDataScope();
   const totalReports = reports.length;
+  const excludedReports = Math.max(visibleReports.length - reports.length, 0);
   const totalUploaded = state.formSubmissions.length;
   const totalValue = reports.reduce((sum, report) => sum + Number(report.value || 0), 0);
   const indicatorSeries = buildIndicatorChartSeries(reports);
   const periodSeries = buildPeriodChartSeries(reports);
   const programSeries = buildProgramChartSeries(reports);
   const stats = buildAutomaticStats(reports);
-  const botInsights = buildAnalysisBotInsights(reports);
   const activeIndicators = indicatorSeries.length;
   const indicatorType = state.chartPreferences?.indicatorType || "bars";
   const periodType = state.chartPreferences?.periodType || "donut";
+  const scopeLabel = chartScope === "approved" ? "Solo aprobados" : "Todos visibles";
+  const scopeDelta =
+    chartScope === "approved"
+      ? excludedReports
+        ? `${excludedReports} pendientes o devueltos fuera del analisis`
+        : "sin excluir reportes por estado"
+      : "incluye reportes pendientes y en correccion";
+  const noApprovedYet = chartScope === "approved" && !reports.length && visibleReports.length > 0;
+  const dataMessage =
+    noApprovedYet
+      ? "Hay reportes con los filtros actuales, pero todavia ninguno aprobado para analisis ejecutivo."
+      : chartScope === "approved"
+        ? "Cuando existan reportes aprobados con los filtros actuales, aqui veras el comportamiento por indicador."
+        : "Cuando existan reportes con los filtros actuales, aqui veras el comportamiento por indicador.";
+  const periodMessage =
+    noApprovedYet
+      ? "Aprueba al menos un reporte visible para activar la lectura ejecutiva por periodo."
+      : chartScope === "approved"
+        ? "Cuando existan reportes aprobados o formularios validados, aqui apareceran los resultados por periodo."
+        : "Cuando subas formularios o reportes de datos, aqui apareceran los resultados por periodo.";
+  const programMessage =
+    noApprovedYet
+      ? "La comparativa se activara cuando los reportes visibles hayan pasado validacion."
+      : "Cuando existan reportes de distintos programas, aqui veras la comparativa agregada.";
+  const trendMessage =
+    noApprovedYet
+      ? "La tendencia aparecera cuando exista al menos un reporte aprobado dentro de los filtros."
+      : "A medida que entren reportes, aqui veras la tendencia del tiempo.";
+  const botInsights =
+    noApprovedYet
+      ? [
+          {
+            tone: "info",
+            title: "Pendiente de validacion ejecutiva",
+            summary: "Hay reportes visibles, pero la vista actual solo analiza reportes aprobados para proteger la calidad de lectura.",
+            action: "Aprueba reportes o cambia la base del analisis a todos los reportes visibles si quieres explorar datos operativos.",
+          },
+        ]
+      : buildAnalysisBotInsights(reports);
 
   const metrics = [
-    { label: "Datos cargados", value: totalReports, delta: "registros con filtros activos", type: "info" },
+    { label: "Base analitica", value: scopeLabel, delta: scopeDelta, type: chartScope === "approved" ? "good" : "info" },
+    { label: "Datos analizados", value: totalReports, delta: chartScope === "approved" ? "reportes aprobados con filtros activos" : "registros con filtros activos", type: "info" },
     { label: "Formularios subidos", value: totalUploaded, delta: "archivos procesados", type: totalUploaded ? "good" : "warning" },
     { label: "Valor acumulado", value: totalValue.toLocaleString("es-DO"), delta: "suma reportada con filtros", type: totalValue ? "good" : "neutral" },
     { label: "Indicadores con datos", value: activeIndicators, delta: "alimentados por reportes", type: activeIndicators ? "good" : "warning" },
@@ -908,24 +965,24 @@ function renderCharts() {
   elements.indicatorCharts.innerHTML = renderSeriesByType(
     indicatorSeries,
     indicatorType,
-    "Cuando existan reportes con los filtros actuales, aqui veras el comportamiento por indicador.",
+    dataMessage,
   );
 
   elements.periodCharts.innerHTML = renderSeriesByType(
     periodSeries,
     periodType,
-    "Cuando subas formularios o reportes de datos, aqui apareceran los resultados por periodo.",
+    periodMessage,
   );
 
   elements.programCharts.innerHTML = renderSeriesByType(
     programSeries,
     programSeries.length > 1 ? "donut" : "bars",
-    "Cuando existan reportes de distintos programas, aqui veras la comparativa agregada.",
+    programMessage,
   );
 
   elements.trendCharts.innerHTML = renderLineSeries(
     periodSeries,
-    "A medida que entren reportes, aqui veras la tendencia del tiempo.",
+    trendMessage,
   );
 
   elements.chartStatsGrid.innerHTML = stats
@@ -1584,6 +1641,12 @@ function bindEvents() {
 
   elements.periodChartTypeSelect.addEventListener("change", () => {
     state.chartPreferences.periodType = elements.periodChartTypeSelect.value;
+    saveState();
+    renderCharts();
+  });
+
+  elements.chartDataScopeSelect.addEventListener("change", () => {
+    state.chartPreferences.dataScope = elements.chartDataScopeSelect.value;
     saveState();
     renderCharts();
   });
