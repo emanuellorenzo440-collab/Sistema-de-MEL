@@ -25,3 +25,4 @@ Acciones realizadas:
 - Se formalizo el criterio de excelencia sobre velocidad.
 - Se agrego selector de tipo de grafico para indicadores y periodos.
 - Las graficas ahora responden a los reportes y a los filtros activos.
+- Se agrego index raiz para redirigir GitHub Pages al frontend.
