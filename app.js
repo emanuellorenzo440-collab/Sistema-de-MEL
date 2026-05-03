@@ -76,6 +76,71 @@ const seedState = {
         },
       ],
     },
+    {
+      name: "Club de Chicos",
+      lead: "Equipo de mentores",
+      provinces: ["Centros de programa"],
+      beneficiaries: 1500,
+      budget: "No especificado",
+      focus: "Club de chicos con enfoque en desarrollo espiritual, emocional, social y fisico de adolescentes de 11 a 17 anos",
+      expectedResults: [
+        "Adolescentes fortalecen caracter, identidad y valores cristianos para vivir de manera saludable.",
+        "Chicos desarrollan autoestima, autocontrol y habilidades para tomar decisiones responsables.",
+        "Participantes construyen confianza, vinculo y capacidad para expresar emociones e ideas sin temor.",
+        "Mentores aplican seguimiento cercano y herramientas practicas para abordar temas de desarrollo integral.",
+      ],
+      primaryPopulation: "Adolescentes varones de 11 a 17 anos, mentores, familias y comunidad",
+      indicatorBlueprints: [
+        {
+          name: "Chicos inscritos y activos en el club",
+          target: 1500,
+          unit: "chicos",
+          owner: "Coordinacion Club de Chicos",
+          due: "2026-12",
+          source: "Beneficiarios directos",
+        },
+        {
+          name: "Participantes fortalecen autoestima e identidad",
+          target: 1050,
+          unit: "chicos",
+          owner: "Equipo M&E",
+          due: "2026-12",
+          source: "Evaluacion pre y post",
+        },
+        {
+          name: "Chicos desarrollan habilidades para decisiones responsables",
+          target: 900,
+          unit: "chicos",
+          owner: "Mentores del club",
+          due: "2026-12",
+          source: "Evaluacion final",
+        },
+        {
+          name: "Sesiones semanales implementadas con evidencia completa",
+          target: 52,
+          unit: "sesiones",
+          owner: "Mentores",
+          due: "2026-12",
+          source: "Monitoreo semanal",
+        },
+        {
+          name: "Mentores acompanados segun agenda del manual",
+          target: 52,
+          unit: "seguimientos",
+          owner: "Coordinacion Club de Chicos",
+          due: "2026-12",
+          source: "Seguimiento a mentores",
+        },
+        {
+          name: "Participantes expresan confianza y manejo emocional saludable",
+          target: 900,
+          unit: "chicos",
+          owner: "Equipo M&E",
+          due: "2026-12",
+          source: "Observacion y evaluacion",
+        },
+      ],
+    },
   ],
   indicators: [
     {
@@ -143,6 +208,72 @@ const seedState = {
       owner: "Coordinacion Girls Empowerment",
       due: "2026-12",
       type: "Monitoreo",
+    },
+    {
+      id: "ind-bc-1",
+      program: "Club de Chicos",
+      name: "Chicos inscritos y activos en el club",
+      target: 1500,
+      value: 0,
+      unit: "chicos",
+      owner: "Coordinacion Club de Chicos",
+      due: "2026-12",
+      type: "Logro",
+    },
+    {
+      id: "ind-bc-2",
+      program: "Club de Chicos",
+      name: "Participantes fortalecen autoestima e identidad",
+      target: 1050,
+      value: 0,
+      unit: "chicos",
+      owner: "Equipo M&E",
+      due: "2026-12",
+      type: "Logro",
+    },
+    {
+      id: "ind-bc-3",
+      program: "Club de Chicos",
+      name: "Chicos desarrollan habilidades para decisiones responsables",
+      target: 900,
+      value: 0,
+      unit: "chicos",
+      owner: "Mentores del club",
+      due: "2026-12",
+      type: "Logro",
+    },
+    {
+      id: "ind-bc-4",
+      program: "Club de Chicos",
+      name: "Sesiones semanales implementadas con evidencia completa",
+      target: 52,
+      value: 0,
+      unit: "sesiones",
+      owner: "Mentores",
+      due: "2026-12",
+      type: "Monitoreo",
+    },
+    {
+      id: "ind-bc-5",
+      program: "Club de Chicos",
+      name: "Mentores acompanados segun agenda del manual",
+      target: 52,
+      value: 0,
+      unit: "seguimientos",
+      owner: "Coordinacion Club de Chicos",
+      due: "2026-12",
+      type: "Monitoreo",
+    },
+    {
+      id: "ind-bc-6",
+      program: "Club de Chicos",
+      name: "Participantes expresan confianza y manejo emocional saludable",
+      target: 900,
+      value: 0,
+      unit: "chicos",
+      owner: "Equipo M&E",
+      due: "2026-12",
+      type: "Logro",
     },
   ],
   reports: [],
@@ -248,6 +379,100 @@ const seedState = {
         { field: "Seguimiento requerido por coordinacion", indicatorId: "ind-ge-6", mode: "presence" },
       ],
     },
+    {
+      id: "form-bc-1",
+      program: "Club de Chicos",
+      type: "Monitoreo",
+      title: "Monitoreo semanal del Club de Chicos",
+      frequency: "Semanal",
+      owner: "Mentores del club",
+      fields: [
+        "Centro o comunidad",
+        "Fecha del encuentro",
+        "Mentor responsable",
+        "Tema trabajado",
+        "Chicos inscritos",
+        "Chicos presentes de 11 a 17 anos",
+        "Chicos ausentes",
+        "Actividad recreativa o deportiva",
+        "Reflexion espiritual desarrollada",
+        "Casos o alertas identificadas",
+        "Evidencias disponibles",
+        "Acuerdos para la proxima semana",
+      ],
+      mappings: [
+        { field: "Chicos presentes de 11 a 17 anos", indicatorId: "ind-bc-1", mode: "number" },
+        { field: "Evidencias disponibles", indicatorId: "ind-bc-4", mode: "presence" },
+      ],
+    },
+    {
+      id: "form-bc-2",
+      program: "Club de Chicos",
+      type: "Evaluacion",
+      title: "Linea base del Club de Chicos",
+      frequency: "Inicio del ciclo",
+      owner: "Equipo M&E",
+      fields: [
+        "Codigo de participante",
+        "Centro o comunidad",
+        "Edad",
+        "Autoestima inicial",
+        "Identidad y valores iniciales",
+        "Manejo emocional inicial",
+        "Entorno familiar o social",
+        "Necesidades de acompanamiento",
+        "Observaciones del mentor",
+      ],
+      mappings: [
+        { field: "Codigo de participante", indicatorId: "ind-bc-1", mode: "presence" },
+      ],
+    },
+    {
+      id: "form-bc-3",
+      program: "Club de Chicos",
+      type: "Evaluacion",
+      title: "Evaluacion final del Club de Chicos",
+      frequency: "Fin del ciclo",
+      owner: "Equipo M&E",
+      fields: [
+        "Codigo de participante",
+        "Permanencia en el club",
+        "Cambio en autoestima e identidad",
+        "Cambio en manejo emocional",
+        "Decision responsable o meta alcanzada",
+        "Relaciones sociales y respeto a otros",
+        "Testimonio de crecimiento",
+        "Recomendaciones para el siguiente ciclo",
+      ],
+      mappings: [
+        { field: "Permanencia en el club", indicatorId: "ind-bc-1", mode: "presence" },
+        { field: "Cambio en autoestima e identidad", indicatorId: "ind-bc-2", mode: "presence" },
+        { field: "Cambio en manejo emocional", indicatorId: "ind-bc-6", mode: "presence" },
+        { field: "Decision responsable o meta alcanzada", indicatorId: "ind-bc-3", mode: "presence" },
+      ],
+    },
+    {
+      id: "form-bc-4",
+      program: "Club de Chicos",
+      type: "Monitoreo",
+      title: "Seguimiento semanal a mentores del Club de Chicos",
+      frequency: "Semanal",
+      owner: "Coordinacion Club de Chicos",
+      fields: [
+        "Mentor o centro",
+        "Semana reportada",
+        "Tema de agenda evaluado",
+        "Herramientas utilizadas",
+        "Dudas aclaradas",
+        "Necesidades de apoyo",
+        "Acuerdos para la proxima semana",
+        "Seguimiento requerido por coordinacion",
+      ],
+      mappings: [
+        { field: "Tema de agenda evaluado", indicatorId: "ind-bc-5", mode: "presence" },
+        { field: "Seguimiento requerido por coordinacion", indicatorId: "ind-bc-5", mode: "presence" },
+      ],
+    },
   ],
   conceptPapers: [
     {
@@ -288,6 +513,45 @@ const seedState = {
         "Chicas permanecen activas durante el ciclo del club",
         "Participantes mejoran autoestima y habilidades sociales en evaluacion post",
         "Chicas participan en proyectos comunitarios o actividades de servicio",
+      ],
+    },
+    {
+      id: "cp-bc-2026",
+      program: "Club de Chicos",
+      title: "Club de Chicos Concept Paper 2026",
+      presenter: "Equipo de mentores",
+      fileName: "Manual de mentores 6.pdf",
+      path: "/Users/levilorenzo/Downloads/Manual de mentores 6.pdf",
+      year: "2026",
+      status: "Cargado",
+      objective:
+        "Fomentar y desarrollar en los ninos valores espirituales y morales para que puedan vivir de una manera saludable.",
+      beneficiaries: "1,500 ninos y adolescentes de 11 a 17 anos como beneficiarios directos, junto con mentores, familias y comunidad.",
+      budget: "No especificado",
+      methodology: [
+        "Capacitacion y seguimiento a mentores de iglesias locales y comunidad.",
+        "Encuentros del club con acompanamiento cercano de mentores responsables de grupos de adolescentes.",
+        "Talleres, actividades recreativas y deportivas, y material espiritual para desarrollo integral.",
+        "Abordaje de temas sobre emociones, sexualidad, vida social, autoeficacia y espiritualidad.",
+      ],
+      expectedImpact: [
+        "Formacion de caracter basado en valores cristianos.",
+        "Mejora en autoestima e identidad.",
+        "Habilidades para afrontar presion social y decisiones dificiles.",
+        "Mayor confianza, vinculo, manejo emocional y respeto hacia otros.",
+      ],
+      measurableResults: [
+        "Numero de chicos inscritos y activos en el club.",
+        "Participantes muestran crecimiento espiritual, autoestima e identidad fortalecida.",
+        "Adolescentes demuestran mayor autocontrol y decisiones responsables.",
+        "Mentores aplican seguimiento semanal con evidencia y acuerdos de mejora.",
+      ],
+      recommendedForms: ["Monitoreo semanal", "Linea base", "Evaluacion final", "Seguimiento a mentores"],
+      achievementIndicators: [
+        "Chicos inscritos y activos en el club",
+        "Participantes fortalecen autoestima e identidad",
+        "Chicos desarrollan habilidades para decisiones responsables",
+        "Participantes expresan confianza y manejo emocional saludable",
       ],
     },
   ],
@@ -557,7 +821,12 @@ function classForReportStatus(status) {
 }
 
 function renderIndicators() {
-  elements.indicatorBoard.innerHTML = state.indicators
+  const programIndicators =
+    state.filters.program === "Todos"
+      ? state.indicators
+      : state.indicators.filter((indicator) => indicator.program === state.filters.program);
+
+  elements.indicatorBoard.innerHTML = programIndicators
     .map((indicator) => {
       const progress = percent(indicator.value, indicator.target);
       const risk = statusForProgress(progress);
@@ -777,7 +1046,15 @@ function renderFormTemplate(form) {
       <div class="form-template-actions">
         <button class="ghost-action" data-download-form="${form.id}" type="button">
           <span aria-hidden="true">⇩</span>
-          Descargar plantilla CSV
+          CSV
+        </button>
+        <button class="ghost-action" data-download-word="${form.id}" type="button">
+          <span aria-hidden="true">⇩</span>
+          Word
+        </button>
+        <button class="ghost-action" data-download-pdf="${form.id}" type="button">
+          <span aria-hidden="true">⇩</span>
+          PDF
         </button>
       </div>
     </article>
@@ -951,9 +1228,11 @@ function renderCharts() {
                   <h3>${submission.formTitle}</h3>
                   <p class="item-meta">${submission.program} · ${submission.fileName}</p>
                 </div>
-                <span class="status-pill good">${submission.reportCount} registros</span>
+                <span class="status-pill ${submission.processing === "automatico" ? "good" : "info"}">
+                  ${submission.processing === "automatico" ? `${submission.reportCount} registros` : "Soporte"}
+                </span>
               </div>
-              <p class="item-meta">Subido: ${submission.importedAt.slice(0, 10)} · Periodo: ${submission.period}</p>
+              <p class="item-meta">Subido: ${submission.importedAt.slice(0, 10)} · Periodo: ${submission.period} · Tipo: ${(submission.sourceType || "csv").toUpperCase()}</p>
             </article>
           `,
         )
@@ -1083,6 +1362,15 @@ function slugify(value) {
     .replace(/(^-|-$)/g, "");
 }
 
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
 function formRows(form) {
   const automaticIndicators = (form.mappings || [])
     .map((mapping) => indicatorById(mapping.indicatorId)?.name)
@@ -1101,6 +1389,83 @@ function formRows(form) {
     ["fecha", "periodo", "provincia", "responsable", "evidencia", "observaciones", ...form.fields],
     [new Date().toISOString().slice(0, 10), currentMonth(), "", "", "", "", ...form.fields.map(() => "")],
   ];
+}
+
+function buildPrintableTemplate(form) {
+  const rows = form.fields
+    .map(
+      (field) => `
+        <tr>
+          <td>${escapeHtml(field)}</td>
+          <td></td>
+        </tr>
+      `,
+    )
+    .join("");
+
+  return `
+    <!doctype html>
+    <html lang="es">
+      <head>
+        <meta charset="UTF-8" />
+        <title>${escapeHtml(form.title)}</title>
+        <style>
+          body {
+            color: #14201f;
+            font-family: "Georgia", "Times New Roman", serif;
+            margin: 32px;
+          }
+          h1, h2, p { margin-top: 0; }
+          .meta {
+            display: grid;
+            gap: 8px;
+            margin: 18px 0 24px;
+          }
+          .meta span {
+            background: #f4f6f5;
+            border: 1px solid #dfe6e4;
+            display: inline-block;
+            padding: 8px 10px;
+          }
+          table {
+            border-collapse: collapse;
+            width: 100%;
+          }
+          th, td {
+            border: 1px solid #dfe6e4;
+            padding: 12px;
+            text-align: left;
+            vertical-align: top;
+          }
+          th {
+            background: #eef3f1;
+          }
+          td:last-child {
+            height: 44px;
+          }
+        </style>
+      </head>
+      <body>
+        <p>Formulario de recoleccion</p>
+        <h1>${escapeHtml(form.title)}</h1>
+        <div class="meta">
+          <span>Programa: ${escapeHtml(form.program)}</span>
+          <span>Tipo: ${escapeHtml(form.type)}</span>
+          <span>Frecuencia: ${escapeHtml(form.frequency)}</span>
+          <span>Responsable: ${escapeHtml(form.owner)}</span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Campo</th>
+              <th>Respuesta</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </body>
+    </html>
+  `;
 }
 
 function parseCsv(text) {
@@ -1182,6 +1547,10 @@ function parseMetricValue(rawValue, mode) {
   return 1;
 }
 
+function fileExtension(fileName) {
+  return String(fileName || "").split(".").pop()?.toLowerCase() || "";
+}
+
 function rowsToReports(rows, fileName) {
   const metadata = metadataFromRows(rows);
   const form = state.monitoringForms.find((item) => item.id === metadata.formulario_id || item.title === metadata.formulario);
@@ -1236,7 +1605,39 @@ function rowsToReports(rows, fileName) {
 
 function importCompletedForm(file) {
   if (!file) {
-    showToast("Selecciona un archivo CSV.");
+    showToast("Selecciona un archivo.");
+    return;
+  }
+
+  const extension = fileExtension(file.name);
+  if (["pdf", "doc", "docx", "xls", "xlsx"].includes(extension)) {
+    const selectedProgram = selectedFormsProgram();
+    state.formSubmissions.unshift({
+      id: `sub-${Date.now()}`,
+      fileName: file.name,
+      formId: null,
+      formTitle: "Archivo de soporte",
+      program: selectedProgram.name,
+      period: currentMonth(),
+      reportCount: 0,
+      importedAt: new Date().toISOString(),
+      sourceType: extension,
+      processing: "soporte",
+    });
+    saveState();
+    renderAll();
+    elements.uploadStatus.textContent = "Soporte cargado";
+    elements.uploadStatus.className = "status-pill info";
+    elements.uploadPreview.innerHTML = `<p class="item-meta">${file.name} fue subido como soporte. Para alimentar graficas automaticamente, usa la plantilla CSV del sistema.</p>`;
+    showToast("Archivo subido como soporte.");
+    return;
+  }
+
+  if (extension !== "csv") {
+    elements.uploadStatus.textContent = "Formato no valido";
+    elements.uploadStatus.className = "status-pill danger";
+    elements.uploadPreview.innerHTML = `<p class="item-meta">Usa CSV para carga automatica o sube PDF, Word o Excel como soporte.</p>`;
+    showToast("Ese formato no esta disponible.");
     return;
   }
 
@@ -1269,6 +1670,8 @@ function importCompletedForm(file) {
         period: reports[0].period,
         reportCount: reports.length,
         importedAt: new Date().toISOString(),
+        sourceType: extension,
+        processing: "automatico",
       });
       state.filters.period = reports[0].period;
       saveState();
@@ -1293,6 +1696,39 @@ function downloadFormTemplate(formId) {
   if (!form) return;
   downloadCsv(formRows(form), `${slugify(form.title)}.csv`);
   showToast("Formulario preparado para descarga.");
+}
+
+function downloadWordTemplate(formId) {
+  const form = state.monitoringForms.find((item) => item.id === formId);
+  if (!form) return;
+
+  const blob = new Blob([buildPrintableTemplate(form)], { type: "application/msword" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${slugify(form.title)}.doc`;
+  link.click();
+  URL.revokeObjectURL(url);
+  showToast("Formulario Word preparado.");
+}
+
+function downloadPdfTemplate(formId) {
+  const form = state.monitoringForms.find((item) => item.id === formId);
+  if (!form) return;
+
+  const pdfWindow = window.open("", "_blank", "width=980,height=720");
+  if (!pdfWindow) {
+    showToast("Activa las ventanas emergentes para guardar el PDF.");
+    return;
+  }
+
+  pdfWindow.document.write(buildPrintableTemplate(form));
+  pdfWindow.document.close();
+  pdfWindow.focus();
+  window.setTimeout(() => {
+    pdfWindow.print();
+  }, 250);
+  showToast("Se abrio la vista para guardar en PDF.");
 }
 
 function downloadAllForms() {
@@ -1439,8 +1875,17 @@ function bindEvents() {
 
   elements.formTemplateGrid.addEventListener("click", (event) => {
     const formId = event.target.closest("[data-download-form]")?.dataset.downloadForm;
-    if (!formId) return;
-    downloadFormTemplate(formId);
+    const wordFormId = event.target.closest("[data-download-word]")?.dataset.downloadWord;
+    const pdfFormId = event.target.closest("[data-download-pdf]")?.dataset.downloadPdf;
+    if (formId) {
+      downloadFormTemplate(formId);
+    }
+    if (wordFormId) {
+      downloadWordTemplate(wordFormId);
+    }
+    if (pdfFormId) {
+      downloadPdfTemplate(pdfFormId);
+    }
   });
 
   elements.conceptPaperList.addEventListener("click", (event) => {
@@ -1499,9 +1944,10 @@ function bindEvents() {
 
   $("#addIndicatorButton").addEventListener("click", () => {
     const next = state.indicators.length + 1;
+    const program = state.filters.program === "Todos" ? state.programs[0] : state.programs.find((item) => item.name === state.filters.program) || state.programs[0];
     state.indicators.push({
       id: `ind-${Date.now()}`,
-      program: state.programs[0].name,
+      program: program.name,
       name: `Nuevo indicador ${next}`,
       target: 100,
       value: 0,
@@ -1511,7 +1957,7 @@ function bindEvents() {
     });
     saveState();
     renderAll();
-    showToast("Indicador agregado a la matriz.");
+    showToast(`Indicador agregado a ${program.name}.`);
   });
 }
 

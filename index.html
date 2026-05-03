@@ -305,14 +305,15 @@
             </div>
             <div class="upload-grid">
               <label class="span-2">
-                Archivo CSV completado
-                <input id="formUploadInput" type="file" accept=".csv,text/csv" />
+                Archivo de datos o soporte
+                <input id="formUploadInput" type="file" accept=".csv,text/csv,.xlsx,.xls,.doc,.docx,.pdf,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
               </label>
               <button class="primary-action" id="uploadFormButton" type="button">
                 <span aria-hidden="true">↑</span>
                 Subir al sistema
               </button>
             </div>
+            <p class="item-meta">CSV alimenta indicadores y graficas automaticamente. Excel, Word y PDF se pueden subir como soporte dentro del sistema.</p>
             <div class="upload-preview" id="uploadPreview"></div>
           </section>
         </section>
