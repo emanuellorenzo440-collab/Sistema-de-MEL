@@ -50,9 +50,23 @@ CREATE TABLE reports (
   evidence TEXT,
   notes TEXT,
   status TEXT NOT NULL DEFAULT 'Pendiente',
+  review_note TEXT,
+  reviewed_by TEXT REFERENCES users(id),
+  reviewed_at TIMESTAMP,
   created_by TEXT REFERENCES users(id),
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE report_status_history (
+  id TEXT PRIMARY KEY,
+  report_id TEXT NOT NULL REFERENCES reports(id),
+  previous_status TEXT,
+  status TEXT NOT NULL,
+  actor_id TEXT REFERENCES users(id),
+  actor_role TEXT,
+  note TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE monitoring_forms (
