@@ -39,3 +39,4 @@ Acciones realizadas:
 - Se habilito CORS para desarrollo local entre frontend y backend.
 - Se agrego un puente de ejecucion en frontend para sincronizar reportes, importaciones y revisiones con la API sin romper la interfaz actual.
 - La interfaz ahora puede arrancar con reportes remotos, empujar nuevos reportes al backend y reflejar estados aprobados desde la API.
+- La vista de graficas ahora se alimenta directamente del endpoint `analytics/overview` para que metricas, comparativas, tendencia y recomendaciones salgan de la misma fuente ejecutiva del backend.
