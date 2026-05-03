@@ -5,11 +5,12 @@
 Sistema de MEL tiene una base organizada para crecer como producto completo:
 
 - Frontend funcional en frontend/.
-- Backend base en backend/.
+- Backend con reglas reales de reportes, revision y analitica en backend/.
 - Esquema de base de datos en database/.
 - Contratos compartidos en shared/.
 - Documentacion de arquitectura, producto, negocio, UX y responsividad en docs/.
 - Graficas del frontend con selector de visualizacion por indicador y por periodo.
+- Analitica ejecutiva definida por defecto sobre reportes aprobados.
 
 ## Como ejecutar frontend
 
@@ -41,36 +42,40 @@ Endpoints iniciales:
 
 - http://localhost:8080/health
 - http://localhost:8080/api/v1
+- http://localhost:8080/api/v1/programs
+- http://localhost:8080/api/v1/reports
+- http://localhost:8080/api/v1/analytics/overview
 
 ## Como validar sintaxis
 
 ```bash
 node --check frontend/src/main.js
 node --check frontend/src/features/monitoring-app.js
+node --check frontend/src/services/mel-api.js
+node --check backend/src/data/mock-store.js
+node --check backend/src/domain/reporting-rules.js
+node --check backend/src/services/analytics-service.js
 node --check backend/src/server.js
 ```
 
 ## Siguientes pasos recomendados
 
-1. Convertir reglas de permisos en funciones reales del backend.
-2. Crear endpoints CRUD para programas, indicadores y reportes.
-3. Conectar frontend con API en vez de depender solo de localStorage.
-4. Definir migraciones reales para PostgreSQL.
-5. Agregar autenticacion y roles.
-6. Revisar la experiencia movil pantalla por pantalla.
-7. Crear pruebas basicas de importacion CSV y validacion de reportes.
-8. Llevar la misma regla de analitica aprobada al backend y futuros dashboards conectados a API.
+1. Conectar completamente la vista de reportes y analitica del frontend con la API para dejar localStorage como respaldo.
+2. Persistir reportes, historial de revision y acciones en una base de datos real.
+3. Agregar autenticacion y roles con identidad real de usuario.
+4. Crear pruebas de integracion para importacion CSV, aprobacion y analitica aprobada.
+5. Revisar la experiencia movil pantalla por pantalla.
+6. Definir politica de reapertura o edicion de reportes ya aprobados.
 
 ## Riesgos conocidos
 
-- El frontend todavia usa localStorage como persistencia temporal.
-- La API es una base inicial, no una API completa.
+- El frontend todavia conserva logica local y falta terminar la union completa con API.
+- La persistencia del backend actual es en memoria.
 - El esquema SQL todavia no tiene migrador automatizado.
-- Falta consolidar esta misma regla de analitica en backend cuando el frontend deje de depender de localStorage.
+- Falta una capa de autenticacion real para reemplazar actorId manual.
 
 ## Regla para continuar
 
 Cada nueva funcionalidad debe actualizar documentacion, logica de negocio, UX si aplica y handoff si cambia como usar o correr el proyecto.
 
 Los pedidos del usuario deben traducirse desde experiencia deseada hacia una solucion tecnica completa. Si aparece una alternativa mejor para producto, negocio o mantenibilidad, debe proponerse antes de consolidar la implementacion.
-
