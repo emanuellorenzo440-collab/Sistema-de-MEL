@@ -3,6 +3,15 @@ import { $, $$, elements } from "../core/dom.js";
 import { loadStoredState, saveStoredState } from "../core/storage.js";
 import { seedState } from "../data/seed-state.js";
 import {
+  createApiIndicator,
+  createApiProgram,
+  deleteApiIndicator,
+  deleteApiProgram,
+  isApiConfigured,
+  updateApiIndicator,
+  updateApiProgram,
+} from "../services/mel-api.js";
+import {
   currentMonth,
   escapeHtml,
   fileExtension,
@@ -65,6 +74,28 @@ function saveState() {
   saveStoredState(STORAGE_KEY, state);
 }
 
+function upsertById(items, nextItem) {
+  const index = items.findIndex((item) => item.id === nextItem.id);
+  if (index >= 0) {
+    items[index] = { ...items[index], ...nextItem };
+    return;
+  }
+  items.push(nextItem);
+}
+
+function removeById(items, id) {
+  const index = items.findIndex((item) => item.id === id);
+  if (index >= 0) {
+    items.splice(index, 1);
+  }
+}
+
+function selectedProgramForIndicatorForm() {
+  return state.filters.program === "Todos"
+    ? state.programs[0]
+    : state.programs.find((item) => item.name === state.filters.program) || state.programs[0];
+}
+
 function indicatorById(id) {
   return state.indicators.find((indicator) => indicator.id === id);
 }
@@ -106,6 +137,7 @@ function renderFilters() {
   setOptions(elements.reportProgram, programNames, selectedProgram);
   setOptions(elements.reportProvince, provinceNames, selectedProvince);
   setOptions(elements.reportIndicator, state.indicators.map((indicator) => indicator.name), selectedIndicator);
+  setOptions(elements.indicatorProgramInput, programNames, elements.indicatorProgramInput?.value || selectedProgram);
   setOptions(elements.designProgramSelect, programNames, state.designProgram || selectedProgram);
   setOptions(elements.formsProgramSelect, programNames, state.formsProgram || state.designProgram || selectedProgram);
   elements.reportPeriod.value = state.filters.period === "Todos" ? currentMonth() : state.filters.period;
@@ -258,6 +290,10 @@ function renderIndicators() {
             </div>
           </div>
           <p class="item-meta">Fecha meta: ${indicator.due}</p>
+          <div class="item-actions">
+            <button type="button" data-edit-indicator="${indicator.id}">Editar</button>
+            <button type="button" data-delete-indicator="${indicator.id}">Eliminar</button>
+          </div>
         </article>
       `;
     })
@@ -534,6 +570,10 @@ function renderPrograms() {
             <span>${program.beneficiaries.toLocaleString("es-DO")} beneficiarios</span>
             <span>${program.budget} presupuesto</span>
             <span>${program.provinces.join(", ")}</span>
+          </div>
+          <div class="item-actions">
+            <button type="button" data-edit-program="${program.id}">Editar</button>
+            <button type="button" data-delete-program="${program.id}">Eliminar</button>
           </div>
         </article>
       `;
@@ -1518,23 +1558,27 @@ function downloadAllForms() {
   showToast("Formularios preparados para descarga.");
 }
 
-function createIndicatorsFromProgram() {
+async function createIndicatorsFromProgram() {
   const program = selectedDesignProgram();
   const existingNames = new Set(state.indicators.map((indicator) => indicator.name));
   const suggestions = buildSuggestedIndicators(program).filter((indicator) => !existingNames.has(indicator.name));
 
-  suggestions.forEach((indicator) => {
-    state.indicators.push({
+  for (const indicator of suggestions) {
+    const payload = {
       id: `ind-${Date.now()}-${Math.random().toString(16).slice(2)}`,
       program: program.name,
+      programId: program.id || null,
       name: indicator.name,
       target: indicator.target,
       value: 0,
       unit: indicator.unit,
       owner: indicator.owner,
       due: indicator.due,
-    });
-  });
+      type: "Logro",
+    };
+    const saved = isApiConfigured() ? await createApiIndicator(payload) : payload;
+    upsertById(state.indicators, saved);
+  }
 
   saveState();
   renderAll();
@@ -1575,6 +1619,119 @@ function createFormTemplate(type) {
   saveState();
   renderAll();
   showToast(`Formulario de ${type.toLowerCase()} creado.`);
+}
+
+function resetIndicatorForm() {
+  elements.indicatorCrudForm.reset();
+  elements.indicatorIdInput.value = "";
+  elements.indicatorProgramInput.value = selectedProgramForIndicatorForm()?.name || state.programs[0]?.name || "";
+  elements.indicatorUnitInput.value = "unidades";
+  elements.indicatorOwnerInput.value = "Equipo M&E";
+  elements.indicatorDueInput.value = "2026-12";
+}
+
+function fillIndicatorForm(indicator) {
+  elements.indicatorIdInput.value = indicator.id;
+  elements.indicatorProgramInput.value = indicator.program;
+  elements.indicatorNameInput.value = indicator.name;
+  elements.indicatorTargetInput.value = indicator.target;
+  elements.indicatorUnitInput.value = indicator.unit;
+  elements.indicatorOwnerInput.value = indicator.owner;
+  elements.indicatorDueInput.value = indicator.due;
+}
+
+async function saveIndicatorFromForm(formData) {
+  const indicatorId = formData.get("id");
+  const payload = {
+    id: indicatorId || undefined,
+    program: formData.get("program"),
+    programId: state.programs.find((program) => program.name === formData.get("program"))?.id || null,
+    name: formData.get("name"),
+    target: Number(formData.get("target")),
+    value: indicatorId ? indicatorById(indicatorId)?.value || 0 : 0,
+    unit: formData.get("unit"),
+    owner: formData.get("owner"),
+    due: formData.get("due"),
+    type: "Logro",
+  };
+
+  try {
+    const saved = isApiConfigured()
+      ? indicatorId
+        ? await updateApiIndicator(indicatorId, payload)
+        : await createApiIndicator(payload)
+      : payload;
+    upsertById(state.indicators, saved);
+    saveState();
+    renderAll();
+    resetIndicatorForm();
+    showToast(indicatorId ? "Indicador actualizado." : "Indicador creado.");
+  } catch (error) {
+    console.error(error);
+    showToast(error.message || "No pude guardar el indicador.");
+  }
+}
+
+function resetProgramForm() {
+  elements.programCrudForm.reset();
+  elements.programIdInput.value = "";
+  elements.programBeneficiariesInput.value = 0;
+  elements.programBudgetInput.value = "No especificado";
+  elements.programProvincesInput.value = "Centros de programa";
+}
+
+function fillProgramForm(program) {
+  elements.programIdInput.value = program.id;
+  elements.programNameInput.value = program.name;
+  elements.programLeadInput.value = program.lead;
+  elements.programBeneficiariesInput.value = program.beneficiaries;
+  elements.programBudgetInput.value = program.budget;
+  elements.programProvincesInput.value = (program.provinces || []).join(", ");
+  elements.programFocusInput.value = program.focus;
+  elements.programPopulationInput.value = program.primaryPopulation || "";
+}
+
+async function saveProgramFromForm(formData) {
+  const programId = formData.get("id");
+  const payload = {
+    id: programId || undefined,
+    name: formData.get("name"),
+    lead: formData.get("lead"),
+    beneficiaries: Number(formData.get("beneficiaries") || 0),
+    budget: formData.get("budget"),
+    provinces: String(formData.get("provinces") || "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean),
+    focus: formData.get("focus"),
+    primaryPopulation: formData.get("primaryPopulation"),
+    expectedResults: programId ? state.programs.find((program) => program.id === programId)?.expectedResults || [] : [],
+  };
+
+  try {
+    const previous = state.programs.find((program) => program.id === programId);
+    const saved = isApiConfigured()
+      ? programId
+        ? await updateApiProgram(programId, payload)
+        : await createApiProgram(payload)
+      : { ...payload, id: programId || `prog-${slugify(payload.name)}-${Date.now()}` };
+    upsertById(state.programs, saved);
+    if (previous && previous.name !== saved.name) {
+      state.indicators = state.indicators.map((indicator) =>
+        indicator.program === previous.name ? { ...indicator, program: saved.name, programId: saved.id } : indicator,
+      );
+      state.reports = state.reports.map((report) =>
+        report.program === previous.name ? { ...report, program: saved.name, programId: saved.id } : report,
+      );
+    }
+    saveState();
+    renderAll();
+    resetProgramForm();
+    showToast(programId ? "Programa actualizado." : "Programa creado.");
+  } catch (error) {
+    console.error(error);
+    showToast(error.message || "No pude guardar el programa.");
+  }
 }
 
 function bindEvents() {
@@ -1651,10 +1808,25 @@ function bindEvents() {
     renderCharts();
   });
 
-  $("#generateIndicatorsButton").addEventListener("click", createIndicatorsFromProgram);
+  $("#generateIndicatorsButton").addEventListener("click", () => {
+    void createIndicatorsFromProgram().catch((error) => {
+      console.error(error);
+      showToast(error.message || "No pude crear los indicadores.");
+    });
+  });
   $("#createMonitoringFormButton").addEventListener("click", () => createFormTemplate("Monitoreo"));
   $("#createEvaluationFormButton").addEventListener("click", () => createFormTemplate("Evaluacion"));
   $("#downloadAllFormsButton").addEventListener("click", downloadAllForms);
+  elements.indicatorCrudForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void saveIndicatorFromForm(new FormData(elements.indicatorCrudForm));
+  });
+  elements.clearIndicatorFormButton.addEventListener("click", resetIndicatorForm);
+  elements.programCrudForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void saveProgramFromForm(new FormData(elements.programCrudForm));
+  });
+  elements.clearProgramFormButton.addEventListener("click", resetProgramForm);
   elements.formUploadInput.addEventListener("change", () => {
     const file = elements.formUploadInput.files?.[0];
     elements.uploadStatus.textContent = file ? file.name : "Sin archivo";
@@ -1733,22 +1905,79 @@ function bindEvents() {
     renderAll();
   });
 
+  elements.indicatorBoard.addEventListener("click", (event) => {
+    const editId = event.target.closest("[data-edit-indicator]")?.dataset.editIndicator;
+    const deleteId = event.target.closest("[data-delete-indicator]")?.dataset.deleteIndicator;
+
+    if (editId) {
+      const indicator = state.indicators.find((item) => item.id === editId);
+      if (indicator) fillIndicatorForm(indicator);
+    }
+
+    if (deleteId) {
+      const hasReports = state.reports.some((report) => report.indicatorId === deleteId);
+      if (hasReports) {
+        showToast("No se puede eliminar un indicador con reportes.");
+        return;
+      }
+      void (async () => {
+        try {
+          if (isApiConfigured()) {
+            await deleteApiIndicator(deleteId);
+          }
+          removeById(state.indicators, deleteId);
+          saveState();
+          renderAll();
+          showToast("Indicador eliminado.");
+        } catch (error) {
+          console.error(error);
+          showToast(error.message || "No pude eliminar el indicador.");
+        }
+      })();
+    }
+  });
+
+  elements.programGrid.addEventListener("click", (event) => {
+    const editId = event.target.closest("[data-edit-program]")?.dataset.editProgram;
+    const deleteId = event.target.closest("[data-delete-program]")?.dataset.deleteProgram;
+
+    if (editId) {
+      const program = state.programs.find((item) => item.id === editId);
+      if (program) fillProgramForm(program);
+    }
+
+    if (deleteId) {
+      const hasIndicators = state.indicators.some((indicator) => indicator.programId === deleteId);
+      const hasReports = state.reports.some((report) => report.programId === deleteId);
+      if (hasIndicators || hasReports) {
+        showToast("No se puede eliminar un programa con datos asociados.");
+        return;
+      }
+      void (async () => {
+        try {
+          if (isApiConfigured()) {
+            await deleteApiProgram(deleteId);
+          }
+          removeById(state.programs, deleteId);
+          saveState();
+          renderAll();
+          showToast("Programa eliminado.");
+        } catch (error) {
+          console.error(error);
+          showToast(error.message || "No pude eliminar el programa.");
+        }
+      })();
+    }
+  });
+
   $("#addIndicatorButton").addEventListener("click", () => {
     const next = state.indicators.length + 1;
-    const program = state.filters.program === "Todos" ? state.programs[0] : state.programs.find((item) => item.name === state.filters.program) || state.programs[0];
-    state.indicators.push({
-      id: `ind-${Date.now()}`,
-      program: program.name,
-      name: `Nuevo indicador ${next}`,
-      target: 100,
-      value: 0,
-      unit: "unidades",
-      owner: "Equipo M&E",
-      due: "2026-12",
-    });
-    saveState();
-    renderAll();
-    showToast(`Indicador agregado a ${program.name}.`);
+    const program = selectedProgramForIndicatorForm();
+    resetIndicatorForm();
+    elements.indicatorProgramInput.value = program?.name || "";
+    elements.indicatorNameInput.value = `Nuevo indicador ${next}`;
+    elements.indicatorTargetInput.value = 100;
+    elements.indicatorNameInput.focus();
   });
 }
 

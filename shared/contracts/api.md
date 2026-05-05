@@ -5,6 +5,13 @@ Base propuesta para conectar frontend, backend y base de datos.
 ## Recursos
 
 - `GET /api/v1/programs`
+- `POST /api/v1/programs`
+- `PUT /api/v1/programs/:id`
+- `DELETE /api/v1/programs/:id`
+- `GET /api/v1/indicators?program=...&programId=...`
+- `POST /api/v1/indicators`
+- `PUT /api/v1/indicators/:id`
+- `DELETE /api/v1/indicators/:id`
 - `GET /api/v1/reports?program=...&programId=...&province=...&period=...&scope=approved|all`
 - `POST /api/v1/reports`
 - `POST /api/v1/reports/bulk`
@@ -30,6 +37,39 @@ Base propuesta para conectar frontend, backend y base de datos.
 - El backend habilita CORS para desarrollo local entre frontend y API.
 
 ## Payload sugerido para crear un reporte
+
+## Payload sugerido para crear un programa
+
+`POST /api/v1/programs`
+
+```json
+{
+  "name": "Programa ejemplo",
+  "lead": "Coordinacion del programa",
+  "provinces": ["Centros de programa"],
+  "beneficiaries": 250,
+  "budget": "US$ 10,000",
+  "focus": "Descripcion operativa del programa",
+  "primaryPopulation": "Participantes y familias"
+}
+```
+
+## Payload sugerido para crear un indicador
+
+`POST /api/v1/indicators`
+
+```json
+{
+  "program": "Programa ejemplo",
+  "programId": "prog-programa-ejemplo",
+  "name": "Participantes completan el ciclo",
+  "target": 200,
+  "unit": "personas",
+  "owner": "Equipo M&E",
+  "due": "2026-12",
+  "type": "Logro"
+}
+```
 
 `POST /api/v1/reports`
 

@@ -4,6 +4,8 @@ import {
   createApiReport,
   createApiReportsBulk,
   fetchApiAnalyticsOverview,
+  fetchApiIndicators,
+  fetchApiPrograms,
   fetchApiReports,
   getApiBaseUrl,
   isApiConfigured,
@@ -510,6 +512,18 @@ async function pullRemoteReports() {
   return nextState;
 }
 
+async function pullRemotePlanningData() {
+  const [remotePrograms, remoteIndicators] = await Promise.all([fetchApiPrograms(), fetchApiIndicators()]);
+  const currentState = normalizeState(readStoredState());
+  const nextState = recomputeIndicators({
+    ...currentState,
+    programs: remotePrograms.length ? remotePrograms : currentState.programs,
+    indicators: remoteIndicators.length ? remoteIndicators : currentState.indicators,
+  });
+  saveStoredState(nextState);
+  return nextState;
+}
+
 async function pushMissingReports() {
   const state = normalizeState(readStoredState());
   const remoteReports = await fetchApiReports({ scope: "all" });
@@ -618,6 +632,7 @@ export async function bootstrapApiBridge() {
   }
 
   try {
+    await pullRemotePlanningData();
     await pullRemoteReports();
     updateConnectionBadge(true);
     return { connected: true, baseUrl: getApiBaseUrl() };

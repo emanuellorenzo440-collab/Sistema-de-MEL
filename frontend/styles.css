@@ -504,6 +504,12 @@ tbody tr:hover {
   gap: 18px;
 }
 
+.compact-form {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+}
+
 .form-grid {
   display: grid;
   gap: 14px;
@@ -549,6 +555,18 @@ textarea {
   display: flex;
   gap: 10px;
   justify-content: space-between;
+}
+
+.item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.item-actions button {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
 }
 
 .compact-label {

@@ -235,6 +235,39 @@
                 Agregar indicador
               </button>
             </div>
+            <form class="form-layout compact-form" id="indicatorCrudForm">
+              <input type="hidden" id="indicatorIdInput" name="id" />
+              <div class="form-grid">
+                <label>
+                  Programa
+                  <select id="indicatorProgramInput" name="program" required></select>
+                </label>
+                <label>
+                  Indicador
+                  <input id="indicatorNameInput" name="name" type="text" required />
+                </label>
+                <label>
+                  Meta
+                  <input id="indicatorTargetInput" name="target" type="number" min="1" required />
+                </label>
+                <label>
+                  Unidad
+                  <input id="indicatorUnitInput" name="unit" type="text" value="unidades" required />
+                </label>
+                <label>
+                  Responsable
+                  <input id="indicatorOwnerInput" name="owner" type="text" value="Equipo M&amp;E" required />
+                </label>
+                <label>
+                  Fecha meta
+                  <input id="indicatorDueInput" name="due" type="month" value="2026-12" required />
+                </label>
+              </div>
+              <div class="form-actions">
+                <button class="primary-action" type="submit">Guardar indicador</button>
+                <button id="clearIndicatorFormButton" type="button">Limpiar</button>
+              </div>
+            </form>
             <div class="indicator-board" id="indicatorBoard"></div>
           </section>
         </section>
@@ -495,6 +528,43 @@
                 <h2>Programas y cobertura</h2>
               </div>
             </div>
+            <form class="form-layout compact-form" id="programCrudForm">
+              <input type="hidden" id="programIdInput" name="id" />
+              <div class="form-grid">
+                <label>
+                  Programa
+                  <input id="programNameInput" name="name" type="text" required />
+                </label>
+                <label>
+                  Lider
+                  <input id="programLeadInput" name="lead" type="text" required />
+                </label>
+                <label>
+                  Beneficiarios
+                  <input id="programBeneficiariesInput" name="beneficiaries" type="number" min="0" value="0" />
+                </label>
+                <label>
+                  Presupuesto
+                  <input id="programBudgetInput" name="budget" type="text" value="No especificado" />
+                </label>
+                <label class="span-2">
+                  Provincias
+                  <input id="programProvincesInput" name="provinces" type="text" value="Centros de programa" />
+                </label>
+                <label class="span-2">
+                  Enfoque
+                  <textarea id="programFocusInput" name="focus" required></textarea>
+                </label>
+                <label>
+                  Poblacion primaria
+                  <textarea id="programPopulationInput" name="primaryPopulation"></textarea>
+                </label>
+              </div>
+              <div class="form-actions">
+                <button class="primary-action" type="submit">Guardar programa</button>
+                <button id="clearProgramFormButton" type="button">Limpiar</button>
+              </div>
+            </form>
             <div class="program-grid" id="programGrid"></div>
           </section>
         </section>

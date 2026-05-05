@@ -22,6 +22,13 @@ node backend/src/server.js
 - `GET /health`
 - `GET /api/v1`
 - `GET /api/v1/programs`
+- `POST /api/v1/programs`
+- `PUT /api/v1/programs/:id`
+- `DELETE /api/v1/programs/:id`
+- `GET /api/v1/indicators?program=...&programId=...`
+- `POST /api/v1/indicators`
+- `PUT /api/v1/indicators/:id`
+- `DELETE /api/v1/indicators/:id`
 - `GET /api/v1/reports?program=...&programId=...&province=...&period=...&scope=approved|all`
 - `POST /api/v1/reports`
 - `POST /api/v1/reports/bulk`

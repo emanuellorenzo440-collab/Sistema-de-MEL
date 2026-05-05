@@ -40,3 +40,20 @@ Acciones realizadas:
 - Se agrego un puente de ejecucion en frontend para sincronizar reportes, importaciones y revisiones con la API sin romper la interfaz actual.
 - La interfaz ahora puede arrancar con reportes remotos, empujar nuevos reportes al backend y reflejar estados aprobados desde la API.
 - La vista de graficas ahora se alimenta directamente del endpoint `analytics/overview` para que metricas, comparativas, tendencia y recomendaciones salgan de la misma fuente ejecutiva del backend.
+
+## 2026-05-05
+
+Pedido del usuario:
+
+- Continuar convirtiendo el prototipo en software operativo real.
+- Registrar automaticamente los cambios en Git para que sean visibles en VS Code y GitHub.
+- Mantener compatibilidad entre macOS y Windows.
+
+Acciones realizadas:
+
+- Se agrego CRUD REST para programas: listar, crear, actualizar y eliminar con bloqueo cuando existen datos asociados.
+- Se agrego CRUD REST para indicadores: listar, crear, actualizar y eliminar con bloqueo cuando existen reportes asociados.
+- El frontend ahora carga programas e indicadores desde la API cuando esta disponible, manteniendo localStorage como respaldo.
+- La matriz de indicadores incluye formulario de alta/edicion y acciones de editar/eliminar por indicador.
+- La vista de programas incluye formulario de alta/edicion y acciones de editar/eliminar por programa.
+- Se documento el contrato API de programas e indicadores.

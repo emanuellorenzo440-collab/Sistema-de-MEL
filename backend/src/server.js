@@ -1,13 +1,19 @@
 import http from "node:http";
 import {
+  createIndicator,
+  createProgram,
   createReport,
   createReportsBulk,
+  deleteIndicator,
+  deleteProgram,
   findReportById,
   listIndicators,
   listPrograms,
   listReportStatusHistory,
   queryReports,
   saveReportStatusDecision,
+  updateIndicator,
+  updateProgram,
 } from "./data/mock-store.js";
 import { resolveAnalyticsScope, validateReportStatusChange } from "./domain/reporting-rules.js";
 import { buildAnalyticsConfig, buildAnalyticsOverview } from "./services/analytics-service.js";
@@ -15,7 +21,7 @@ import { buildAnalyticsConfig, buildAnalyticsOverview } from "./services/analyti
 const PORT = Number(process.env.PORT || 8080);
 const CORS_HEADERS = {
   "access-control-allow-origin": "*",
-  "access-control-allow-methods": "GET,POST,PATCH,OPTIONS",
+  "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
   "access-control-allow-headers": "content-type",
 };
 
@@ -75,6 +81,127 @@ function filterReportsByScope(reports, scope) {
 
 export async function handlePrograms(_request, response) {
   sendJson(response, 200, { data: listPrograms() });
+}
+
+export async function handleProgramCreate(request, response) {
+  let payload;
+  try {
+    payload = await readJsonBody(request);
+  } catch {
+    sendJson(response, 400, { error: "El cuerpo del programa no es JSON valido." });
+    return;
+  }
+
+  const required = requireFields(payload, ["name", "lead"]);
+  if (required) {
+    sendJson(response, 400, required);
+    return;
+  }
+
+  const program = createProgram(payload);
+  sendJson(response, 201, { data: program });
+}
+
+export async function handleProgramUpdate(request, response, programId) {
+  let payload;
+  try {
+    payload = await readJsonBody(request);
+  } catch {
+    sendJson(response, 400, { error: "El cuerpo del programa no es JSON valido." });
+    return;
+  }
+
+  const program = updateProgram(programId, payload);
+  if (!program) {
+    sendJson(response, 404, { error: "No encontre el programa solicitado." });
+    return;
+  }
+
+  sendJson(response, 200, { data: program });
+}
+
+export async function handleProgramDelete(_request, response, programId) {
+  const result = deleteProgram(programId);
+  if (!result) {
+    sendJson(response, 404, { error: "No encontre el programa solicitado." });
+    return;
+  }
+
+  if (result.blocked) {
+    sendJson(response, 409, {
+      error: "No se puede eliminar un programa con indicadores o reportes asociados.",
+      details: result,
+    });
+    return;
+  }
+
+  sendEmpty(response);
+}
+
+export async function handleIndicators(_request, response, url) {
+  const programId = url.searchParams.get("programId");
+  const program = url.searchParams.get("program");
+  const data = listIndicators().filter((indicator) => {
+    if (programId && indicator.programId !== programId) return false;
+    if (program && indicator.program !== program) return false;
+    return true;
+  });
+  sendJson(response, 200, { data });
+}
+
+export async function handleIndicatorCreate(request, response) {
+  let payload;
+  try {
+    payload = await readJsonBody(request);
+  } catch {
+    sendJson(response, 400, { error: "El cuerpo del indicador no es JSON valido." });
+    return;
+  }
+
+  const required = requireFields(payload, ["name", "program", "target"]);
+  if (required) {
+    sendJson(response, 400, required);
+    return;
+  }
+
+  const indicator = createIndicator(payload);
+  sendJson(response, 201, { data: indicator });
+}
+
+export async function handleIndicatorUpdate(request, response, indicatorId) {
+  let payload;
+  try {
+    payload = await readJsonBody(request);
+  } catch {
+    sendJson(response, 400, { error: "El cuerpo del indicador no es JSON valido." });
+    return;
+  }
+
+  const indicator = updateIndicator(indicatorId, payload);
+  if (!indicator) {
+    sendJson(response, 404, { error: "No encontre el indicador solicitado." });
+    return;
+  }
+
+  sendJson(response, 200, { data: indicator });
+}
+
+export async function handleIndicatorDelete(_request, response, indicatorId) {
+  const result = deleteIndicator(indicatorId);
+  if (!result) {
+    sendJson(response, 404, { error: "No encontre el indicador solicitado." });
+    return;
+  }
+
+  if (result.blocked) {
+    sendJson(response, 409, {
+      error: "No se puede eliminar un indicador con reportes asociados.",
+      details: result,
+    });
+    return;
+  }
+
+  sendEmpty(response);
 }
 
 export async function handleReportsList(request, response, url) {
@@ -209,6 +336,7 @@ function apiIndex() {
     version: "v1",
     resources: [
       "programs",
+      "indicators",
       "reports",
       "analytics/config",
       "analytics/overview",
@@ -239,6 +367,43 @@ async function router(request, response) {
 
   if (request.method === "GET" && pathname === "/api/v1/programs") {
     await handlePrograms(request, response, url);
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/v1/programs") {
+    await handleProgramCreate(request, response, url);
+    return;
+  }
+
+  const programMatch = pathname.match(/^\/api\/v1\/programs\/([^/]+)$/);
+  if (request.method === "PUT" && programMatch) {
+    await handleProgramUpdate(request, response, decodeURIComponent(programMatch[1]));
+    return;
+  }
+
+  if (request.method === "DELETE" && programMatch) {
+    await handleProgramDelete(request, response, decodeURIComponent(programMatch[1]));
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/v1/indicators") {
+    await handleIndicators(request, response, url);
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/v1/indicators") {
+    await handleIndicatorCreate(request, response, url);
+    return;
+  }
+
+  const indicatorMatch = pathname.match(/^\/api\/v1\/indicators\/([^/]+)$/);
+  if (request.method === "PUT" && indicatorMatch) {
+    await handleIndicatorUpdate(request, response, decodeURIComponent(indicatorMatch[1]));
+    return;
+  }
+
+  if (request.method === "DELETE" && indicatorMatch) {
+    await handleIndicatorDelete(request, response, decodeURIComponent(indicatorMatch[1]));
     return;
   }
 

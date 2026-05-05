@@ -24,10 +24,13 @@ const programs = seedState.programs.map((program) => ({
   ...structuredClone(program),
 }));
 
-const programIdByName = new Map(programs.map((program) => [program.name, program.id]));
+function programIdByName() {
+  return new Map(programs.map((program) => [program.name, program.id]));
+}
+
 const indicators = seedState.indicators.map((indicator) => ({
   ...structuredClone(indicator),
-  programId: programIdByName.get(indicator.program) || null,
+  programId: programIdByName().get(indicator.program) || null,
 }));
 
 const reports = [];
@@ -40,7 +43,7 @@ function normalizedReport(input = {}) {
     date: String(input.date || timestamp.slice(0, 10)),
     period: String(input.period || timestamp.slice(0, 7)),
     program: String(input.program || ""),
-    programId: input.programId || programIdByName.get(input.program) || null,
+    programId: input.programId || programIdByName().get(input.program) || null,
     province: String(input.province || "Centros de programa"),
     indicatorId: String(input.indicatorId || ""),
     value: asNumber(input.value),
@@ -61,8 +64,132 @@ function normalizedReport(input = {}) {
   };
 }
 
+function normalizeString(value, fallback = "") {
+  const normalized = String(value ?? "").trim();
+  return normalized || fallback;
+}
+
+function normalizeStringList(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeString(item)).filter(Boolean);
+  }
+  return String(value || "")
+    .split(",")
+    .map((item) => normalizeString(item))
+    .filter(Boolean);
+}
+
+function normalizeExpectedResults(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeString(item)).filter(Boolean);
+  }
+  return String(value || "")
+    .split(/\n|;/)
+    .map((item) => normalizeString(item))
+    .filter(Boolean);
+}
+
+function normalizedProgram(input = {}, existing = {}) {
+  const name = normalizeString(input.name, existing.name);
+  const timestamp = nowIso();
+  return {
+    id: normalizeString(input.id, existing.id || `prog-${slugify(name)}-${Date.now()}`),
+    name,
+    lead: normalizeString(input.lead, existing.lead || "Equipo de programa"),
+    provinces: normalizeStringList(input.provinces?.length ? input.provinces : existing.provinces).length
+      ? normalizeStringList(input.provinces?.length ? input.provinces : existing.provinces)
+      : ["Centros de programa"],
+    beneficiaries: asNumber(input.beneficiaries ?? existing.beneficiaries, 0),
+    budget: normalizeString(input.budget, existing.budget || "No especificado"),
+    focus: normalizeString(input.focus, existing.focus || "Programa en desarrollo"),
+    expectedResults: normalizeExpectedResults(
+      input.expectedResults?.length ? input.expectedResults : existing.expectedResults,
+    ),
+    primaryPopulation: normalizeString(
+      input.primaryPopulation,
+      existing.primaryPopulation || "Participantes del programa",
+    ),
+    indicatorBlueprints: Array.isArray(input.indicatorBlueprints)
+      ? structuredClone(input.indicatorBlueprints)
+      : structuredClone(existing.indicatorBlueprints || []),
+    createdAt: existing.createdAt || input.createdAt || timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+function normalizedIndicator(input = {}, existing = {}) {
+  const program = programs.find((item) => item.id === input.programId) || programs.find((item) => item.name === input.program);
+  const timestamp = nowIso();
+  return {
+    id: normalizeString(input.id, existing.id || `ind-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`),
+    program: program?.name || normalizeString(input.program, existing.program),
+    programId: program?.id || input.programId || existing.programId || programIdByName().get(input.program) || null,
+    name: normalizeString(input.name, existing.name),
+    target: asNumber(input.target ?? existing.target, 0),
+    value: asNumber(input.value ?? existing.value, 0),
+    unit: normalizeString(input.unit, existing.unit || "unidades"),
+    owner: normalizeString(input.owner, existing.owner || "Equipo M&E"),
+    due: normalizeString(input.due, existing.due || "2026-12"),
+    type: normalizeString(input.type, existing.type || "Logro"),
+    source: normalizeString(input.source, existing.source || ""),
+    createdAt: existing.createdAt || input.createdAt || timestamp,
+    updatedAt: timestamp,
+  };
+}
+
 export function listPrograms() {
   return programs.map((program) => structuredClone(program));
+}
+
+export function findProgramById(programId) {
+  return programs.find((program) => program.id === programId) || null;
+}
+
+export function createProgram(input) {
+  const program = normalizedProgram(input);
+  programs.push(program);
+  return structuredClone(program);
+}
+
+export function updateProgram(programId, input) {
+  const index = programs.findIndex((program) => program.id === programId);
+  if (index < 0) return null;
+
+  const previous = programs[index];
+  const next = normalizedProgram({ ...previous, ...input, id: previous.id }, previous);
+  programs[index] = next;
+
+  indicators.forEach((indicator) => {
+    if (indicator.programId === previous.id || indicator.program === previous.name) {
+      indicator.programId = next.id;
+      indicator.program = next.name;
+      indicator.updatedAt = nowIso();
+    }
+  });
+
+  reports.forEach((report) => {
+    if (report.programId === previous.id || report.program === previous.name) {
+      report.programId = next.id;
+      report.program = next.name;
+      report.updatedAt = nowIso();
+    }
+  });
+
+  return structuredClone(next);
+}
+
+export function deleteProgram(programId) {
+  const index = programs.findIndex((program) => program.id === programId);
+  if (index < 0) return false;
+
+  const hasIndicators = indicators.some((indicator) => indicator.programId === programId);
+  const hasReports = reports.some((report) => report.programId === programId);
+  if (hasIndicators || hasReports) {
+    return { blocked: true, hasIndicators, hasReports };
+  }
+
+  programs.splice(index, 1);
+  return true;
 }
 
 export function listIndicators() {
@@ -71,6 +198,34 @@ export function listIndicators() {
 
 export function findIndicatorById(indicatorId) {
   return indicators.find((indicator) => indicator.id === indicatorId) || null;
+}
+
+export function createIndicator(input) {
+  const indicator = normalizedIndicator(input);
+  indicators.push(indicator);
+  return structuredClone(indicator);
+}
+
+export function updateIndicator(indicatorId, input) {
+  const index = indicators.findIndex((indicator) => indicator.id === indicatorId);
+  if (index < 0) return null;
+
+  const next = normalizedIndicator({ ...indicators[index], ...input, id: indicatorId }, indicators[index]);
+  indicators[index] = next;
+  return structuredClone(next);
+}
+
+export function deleteIndicator(indicatorId) {
+  const index = indicators.findIndex((indicator) => indicator.id === indicatorId);
+  if (index < 0) return false;
+
+  const hasReports = reports.some((report) => report.indicatorId === indicatorId);
+  if (hasReports) {
+    return { blocked: true, hasReports };
+  }
+
+  indicators.splice(index, 1);
+  return true;
 }
 
 export function queryReports(filters = {}) {

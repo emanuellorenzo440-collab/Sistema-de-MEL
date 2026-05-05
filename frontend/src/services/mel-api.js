@@ -67,6 +67,60 @@ export async function fetchApiConfig() {
   return response.data;
 }
 
+export async function fetchApiPrograms() {
+  const response = await requestJson("programs");
+  return response.data || [];
+}
+
+export async function createApiProgram(program) {
+  const response = await requestJson("programs", {
+    method: "POST",
+    body: JSON.stringify(program),
+  });
+  return response.data;
+}
+
+export async function updateApiProgram(programId, program) {
+  const response = await requestJson("programs/" + encodeURIComponent(programId), {
+    method: "PUT",
+    body: JSON.stringify(program),
+  });
+  return response.data;
+}
+
+export async function deleteApiProgram(programId) {
+  await requestJson("programs/" + encodeURIComponent(programId), {
+    method: "DELETE",
+  });
+}
+
+export async function fetchApiIndicators(filters = {}) {
+  const response = await requestJson("indicators", {}, filters);
+  return response.data || [];
+}
+
+export async function createApiIndicator(indicator) {
+  const response = await requestJson("indicators", {
+    method: "POST",
+    body: JSON.stringify(indicator),
+  });
+  return response.data;
+}
+
+export async function updateApiIndicator(indicatorId, indicator) {
+  const response = await requestJson("indicators/" + encodeURIComponent(indicatorId), {
+    method: "PUT",
+    body: JSON.stringify(indicator),
+  });
+  return response.data;
+}
+
+export async function deleteApiIndicator(indicatorId) {
+  await requestJson("indicators/" + encodeURIComponent(indicatorId), {
+    method: "DELETE",
+  });
+}
+
 export async function fetchApiReports(filters = {}) {
   const response = await requestJson("reports", {}, filters);
   return response.data || [];
