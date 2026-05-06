@@ -12,8 +12,11 @@ CREATE TABLE users (
 
 CREATE TABLE programs (
   id TEXT PRIMARY KEY,
+  company_id TEXT NOT NULL DEFAULT 'org-default',
   name TEXT NOT NULL UNIQUE,
   lead TEXT,
+  coordinator_email TEXT,
+  mel_supervisor_email TEXT,
   focus TEXT,
   primary_population TEXT,
   beneficiaries INTEGER DEFAULT 0,
@@ -38,6 +41,7 @@ CREATE TABLE indicators (
 
 CREATE TABLE reports (
   id TEXT PRIMARY KEY,
+  company_id TEXT NOT NULL DEFAULT 'org-default',
   program_id TEXT NOT NULL REFERENCES programs(id),
   indicator_id TEXT NOT NULL REFERENCES indicators(id),
   period TEXT NOT NULL,
@@ -56,6 +60,43 @@ CREATE TABLE reports (
   created_by TEXT REFERENCES users(id),
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE notifications (
+  id TEXT PRIMARY KEY,
+  company_id TEXT NOT NULL DEFAULT 'org-default',
+  program_id TEXT REFERENCES programs(id),
+  report_id TEXT REFERENCES reports(id),
+  indicator_id TEXT REFERENCES indicators(id),
+  recipient_role TEXT NOT NULL,
+  recipient_name TEXT,
+  recipient_email TEXT,
+  type TEXT NOT NULL,
+  priority TEXT NOT NULL DEFAULT 'normal',
+  title TEXT NOT NULL,
+  message TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'unread',
+  read_by TEXT REFERENCES users(id),
+  read_at TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE email_outbox (
+  id TEXT PRIMARY KEY,
+  company_id TEXT NOT NULL DEFAULT 'org-default',
+  program_id TEXT REFERENCES programs(id),
+  report_id TEXT REFERENCES reports(id),
+  notification_id TEXT REFERENCES notifications(id),
+  to_role TEXT NOT NULL,
+  to_name TEXT,
+  to_email TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  body TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'queued',
+  queued_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  sent_at TIMESTAMP,
+  last_error TEXT
 );
 
 CREATE TABLE report_status_history (
@@ -130,3 +171,7 @@ CREATE TABLE audit_logs (
   metadata_json TEXT,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX idx_notifications_recipient_status ON notifications(recipient_role, status);
+CREATE INDEX idx_notifications_company_program ON notifications(company_id, program_id);
+CREATE INDEX idx_email_outbox_status ON email_outbox(status);

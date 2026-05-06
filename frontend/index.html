@@ -104,6 +104,17 @@
         <section class="view active" id="dashboardView" data-view-panel="dashboard">
           <div class="metric-grid" id="metricGrid"></div>
 
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">Alertas internas</p>
+                <h2>Bandeja de aprobaciones</h2>
+              </div>
+              <span class="status-pill warning" id="notificationCount">0 pendientes</span>
+            </div>
+            <div class="notification-list" id="notificationList"></div>
+          </section>
+
           <div class="dashboard-grid">
             <section class="panel wide">
               <div class="panel-header">
@@ -506,6 +517,7 @@
                   <h2>Reportes pendientes</h2>
                 </div>
               </div>
+              <div class="notification-list compact" id="supervisionNotificationList"></div>
               <div class="review-list" id="reviewList"></div>
             </section>
             <section class="panel">
@@ -550,6 +562,14 @@
                 <label class="span-2">
                   Provincias
                   <input id="programProvincesInput" name="provinces" type="text" value="Centros de programa" />
+                </label>
+                <label>
+                  Correo coordinador
+                  <input id="programCoordinatorEmailInput" name="coordinatorEmail" type="email" />
+                </label>
+                <label>
+                  Correo supervision M&amp;E
+                  <input id="programMelSupervisorEmailInput" name="melSupervisorEmail" type="email" />
                 </label>
                 <label class="span-2">
                   Enfoque

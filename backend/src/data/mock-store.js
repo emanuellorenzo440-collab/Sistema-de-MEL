@@ -35,11 +35,15 @@ const indicators = seedState.indicators.map((indicator) => ({
 
 const reports = [];
 const reportStatusHistory = [];
+const notifications = [];
+const emailOutbox = [];
+const DEFAULT_COMPANY_ID = "org-default";
 
 function normalizedReport(input = {}) {
   const timestamp = nowIso();
   return {
     id: String(input.id || `rep-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`),
+    companyId: String(input.companyId || DEFAULT_COMPANY_ID),
     date: String(input.date || timestamp.slice(0, 10)),
     period: String(input.period || timestamp.slice(0, 7)),
     program: String(input.program || ""),
@@ -62,6 +66,84 @@ function normalizedReport(input = {}) {
     createdAt: input.createdAt || timestamp,
     updatedAt: input.updatedAt || timestamp,
   };
+}
+
+function contactEmail(name, role) {
+  const localPart = slugify(name || role || "usuario") || "usuario";
+  return `${localPart}@pulso-me.local`;
+}
+
+function reviewRecipientsForReport(report) {
+  const program = programs.find((item) => item.id === report.programId) || programs.find((item) => item.name === report.program);
+  return [
+    {
+      role: "Coordinador de programa",
+      name: program?.lead || `Coordinacion ${report.program}`,
+      email: program?.coordinatorEmail || contactEmail(program?.lead || report.program, "coordinador"),
+    },
+    {
+      role: "Supervision M&E",
+      name: "Supervision M&E",
+      email: program?.melSupervisorEmail || "supervision-me@pulso-me.local",
+    },
+  ];
+}
+
+function createEmailOutboxItem({ report, notification, recipient }) {
+  const indicator = indicators.find((item) => item.id === report.indicatorId);
+  const queuedAt = nowIso();
+  const email = {
+    id: `email-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+    companyId: report.companyId || DEFAULT_COMPANY_ID,
+    programId: report.programId,
+    reportId: report.id,
+    notificationId: notification.id,
+    toRole: recipient.role,
+    toName: recipient.name,
+    toEmail: recipient.email,
+    subject: `Nuevo reporte pendiente de aprobacion - ${report.program}`,
+    body: [
+      `Hay un nuevo reporte pendiente de revision para ${report.program}.`,
+      `Indicador: ${indicator?.name || report.indicatorId}`,
+      `Periodo: ${report.period}`,
+      `Responsable: ${report.owner}`,
+      `Valor reportado: ${report.value}`,
+    ].join("\n"),
+    provider: "pending-email-provider",
+    status: "queued",
+    queuedAt,
+    sentAt: null,
+    lastError: null,
+  };
+  emailOutbox.unshift(email);
+  return email;
+}
+
+function createReviewNotificationsForReport(report) {
+  const indicator = indicators.find((item) => item.id === report.indicatorId);
+  return reviewRecipientsForReport(report).map((recipient) => {
+    const notification = {
+      id: `notif-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+      companyId: report.companyId || DEFAULT_COMPANY_ID,
+      programId: report.programId,
+      program: report.program,
+      reportId: report.id,
+      indicatorId: report.indicatorId,
+      title: `Reporte pendiente: ${report.program}`,
+      message: `${report.owner} envio ${report.value.toLocaleString("es-DO")} para ${indicator?.name || "un indicador"}.`,
+      type: "report_review_requested",
+      priority: "high",
+      recipientRole: recipient.role,
+      recipientName: recipient.name,
+      recipientEmail: recipient.email,
+      status: "unread",
+      createdAt: nowIso(),
+      readAt: null,
+    };
+    notifications.unshift(notification);
+    createEmailOutboxItem({ report, notification, recipient });
+    return structuredClone(notification);
+  });
 }
 
 function normalizeString(value, fallback = "") {
@@ -109,6 +191,8 @@ function normalizedProgram(input = {}, existing = {}) {
       input.primaryPopulation,
       existing.primaryPopulation || "Participantes del programa",
     ),
+    coordinatorEmail: normalizeString(input.coordinatorEmail, existing.coordinatorEmail || ""),
+    melSupervisorEmail: normalizeString(input.melSupervisorEmail, existing.melSupervisorEmail || ""),
     indicatorBlueprints: Array.isArray(input.indicatorBlueprints)
       ? structuredClone(input.indicatorBlueprints)
       : structuredClone(existing.indicatorBlueprints || []),
@@ -244,7 +328,8 @@ export function queryReports(filters = {}) {
 export function createReport(input) {
   const report = normalizedReport(input);
   reports.unshift(report);
-  return structuredClone(report);
+  const reviewNotifications = createReviewNotificationsForReport(report);
+  return { ...structuredClone(report), reviewNotifications };
 }
 
 export function createReportsBulk(items = []) {
@@ -291,4 +376,40 @@ export function listReportStatusHistory(reportId) {
   return reportStatusHistory
     .filter((entry) => entry.reportId === reportId)
     .map((entry) => structuredClone(entry));
+}
+
+export function listNotifications(filters = {}) {
+  const { companyId, programId, reportId, recipientRole, status } = filters;
+  return notifications
+    .filter((notification) => {
+      if (companyId && notification.companyId !== companyId) return false;
+      if (programId && notification.programId !== programId) return false;
+      if (reportId && notification.reportId !== reportId) return false;
+      if (recipientRole && notification.recipientRole !== recipientRole) return false;
+      if (status && notification.status !== status) return false;
+      return true;
+    })
+    .map((notification) => structuredClone(notification));
+}
+
+export function markNotificationRead(notificationId, actorId = null) {
+  const notification = notifications.find((item) => item.id === notificationId);
+  if (!notification) return null;
+  notification.status = "read";
+  notification.readAt = nowIso();
+  notification.readBy = actorId;
+  return structuredClone(notification);
+}
+
+export function listEmailOutbox(filters = {}) {
+  const { companyId, programId, reportId, status } = filters;
+  return emailOutbox
+    .filter((email) => {
+      if (companyId && email.companyId !== companyId) return false;
+      if (programId && email.programId !== programId) return false;
+      if (reportId && email.reportId !== reportId) return false;
+      if (status && email.status !== status) return false;
+      return true;
+    })
+    .map((email) => structuredClone(email));
 }

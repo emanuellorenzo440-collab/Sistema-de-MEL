@@ -57,3 +57,17 @@ Acciones realizadas:
 - La matriz de indicadores incluye formulario de alta/edicion y acciones de editar/eliminar por indicador.
 - La vista de programas incluye formulario de alta/edicion y acciones de editar/eliminar por programa.
 - Se documento el contrato API de programas e indicadores.
+
+Pedido del usuario:
+
+- Cuando un facilitador suba un reporte, su coordinador de programa y Supervision M&E deben recibir correo y alerta dentro del sistema para aprobar.
+- El sistema debe prepararse para crecer y trabajar en diferentes empresas.
+
+Acciones realizadas:
+
+- Se agrego generacion automatica de alertas internas al crear reportes.
+- Se agregaron destinatarios por rol para Coordinador de programa y Supervision M&E.
+- Se agrego una outbox de correos para registrar mensajes pendientes de envio sin depender aun de un proveedor externo.
+- Se agregaron endpoints para consultar alertas, marcar alertas como leidas y auditar correos en cola.
+- El frontend ahora muestra bandeja de alertas internas en resumen y supervision.
+- El esquema SQL incorpora `company_id`, `notifications` y `email_outbox` como base multiempresa.

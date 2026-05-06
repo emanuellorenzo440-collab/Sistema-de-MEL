@@ -27,6 +27,8 @@ La fuente final de verdad debe ser la base de datos. El frontend puede guardar i
 - FormSubmission: archivo o formulario importado.
 - ConceptPaper: documento base del programa.
 - ActionItem: seguimiento o correccion requerida.
+- Notification: alerta interna dirigida a un rol o usuario.
+- EmailOutbox: correo preparado para envio por proveedor externo.
 - AuditLog: registro de cambios.
 
 ## Reglas iniciales
@@ -34,6 +36,8 @@ La fuente final de verdad debe ser la base de datos. El frontend puede guardar i
 - Un reporte siempre pertenece a un programa y a un indicador.
 - Un indicador siempre pertenece a un programa.
 - Un reporte nuevo inicia como Pendiente.
+- Un reporte nuevo debe generar alertas internas para el coordinador de programa y para Supervision M&E.
+- Un reporte nuevo debe crear correos en cola para esos mismos destinatarios, sin bloquear la captura si el proveedor de correo no esta disponible.
 - Solo roles de supervision o liderazgo pueden aprobar reportes.
 - Una devolucion debe crear o asociar un plan de accion.
 - El sistema debe distinguir carga automatica CSV de archivos de soporte.
@@ -119,6 +123,8 @@ Director Nacional:
 - Si la API no esta disponible, el frontend puede caer temporalmente a modo local sin romper la experiencia.
 - El historial de estados debe permitir explicar por que un dato entro o salio de la lectura ejecutiva.
 - actorId es obligatorio para cambios de estado cuando el backend recibe una decision de revision.
+- Las alertas deben filtrar por empresa, programa, rol destinatario y estado para soportar multiples organizaciones.
+- El correo se maneja como outbox auditable: primero se registra, luego un proveedor externo lo envia o reporta error.
 
 ## Reglas pendientes por definir
 

@@ -5,6 +5,7 @@ import {
   createApiReportsBulk,
   fetchApiAnalyticsOverview,
   fetchApiIndicators,
+  fetchApiNotifications,
   fetchApiPrograms,
   fetchApiReports,
   getApiBaseUrl,
@@ -91,6 +92,7 @@ function normalizeState(savedState = {}) {
   nextState.monitoringForms = mergeByKey(savedState.monitoringForms || [], seedState.monitoringForms, (item) => item.id);
   nextState.conceptPapers = mergeByKey(savedState.conceptPapers || [], seedState.conceptPapers, (item) => item.id);
   nextState.reports = Array.isArray(savedState.reports) ? savedState.reports.slice() : [];
+  nextState.notifications = Array.isArray(savedState.notifications) ? savedState.notifications.slice() : [];
   nextState.actions = Array.isArray(savedState.actions) ? savedState.actions.slice() : [];
   nextState.formSubmissions = Array.isArray(savedState.formSubmissions) ? savedState.formSubmissions.slice() : [];
   nextState.chartPreferences = { ...seedState.chartPreferences, ...(savedState.chartPreferences || {}) };
@@ -147,6 +149,7 @@ function mergeRemoteReports(localReports = [], remoteReports = []) {
 function mapLocalReportToApi(report) {
   return {
     id: report.id,
+    companyId: report.companyId || "org-default",
     date: report.date,
     period: report.period,
     program: report.program,
@@ -512,6 +515,17 @@ async function pullRemoteReports() {
   return nextState;
 }
 
+async function pullRemoteNotifications() {
+  const remoteNotifications = await fetchApiNotifications();
+  const currentState = normalizeState(readStoredState());
+  const nextState = recomputeIndicators({
+    ...currentState,
+    notifications: remoteNotifications,
+  });
+  saveStoredState(nextState);
+  return nextState;
+}
+
 async function pullRemotePlanningData() {
   const [remotePrograms, remoteIndicators] = await Promise.all([fetchApiPrograms(), fetchApiIndicators()]);
   const currentState = normalizeState(readStoredState());
@@ -584,6 +598,7 @@ async function runSyncPass() {
   try {
     await pushMissingReports();
     await pullRemoteReports();
+    await pullRemoteNotifications();
     await refreshAnalyticsOverview();
     updateConnectionBadge(true);
   } catch (error) {
@@ -634,6 +649,7 @@ export async function bootstrapApiBridge() {
   try {
     await pullRemotePlanningData();
     await pullRemoteReports();
+    await pullRemoteNotifications();
     updateConnectionBadge(true);
     return { connected: true, baseUrl: getApiBaseUrl() };
   } catch (error) {

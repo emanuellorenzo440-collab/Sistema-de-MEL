@@ -15,6 +15,9 @@ Base propuesta para conectar frontend, backend y base de datos.
 - `GET /api/v1/reports?program=...&programId=...&province=...&period=...&scope=approved|all`
 - `POST /api/v1/reports`
 - `POST /api/v1/reports/bulk`
+- `GET /api/v1/notifications?recipientRole=...&status=...&programId=...&companyId=...`
+- `PATCH /api/v1/notifications/:id/read`
+- `GET /api/v1/email-outbox?status=...&programId=...&companyId=...`
 - `PATCH /api/v1/reports/:id/status`
 - `GET /api/v1/reports/:id/status-history`
 - `GET /api/v1/analytics/config`
@@ -91,6 +94,46 @@ Base propuesta para conectar frontend, backend y base de datos.
 ```
 
 ## Payload sugerido para validar reportes
+
+## Respuesta sugerida para alertas internas
+
+`GET /api/v1/notifications`
+
+```json
+{
+  "data": [
+    {
+      "id": "notif-1714743453000",
+      "companyId": "org-default",
+      "programId": "prog-girls-empowerment",
+      "reportId": "rep-1714743453000",
+      "recipientRole": "Coordinador de programa",
+      "type": "report_review_requested",
+      "priority": "high",
+      "title": "Reporte pendiente: Girls Empowerment",
+      "status": "unread"
+    }
+  ]
+}
+```
+
+## Respuesta sugerida para correos en cola
+
+`GET /api/v1/email-outbox`
+
+```json
+{
+  "data": [
+    {
+      "id": "email-1714743453000",
+      "toRole": "Supervision M&E",
+      "toEmail": "supervision-me@pulso-me.local",
+      "subject": "Nuevo reporte pendiente de aprobacion - Girls Empowerment",
+      "status": "queued"
+    }
+  ]
+}
+```
 
 `PATCH /api/v1/reports/:id/status`
 

@@ -7,9 +7,12 @@ import {
   deleteIndicator,
   deleteProgram,
   findReportById,
+  listEmailOutbox,
   listIndicators,
+  listNotifications,
   listPrograms,
   listReportStatusHistory,
+  markNotificationRead,
   queryReports,
   saveReportStatusDecision,
   updateIndicator,
@@ -251,6 +254,45 @@ export async function handleReportBulkCreate(request, response) {
   sendJson(response, 201, { data: reports, count: reports.length });
 }
 
+export async function handleNotificationsList(_request, response, url) {
+  const filters = {
+    companyId: url.searchParams.get("companyId") || undefined,
+    programId: url.searchParams.get("programId") || undefined,
+    reportId: url.searchParams.get("reportId") || undefined,
+    recipientRole: url.searchParams.get("recipientRole") || undefined,
+    status: url.searchParams.get("status") || undefined,
+  };
+  sendJson(response, 200, { data: listNotifications(filters), filters });
+}
+
+export async function handleNotificationRead(request, response, notificationId) {
+  let payload;
+  try {
+    payload = await readJsonBody(request);
+  } catch {
+    sendJson(response, 400, { error: "El cuerpo de la alerta no es JSON valido." });
+    return;
+  }
+
+  const notification = markNotificationRead(notificationId, payload.actorId || null);
+  if (!notification) {
+    sendJson(response, 404, { error: "No encontre la alerta solicitada." });
+    return;
+  }
+
+  sendJson(response, 200, { data: notification });
+}
+
+export async function handleEmailOutboxList(_request, response, url) {
+  const filters = {
+    companyId: url.searchParams.get("companyId") || undefined,
+    programId: url.searchParams.get("programId") || undefined,
+    reportId: url.searchParams.get("reportId") || undefined,
+    status: url.searchParams.get("status") || undefined,
+  };
+  sendJson(response, 200, { data: listEmailOutbox(filters), filters });
+}
+
 export async function handleReportStatusUpdate(request, response, reportId) {
   const report = findReportById(reportId);
   if (!report) {
@@ -338,6 +380,8 @@ function apiIndex() {
       "programs",
       "indicators",
       "reports",
+      "notifications",
+      "email-outbox",
       "analytics/config",
       "analytics/overview",
       "reports/:id/status",
@@ -419,6 +463,22 @@ async function router(request, response) {
 
   if (request.method === "POST" && pathname === "/api/v1/reports/bulk") {
     await handleReportBulkCreate(request, response, url);
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/v1/notifications") {
+    await handleNotificationsList(request, response, url);
+    return;
+  }
+
+  const notificationReadMatch = pathname.match(/^\/api\/v1\/notifications\/([^/]+)\/read$/);
+  if (request.method === "PATCH" && notificationReadMatch) {
+    await handleNotificationRead(request, response, decodeURIComponent(notificationReadMatch[1]));
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/v1/email-outbox") {
+    await handleEmailOutboxList(request, response, url);
     return;
   }
 

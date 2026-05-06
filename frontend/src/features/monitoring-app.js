@@ -8,6 +8,7 @@ import {
   deleteApiIndicator,
   deleteApiProgram,
   isApiConfigured,
+  markApiNotificationRead,
   updateApiIndicator,
   updateApiProgram,
 } from "../services/mel-api.js";
@@ -62,6 +63,7 @@ function normalizeState(savedState) {
   nextState.indicators = mergeByKey(savedState.indicators || [], seedState.indicators, (item) => item.id || item.name);
   nextState.monitoringForms = mergeByKey(savedState.monitoringForms || [], seedState.monitoringForms, (item) => item.id);
   nextState.conceptPapers = mergeByKey(savedState.conceptPapers || [], seedState.conceptPapers, (item) => item.id);
+  nextState.notifications = Array.isArray(savedState.notifications) ? savedState.notifications : [];
   nextState.formSubmissions = savedState.formSubmissions || [];
   nextState.chartPreferences = { ...seedState.chartPreferences, ...(savedState.chartPreferences || {}) };
   nextState.designProgram = savedState.designProgram || nextState.programs[0]?.name;
@@ -524,6 +526,40 @@ function renderReviewQueue() {
         })
         .join("")
     : `<p class="item-meta">No hay reportes pendientes.</p>`;
+}
+
+function renderNotificationCard(notification) {
+  return `
+    <article class="notification-item ${notification.priority || "normal"}">
+      <div class="notification-top">
+        <div>
+          <h3>${notification.title}</h3>
+          <p class="item-meta">${notification.recipientRole} · ${notification.program} · ${notification.createdAt?.slice(0, 10) || "Hoy"}</p>
+        </div>
+        <span class="status-pill warning">Pendiente</span>
+      </div>
+      <p>${notification.message}</p>
+      <div class="item-actions">
+        <button type="button" data-open-report="${notification.reportId}">Ver revision</button>
+        <button type="button" data-read-notification="${notification.id}">Marcar leida</button>
+      </div>
+    </article>
+  `;
+}
+
+function renderNotifications() {
+  const visibleNotifications = notificationsForActiveRole();
+  const countText = `${visibleNotifications.length} pendiente${visibleNotifications.length === 1 ? "" : "s"}`;
+  elements.notificationCount.textContent = countText;
+  elements.notificationCount.className = `status-pill ${visibleNotifications.length ? "warning" : "good"}`;
+  const markup = visibleNotifications.length
+    ? visibleNotifications.slice(0, 6).map(renderNotificationCard).join("")
+    : `<p class="item-meta">No hay alertas pendientes para tu perfil.</p>`;
+
+  elements.notificationList.innerHTML = markup;
+  elements.supervisionNotificationList.innerHTML = visibleNotifications.length
+    ? visibleNotifications.slice(0, 3).map(renderNotificationCard).join("")
+    : `<p class="item-meta">Sin alertas internas pendientes.</p>`;
 }
 
 function renderActions() {
@@ -1093,6 +1129,7 @@ function renderAll() {
   renderForms();
   renderCharts();
   renderConceptPapers();
+  renderNotifications();
   renderReviewQueue();
   renderActions();
   renderPrograms();
@@ -1121,14 +1158,52 @@ function showToast(message) {
   window.setTimeout(() => elements.toast.classList.remove("show"), 2600);
 }
 
+function createLocalReviewNotifications(report) {
+  const program = state.programs.find((item) => item.name === report.program);
+  const indicator = indicatorById(report.indicatorId);
+  const recipients = [
+    {
+      role: "Coordinador de programa",
+      name: program?.lead || `Coordinacion ${report.program}`,
+      email: program?.coordinatorEmail || "",
+    },
+    {
+      role: "Supervision M&E",
+      name: "Supervision M&E",
+      email: program?.melSupervisorEmail || "",
+    },
+  ];
+
+  return recipients.map((recipient) => ({
+    id: `notif-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+    companyId: report.companyId || "org-default",
+    programId: report.programId || program?.id || null,
+    program: report.program,
+    reportId: report.id,
+    indicatorId: report.indicatorId,
+    title: `Reporte pendiente: ${report.program}`,
+    message: `${report.owner} envio ${report.value.toLocaleString("es-DO")} para ${indicator?.name || "un indicador"}.`,
+    type: "report_review_requested",
+    priority: "high",
+    recipientRole: recipient.role,
+    recipientName: recipient.name,
+    recipientEmail: recipient.email,
+    status: "unread",
+    createdAt: new Date().toISOString(),
+    readAt: null,
+  }));
+}
+
 function addReport(formData) {
   const indicator = state.indicators.find((item) => item.name === formData.get("indicator"));
   const value = Number(formData.get("value"));
   const newReport = {
     id: `rep-${Date.now()}`,
+    companyId: "org-default",
     date: new Date().toISOString().slice(0, 10),
     period: formData.get("period"),
     program: formData.get("program"),
+    programId: state.programs.find((program) => program.name === formData.get("program"))?.id || null,
     province: formData.get("province"),
     indicatorId: indicator.id,
     value,
@@ -1143,6 +1218,7 @@ function addReport(formData) {
 
   indicator.value += value;
   state.reports.unshift(newReport);
+  state.notifications = [...createLocalReviewNotifications(newReport), ...(state.notifications || [])];
   if (!state.filters.period || state.filters.period === "Todos") {
     state.filters.period = newReport.period;
   }
@@ -1621,6 +1697,19 @@ function createFormTemplate(type) {
   showToast(`Formulario de ${type.toLowerCase()} creado.`);
 }
 
+function notificationsForActiveRole() {
+  const role = state.role || "Facilitador";
+  if (role === "Facilitador") return [];
+  return (state.notifications || [])
+    .filter((notification) => {
+      if (notification.status === "read") return false;
+      if (role === "Supervision M&E") return notification.recipientRole === "Supervision M&E";
+      if (role === "Coordinador de programa") return notification.recipientRole === "Coordinador de programa";
+      return ["Coordinador de programa", "Supervision M&E"].includes(notification.recipientRole);
+    })
+    .sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || "")));
+}
+
 function resetIndicatorForm() {
   elements.indicatorCrudForm.reset();
   elements.indicatorIdInput.value = "";
@@ -1687,6 +1776,8 @@ function fillProgramForm(program) {
   elements.programBeneficiariesInput.value = program.beneficiaries;
   elements.programBudgetInput.value = program.budget;
   elements.programProvincesInput.value = (program.provinces || []).join(", ");
+  elements.programCoordinatorEmailInput.value = program.coordinatorEmail || "";
+  elements.programMelSupervisorEmailInput.value = program.melSupervisorEmail || "";
   elements.programFocusInput.value = program.focus;
   elements.programPopulationInput.value = program.primaryPopulation || "";
 }
@@ -1699,6 +1790,8 @@ async function saveProgramFromForm(formData) {
     lead: formData.get("lead"),
     beneficiaries: Number(formData.get("beneficiaries") || 0),
     budget: formData.get("budget"),
+    coordinatorEmail: formData.get("coordinatorEmail"),
+    melSupervisorEmail: formData.get("melSupervisorEmail"),
     provinces: String(formData.get("provinces") || "")
       .split(",")
       .map((item) => item.trim())
@@ -1770,6 +1863,38 @@ function bindEvents() {
     saveState();
     renderAll();
     showToast(`Perfil activo: ${state.role}.`);
+  });
+
+  [elements.notificationList, elements.supervisionNotificationList].forEach((list) => {
+    list.addEventListener("click", (event) => {
+      const reportId = event.target.closest("[data-open-report]")?.dataset.openReport;
+      const notificationId = event.target.closest("[data-read-notification]")?.dataset.readNotification;
+
+      if (reportId) {
+        switchView("supervision");
+      }
+
+      if (notificationId) {
+        void (async () => {
+          try {
+            if (isApiConfigured()) {
+              await markApiNotificationRead(notificationId, { actorId: `local-${slugify(state.role || "usuario")}` });
+            }
+            state.notifications = (state.notifications || []).map((notification) =>
+              notification.id === notificationId
+                ? { ...notification, status: "read", readAt: new Date().toISOString() }
+                : notification,
+            );
+            saveState();
+            renderAll();
+            showToast("Alerta marcada como leida.");
+          } catch (error) {
+            console.error(error);
+            showToast(error.message || "No pude actualizar la alerta.");
+          }
+        })();
+      }
+    });
   });
 
   elements.reportProgram.addEventListener("change", () => {

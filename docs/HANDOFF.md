@@ -13,6 +13,8 @@ Sistema de MEL tiene una base organizada para crecer como producto completo:
 - Analitica ejecutiva definida por defecto sobre reportes aprobados.
 - El frontend ya puede sincronizar reportes y decisiones de revision con la API cuando esta disponible.
 - El frontend ya puede cargar, crear, editar y eliminar programas e indicadores usando la API cuando esta disponible.
+- Cuando entra un reporte nuevo, el backend genera alertas internas para Coordinador de programa y Supervision M&E, mas correos en una outbox auditable.
+- El frontend muestra una bandeja de alertas internas para perfiles de coordinacion y supervision.
 - La vista de graficas ya consume el endpoint `analytics/overview` para pintar metricas, comparativas, tendencia y recomendaciones.
 
 ## Como ejecutar frontend
@@ -48,6 +50,8 @@ Endpoints iniciales:
 - http://localhost:8080/api/v1/programs
 - http://localhost:8080/api/v1/indicators
 - http://localhost:8080/api/v1/reports
+- http://localhost:8080/api/v1/notifications
+- http://localhost:8080/api/v1/email-outbox
 - http://localhost:8080/api/v1/analytics/overview
 
 ## Como conectar frontend y backend
@@ -71,7 +75,7 @@ node --check backend/src/server.js
 
 ## Siguientes pasos recomendados
 
-1. Persistir programas, indicadores, reportes, historial de revision y acciones en una base de datos real.
+1. Persistir programas, indicadores, reportes, notificaciones, outbox de correo, historial de revision y acciones en una base de datos real.
 2. Agregar autenticacion y roles con identidad real de usuario.
 3. Crear pruebas de integracion para importacion CSV, aprobacion y analitica aprobada.
 4. Revisar la experiencia movil pantalla por pantalla.
@@ -82,6 +86,7 @@ node --check backend/src/server.js
 
 - La persistencia del backend actual es en memoria.
 - El CRUD de programas e indicadores ya existe en API, pero todavia no persiste despues de reiniciar el proceso backend.
+- Los correos quedan en outbox; falta conectar un proveedor real como SMTP, SendGrid, Microsoft Graph o Gmail API.
 - El esquema SQL todavia no tiene migrador automatizado.
 - Falta una capa de autenticacion real para reemplazar actorId manual.
 - El dashboard principal todavia conserva logica local en algunas tarjetas, aunque la vista analitica ya sale de la API.

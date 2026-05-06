@@ -126,6 +126,24 @@ export async function fetchApiReports(filters = {}) {
   return response.data || [];
 }
 
+export async function fetchApiNotifications(filters = {}) {
+  const response = await requestJson("notifications", {}, filters);
+  return response.data || [];
+}
+
+export async function markApiNotificationRead(notificationId, payload = {}) {
+  const response = await requestJson("notifications/" + encodeURIComponent(notificationId) + "/read", {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function fetchApiEmailOutbox(filters = {}) {
+  const response = await requestJson("email-outbox", {}, filters);
+  return response.data || [];
+}
+
 export async function fetchApiAnalyticsOverview(filters = {}) {
   const response = await requestJson("analytics/overview", {}, filters);
   return response.data;

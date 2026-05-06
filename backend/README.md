@@ -32,6 +32,9 @@ node backend/src/server.js
 - `GET /api/v1/reports?program=...&programId=...&province=...&period=...&scope=approved|all`
 - `POST /api/v1/reports`
 - `POST /api/v1/reports/bulk`
+- `GET /api/v1/notifications?recipientRole=...&status=...&programId=...`
+- `PATCH /api/v1/notifications/:id/read`
+- `GET /api/v1/email-outbox?status=...&programId=...`
 - `PATCH /api/v1/reports/:id/status`
 - `GET /api/v1/reports/:id/status-history`
 - `GET /api/v1/analytics/config`
@@ -40,3 +43,5 @@ node backend/src/server.js
 ## Regla clave
 
 La lectura ejecutiva usa por defecto `scope=approved`. La vista operativa puede pedir `scope=all`, pero no debe reemplazar la lectura validada para direccion.
+
+Cuando un facilitador crea un reporte, el backend genera alertas internas para `Coordinador de programa` y `Supervision M&E`, y deja correos en `email_outbox` para que un proveedor real los envie en una fase de integracion.
