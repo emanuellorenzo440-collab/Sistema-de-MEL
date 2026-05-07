@@ -1,14 +1,14 @@
-import { STORAGE_KEY } from "../core/config.js";
-import { $, $$, elements } from "../core/dom.js";
-import { loadStoredState, saveStoredState } from "../core/storage.js";
-import { seedState } from "../data/seed-state.js";
+import { STORAGE_KEY } from "../core/config.js?v=20260507i";
+import { $, $$, elements } from "../core/dom.js?v=20260507i";
+import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260507i";
+import { seedState } from "../data/seed-state.js?v=20260507i";
 import {
   REPORT_STATUSES,
   canReviewReports,
   isApprovedReportStatus,
   isPendingApprovalStatus,
   reviewRoleForStatus,
-} from "../../../shared/contracts/reporting.js";
+} from "../../../shared/contracts/reporting.js?v=20260507i";
 import {
   createApiIndicator,
   createApiProgram,
@@ -18,7 +18,7 @@ import {
   markApiNotificationRead,
   updateApiIndicator,
   updateApiProgram,
-} from "../services/mel-api.js";
+} from "../services/mel-api.js?v=20260507i";
 import {
   currentMonth,
   escapeHtml,
@@ -30,7 +30,7 @@ import {
   slugify,
   statusForProgress,
   unique,
-} from "../shared/utils.js";
+} from "../shared/utils.js?v=20260507i";
 
 let state = null;
 const ROLE_STORAGE_KEY = "pulso-me-active-role";

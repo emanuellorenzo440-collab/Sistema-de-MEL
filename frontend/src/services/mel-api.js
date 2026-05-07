@@ -1,4 +1,4 @@
-import { API_BASE_STORAGE_KEY, DEFAULT_API_BASE_URL } from "../core/config.js";
+import { API_BASE_STORAGE_KEY, DEFAULT_API_BASE_URL } from "../core/config.js?v=20260507i";
 
 function trimTrailingSlash(value) {
   return String(value || "").replace(/\/+$/, "");
