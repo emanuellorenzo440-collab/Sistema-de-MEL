@@ -312,6 +312,27 @@ function approvalButtonLabel(report) {
   return "Aprobar";
 }
 
+function reportsAssignedToRole(role) {
+  return state.reports
+    .filter((report) => reviewRoleForStatus(report.status) === role)
+    .sort((left, right) => String(right.date || "").localeCompare(String(left.date || "")));
+}
+
+function inboxReportsForRole(role) {
+  if (!role) return [];
+  if (role === "Facilitador") {
+    return state.reports
+      .filter((report) => isPendingApprovalStatus(report.status))
+      .sort((left, right) => String(right.date || "").localeCompare(String(left.date || "")));
+  }
+
+  if (canReviewReports(role)) {
+    return reportsAssignedToRole(role);
+  }
+
+  return [];
+}
+
 function formatPendingStageBreakdown(reports) {
   const counts = reports.reduce((groups, report) => {
     const reviewRole = reviewRoleForStatus(report.status);
@@ -327,11 +348,11 @@ function formatPendingStageBreakdown(reports) {
 
 function waitingMessageForRole(role) {
   if (!role || role === "Facilitador") {
-    return "No hay reportes pendientes.";
+    return "No hay reportes pendientes por seguimiento.";
   }
 
   const pendingReports = state.reports.filter((report) => isPendingApprovalStatus(report.status));
-  const assignedReports = pendingReports.filter((report) => reviewRoleForStatus(report.status) === role);
+  const assignedReports = reportsAssignedToRole(role);
   if (assignedReports.length) {
     return "No hay reportes pendientes.";
   }
@@ -584,12 +605,13 @@ function renderFormTemplate(form) {
 
 function renderReviewQueue() {
   const currentRole = state.role || "Facilitador";
-  const pendingReports = state.reports.filter((report) => reviewRoleForStatus(report.status) === currentRole);
+  const pendingReports = reportsAssignedToRole(currentRole);
   const validationEnabled = canValidate();
   elements.reviewList.innerHTML = pendingReports.length
     ? pendingReports
         .map((report) => {
           const indicator = indicatorById(report.indicatorId);
+          const participants = `${Number(report.women || 0).toLocaleString("es-DO")} mujeres, ${Number(report.men || 0).toLocaleString("es-DO")} hombres`;
           return `
             <article class="review-item">
               <div class="review-top">
@@ -600,6 +622,12 @@ function renderReviewQueue() {
                 <span class="status-pill ${classForReportStatus(report.status)}">${report.status}</span>
               </div>
               <p>${report.value.toLocaleString("es-DO")} reportados por ${report.owner}. Evidencia: ${report.evidence || "Sin evidencia"}</p>
+              <div class="coverage">
+                <span>${participants}</span>
+                <span>${Number(report.youth || 0).toLocaleString("es-DO")} jovenes</span>
+                <span>${report.period}</span>
+              </div>
+              ${report.notes ? `<p class="item-meta">${report.notes}</p>` : ""}
               <div class="review-actions">
                 <button class="approve-button" data-approve="${report.id}" type="button" ${validationEnabled ? "" : "disabled"}>✓ Aprobar</button>
                 <button class="return-button" data-return="${report.id}" type="button" ${validationEnabled ? "" : "disabled"}>↵ Solicitar correccion</button>
@@ -637,19 +665,58 @@ function renderNotificationCard(notification) {
   `;
 }
 
+function renderReportInboxCard(report, role) {
+  const indicator = indicatorById(report.indicatorId);
+  const currentStage = reviewRoleForStatus(report.status);
+  const participants = `${Number(report.women || 0).toLocaleString("es-DO")} mujeres · ${Number(report.men || 0).toLocaleString("es-DO")} hombres`;
+  const roleMessage =
+    role === "Facilitador"
+      ? `Esperando revision de ${currentStage || "equipo validador"}.`
+      : `Pendiente para ${currentStage || role}.`;
+
+  return `
+    <article class="notification-item high">
+      <div class="notification-top">
+        <div>
+          <h3>${report.program}</h3>
+          <p class="item-meta">${indicator?.name ?? "Indicador eliminado"} · ${report.period} · ${report.province}</p>
+        </div>
+        <span class="status-pill warning">${report.status}</span>
+      </div>
+      <p>${report.value.toLocaleString("es-DO")} reportados por ${report.owner}. ${roleMessage}</p>
+      <div class="coverage">
+        <span>${participants}</span>
+        <span>${Number(report.youth || 0).toLocaleString("es-DO")} jovenes</span>
+      </div>
+      ${report.evidence ? `<p class="item-meta">Evidencia: ${report.evidence}</p>` : ""}
+      ${report.notes ? `<p class="item-meta">Notas: ${report.notes}</p>` : ""}
+      <div class="item-actions">
+        <button type="button" data-open-report="${report.id}">${role === "Facilitador" ? "Ver estado" : "Ver revision"}</button>
+      </div>
+    </article>
+  `;
+}
+
 function renderNotifications() {
+  const role = state.role || "Facilitador";
+  const inboxReports = inboxReportsForRole(role);
   const visibleNotifications = notificationsForActiveRole();
-  const countText = `${visibleNotifications.length} pendiente${visibleNotifications.length === 1 ? "" : "s"}`;
+  const visibleCount = inboxReports.length || visibleNotifications.length;
+  const countText = `${visibleCount} pendiente${visibleCount === 1 ? "" : "s"}`;
   elements.notificationCount.textContent = countText;
-  elements.notificationCount.className = `status-pill ${visibleNotifications.length ? "warning" : "good"}`;
-  const waitingMessage = waitingMessageForRole(state.role || "Facilitador");
-  const markup = visibleNotifications.length
-    ? visibleNotifications.slice(0, 6).map(renderNotificationCard).join("")
+  elements.notificationCount.className = `status-pill ${visibleCount ? "warning" : "good"}`;
+  const waitingMessage = waitingMessageForRole(role);
+  const markup = inboxReports.length
+    ? inboxReports.slice(0, 6).map((report) => renderReportInboxCard(report, role)).join("")
+    : visibleNotifications.length
+      ? visibleNotifications.slice(0, 6).map(renderNotificationCard).join("")
     : `<p class="item-meta">${waitingMessage}</p>`;
 
   elements.notificationList.innerHTML = markup;
-  elements.supervisionNotificationList.innerHTML = visibleNotifications.length
-    ? visibleNotifications.slice(0, 3).map(renderNotificationCard).join("")
+  elements.supervisionNotificationList.innerHTML = inboxReports.length
+    ? inboxReports.slice(0, 3).map((report) => renderReportInboxCard(report, role)).join("")
+    : visibleNotifications.length
+      ? visibleNotifications.slice(0, 3).map(renderNotificationCard).join("")
     : `<p class="item-meta">${waitingMessage}</p>`;
 }
 
