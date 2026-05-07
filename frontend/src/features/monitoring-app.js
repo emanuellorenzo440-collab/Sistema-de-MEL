@@ -2193,10 +2193,10 @@ function bindEvents() {
   $("#quickReportButton").addEventListener("click", () => switchView("report"));
 
   $("#seedButton").addEventListener("click", () => {
-    state = structuredClone(seedState);
-    saveState();
+    hydrateState();
     renderAll();
-    showToast("Base del concept paper reiniciada.");
+    window.dispatchEvent(new CustomEvent("mel:manual-refresh"));
+    showToast("Vista actualizada.");
   });
 
   $("#clearFormButton").addEventListener("click", () => {

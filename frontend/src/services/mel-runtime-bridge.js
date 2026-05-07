@@ -742,6 +742,11 @@ export function startRuntimeBridge() {
     }
   });
 
+  window.addEventListener("mel:manual-refresh", () => {
+    void runSyncPass();
+    scheduleAnalyticsRefresh(50);
+  });
+
   scheduleAnalyticsRefresh(100);
   void runSyncPass();
 }
