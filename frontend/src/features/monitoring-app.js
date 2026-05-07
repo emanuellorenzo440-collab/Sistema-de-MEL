@@ -33,6 +33,7 @@ import {
 } from "../shared/utils.js";
 
 let state = null;
+const ROLE_STORAGE_KEY = "pulso-me-active-role";
 
 function loadState() {
   return loadStoredState(STORAGE_KEY, seedState, normalizeState);
@@ -40,6 +41,7 @@ function loadState() {
 
 function hydrateState() {
   state = loadState();
+  state.role = loadRolePreference(state.role);
   return state;
 }
 
@@ -64,7 +66,24 @@ function normalizeRoleLabel(value) {
 }
 
 function activeRole() {
-  return normalizeRoleLabel(elements.roleSelect?.value || state?.role || "Facilitador");
+  return normalizeRoleLabel(loadRolePreference(elements.roleSelect?.value || state?.role || "Facilitador"));
+}
+
+function loadRolePreference(fallback = "Facilitador") {
+  try {
+    const savedRole = window.localStorage.getItem(ROLE_STORAGE_KEY);
+    return normalizeRoleLabel(savedRole || fallback);
+  } catch {
+    return normalizeRoleLabel(fallback);
+  }
+}
+
+function saveRolePreference(role) {
+  try {
+    window.localStorage.setItem(ROLE_STORAGE_KEY, normalizeRoleLabel(role));
+  } catch {
+    // ignore storage issues for the profile selector
+  }
 }
 
 function normalizeState(savedState) {
@@ -2266,11 +2285,11 @@ function bindEvents() {
   });
 
   elements.roleSelect.addEventListener("change", () => {
-    const latest = loadState();
-    state = latest;
-    state.role = normalizeRoleLabel(elements.roleSelect.value);
+    const nextRole = normalizeRoleLabel(elements.roleSelect.value);
+    saveRolePreference(nextRole);
+    hydrateState();
+    state.role = nextRole;
     elements.roleSelect.value = state.role;
-    saveState();
     renderAll();
     showToast(`Perfil activo: ${state.role}.`);
   });
