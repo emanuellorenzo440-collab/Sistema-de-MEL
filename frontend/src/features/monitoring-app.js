@@ -1304,7 +1304,6 @@ function updateRoleUi() {
 }
 
 function renderAll() {
-  hydrateState();
   recomputeIndicatorValues();
   renderFilters();
   updateRoleUi();
@@ -2506,6 +2505,7 @@ export function createMonitoringApp() {
       renderAll();
       bindEvents();
       window.addEventListener("mel:state-synced", () => {
+        hydrateState();
         renderAll();
       });
     },
