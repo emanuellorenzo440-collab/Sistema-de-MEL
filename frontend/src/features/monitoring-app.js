@@ -121,10 +121,13 @@ function normalizeState(savedState) {
   nextState.indicators = mergeByKey(savedState.indicators || [], seedState.indicators, (item) => item.id || item.name);
   nextState.monitoringForms = mergeByKey(savedState.monitoringForms || [], seedState.monitoringForms, (item) => item.id);
   nextState.conceptPapers = mergeByKey(savedState.conceptPapers || [], seedState.conceptPapers, (item) => item.id);
-  nextState.notifications = Array.isArray(savedState.notifications) ? savedState.notifications : [];
-  nextState.reportDrafts = Array.isArray(savedState.reportDrafts) ? savedState.reportDrafts : [];
-  nextState.formSubmissions = savedState.formSubmissions || [];
+  nextState.reports = Array.isArray(savedState.reports) ? savedState.reports.slice() : [];
+  nextState.notifications = Array.isArray(savedState.notifications) ? savedState.notifications.slice() : [];
+  nextState.reportDrafts = Array.isArray(savedState.reportDrafts) ? savedState.reportDrafts.slice() : [];
+  nextState.actions = Array.isArray(savedState.actions) ? savedState.actions.slice() : [];
+  nextState.formSubmissions = Array.isArray(savedState.formSubmissions) ? savedState.formSubmissions.slice() : [];
   nextState.chartPreferences = { ...seedState.chartPreferences, ...(savedState.chartPreferences || {}) };
+  nextState.filters = { ...seedState.filters, ...(savedState.filters || {}) };
   nextState.role = normalizeRoleLabel(nextState.role || seedState.role);
   nextState.designProgram = savedState.designProgram || nextState.programs[0]?.name;
   nextState.formsProgram = savedState.formsProgram || nextState.designProgram || nextState.programs[0]?.name;
