@@ -10,11 +10,13 @@ La fuente final de verdad debe ser la base de datos. El frontend puede guardar i
 2. El sistema muestra permisos y acciones segun ese rol.
 3. El usuario captura o importa datos.
 4. El backend valida formato, rol, programa, indicador y periodo.
-5. El sistema crea reportes en estado Pendiente.
-6. Supervisores validan, aprueban o devuelven reportes.
-7. Los indicadores se actualizan con datos aprobados o con reglas definidas.
-8. Las graficas muestran avances por programa, indicador y periodo.
-9. Cada cambio importante se registra en auditoria.
+5. El sistema crea reportes en estado Pendiente coordinacion.
+6. Coordinador de programa revisa y, si procede, envia el reporte a Program Manager.
+7. Program Manager revisa y, si procede, envia el reporte a Supervision M&E.
+8. Supervision M&E valida calidad, consistencia y evidencia; solo entonces aprueba.
+9. Los indicadores se actualizan solo con datos aprobados por Supervision M&E.
+10. Las graficas muestran avances por programa, indicador y periodo usando la base aprobada por defecto.
+11. Cada cambio importante se registra en auditoria.
 
 ## Entidades principales
 
@@ -35,10 +37,12 @@ La fuente final de verdad debe ser la base de datos. El frontend puede guardar i
 
 - Un reporte siempre pertenece a un programa y a un indicador.
 - Un indicador siempre pertenece a un programa.
-- Un reporte nuevo inicia como Pendiente.
-- Un reporte nuevo debe generar alertas internas para el coordinador de programa y para Supervision M&E.
-- Un reporte nuevo debe crear correos en cola para esos mismos destinatarios, sin bloquear la captura si el proveedor de correo no esta disponible.
-- Solo roles de supervision o liderazgo pueden aprobar reportes.
+- Un reporte nuevo inicia como Pendiente coordinacion.
+- Un reporte nuevo debe generar alerta interna y correo en cola para el coordinador de programa.
+- Cuando Coordinador de programa aprueba, el sistema debe generar alerta y correo para Program Manager.
+- Cuando Program Manager aprueba, el sistema debe generar alerta y correo para Supervision M&E.
+- Solo la aprobacion final de Supervision M&E habilita el reporte para indicadores y analitica ejecutiva.
+- Solo los roles definidos en cada etapa pueden mover el reporte a la siguiente.
 - Una devolucion debe crear o asociar un plan de accion.
 - El sistema debe distinguir carga automatica CSV de archivos de soporte.
 - La importacion automatica debe mapear campos a indicadores.
@@ -49,7 +53,9 @@ La fuente final de verdad debe ser la base de datos. El frontend puede guardar i
 
 Reportes:
 
-- Pendiente
+- Pendiente coordinacion
+- Pendiente Program Manager
+- Pendiente Supervision M&E
 - Aprobado
 - Necesita correccion
 - Rechazado

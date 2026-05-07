@@ -341,6 +341,7 @@ export async function handleReportStatusUpdate(request, response, reportId) {
   sendJson(response, 200, {
     data: result.report,
     historyEntry: result.historyEntry,
+    followUpNotifications: result.followUpNotifications || [],
   });
 }
 

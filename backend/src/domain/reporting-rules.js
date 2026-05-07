@@ -2,15 +2,36 @@ import {
   canReviewReports,
   DEFAULT_ANALYTICS_SCOPE,
   isApprovedReportStatus,
+  LEGACY_PENDING_STATUS,
+  reviewRoleForStatus,
   normalizeAnalyticsScope,
   REPORT_STATUSES,
   REPORT_STATUS_VALUES,
 } from "../../../shared/contracts/reporting.js";
 
 const ALLOWED_TRANSITIONS = {
-  [REPORT_STATUSES.PENDING]: [REPORT_STATUSES.APPROVED, REPORT_STATUSES.NEEDS_CORRECTION, REPORT_STATUSES.REJECTED],
-  [REPORT_STATUSES.NEEDS_CORRECTION]: [REPORT_STATUSES.PENDING, REPORT_STATUSES.APPROVED, REPORT_STATUSES.REJECTED],
-  [REPORT_STATUSES.REJECTED]: [REPORT_STATUSES.PENDING],
+  [LEGACY_PENDING_STATUS]: [
+    REPORT_STATUSES.PENDING_PROGRAM_MANAGER,
+    REPORT_STATUSES.NEEDS_CORRECTION,
+    REPORT_STATUSES.REJECTED,
+  ],
+  [REPORT_STATUSES.PENDING_COORDINATION]: [
+    REPORT_STATUSES.PENDING_PROGRAM_MANAGER,
+    REPORT_STATUSES.NEEDS_CORRECTION,
+    REPORT_STATUSES.REJECTED,
+  ],
+  [REPORT_STATUSES.PENDING_PROGRAM_MANAGER]: [
+    REPORT_STATUSES.PENDING_MEL,
+    REPORT_STATUSES.NEEDS_CORRECTION,
+    REPORT_STATUSES.REJECTED,
+  ],
+  [REPORT_STATUSES.PENDING_MEL]: [
+    REPORT_STATUSES.APPROVED,
+    REPORT_STATUSES.NEEDS_CORRECTION,
+    REPORT_STATUSES.REJECTED,
+  ],
+  [REPORT_STATUSES.NEEDS_CORRECTION]: [REPORT_STATUSES.PENDING_COORDINATION],
+  [REPORT_STATUSES.REJECTED]: [REPORT_STATUSES.PENDING_COORDINATION],
   [REPORT_STATUSES.APPROVED]: [REPORT_STATUSES.NEEDS_CORRECTION, REPORT_STATUSES.REJECTED],
 };
 
@@ -27,8 +48,18 @@ export function validateReportStatusChange(input) {
     return { ok: false, status: 400, error: "Estado de reporte no soportado." };
   }
 
-  if (!canReviewReports(input.actorRole)) {
+  if (!canReviewReports(input.actorRole, input.currentStatus)) {
     return { ok: false, status: 403, error: "Este rol no puede validar reportes." };
+  }
+
+  const expectedRole = reviewRoleForStatus(input.currentStatus);
+  if (expectedRole && expectedRole !== input.actorRole) {
+    return {
+      ok: false,
+      status: 403,
+      error: `Este estado debe ser revisado por ${expectedRole}.`,
+      details: { currentStatus: input.currentStatus, actorRole: input.actorRole, expectedRole },
+    };
   }
 
   const allowedTargets = ALLOWED_TRANSITIONS[input.currentStatus] || [];

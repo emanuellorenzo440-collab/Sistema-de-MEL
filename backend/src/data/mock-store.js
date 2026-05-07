@@ -1,5 +1,5 @@
 import { seedState } from "../../../frontend/src/data/seed-state.js";
-import { REPORT_STATUSES } from "../../../shared/contracts/reporting.js";
+import { REPORT_STATUSES, reviewRoleForStatus } from "../../../shared/contracts/reporting.js";
 
 function slugify(value) {
   return String(value || "")
@@ -59,7 +59,7 @@ function normalizedReport(input = {}) {
     notes: String(input.notes || ""),
     sourceFormId: input.sourceFormId || null,
     submissionId: input.submissionId || null,
-    status: input.status || REPORT_STATUSES.PENDING,
+    status: input.status || REPORT_STATUSES.PENDING_COORDINATION,
     reviewedBy: input.reviewedBy || null,
     reviewedAt: input.reviewedAt || null,
     reviewNote: input.reviewNote || null,
@@ -75,18 +75,23 @@ function contactEmail(name, role) {
 
 function reviewRecipientsForReport(report) {
   const program = programs.find((item) => item.id === report.programId) || programs.find((item) => item.name === report.program);
-  return [
-    {
+  return {
+    "Coordinador de programa": {
       role: "Coordinador de programa",
       name: program?.lead || `Coordinacion ${report.program}`,
       email: program?.coordinatorEmail || contactEmail(program?.lead || report.program, "coordinador"),
     },
-    {
+    "Program Manager": {
+      role: "Program Manager",
+      name: "Program Manager",
+      email: program?.programManagerEmail || "program-manager@pulso-me.local",
+    },
+    "Supervision M&E": {
       role: "Supervision M&E",
       name: "Supervision M&E",
       email: program?.melSupervisorEmail || "supervision-me@pulso-me.local",
     },
-  ];
+  };
 }
 
 function createEmailOutboxItem({ report, notification, recipient }) {
@@ -121,7 +126,11 @@ function createEmailOutboxItem({ report, notification, recipient }) {
 
 function createReviewNotificationsForReport(report) {
   const indicator = indicators.find((item) => item.id === report.indicatorId);
-  return reviewRecipientsForReport(report).map((recipient) => {
+  const reviewRole = reviewRoleForStatus(report.status);
+  const recipient = reviewRecipientsForReport(report)[reviewRole];
+  if (!recipient) return [];
+
+  return [recipient].map((stageRecipient) => {
     const notification = {
       id: `notif-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
       companyId: report.companyId || DEFAULT_COMPANY_ID,
@@ -133,15 +142,15 @@ function createReviewNotificationsForReport(report) {
       message: `${report.owner} envio ${report.value.toLocaleString("es-DO")} para ${indicator?.name || "un indicador"}.`,
       type: "report_review_requested",
       priority: "high",
-      recipientRole: recipient.role,
-      recipientName: recipient.name,
-      recipientEmail: recipient.email,
+      recipientRole: stageRecipient.role,
+      recipientName: stageRecipient.name,
+      recipientEmail: stageRecipient.email,
       status: "unread",
       createdAt: nowIso(),
       readAt: null,
     };
     notifications.unshift(notification);
-    createEmailOutboxItem({ report, notification, recipient });
+    createEmailOutboxItem({ report, notification, recipient: stageRecipient });
     return structuredClone(notification);
   });
 }
@@ -192,6 +201,7 @@ function normalizedProgram(input = {}, existing = {}) {
       existing.primaryPopulation || "Participantes del programa",
     ),
     coordinatorEmail: normalizeString(input.coordinatorEmail, existing.coordinatorEmail || ""),
+    programManagerEmail: normalizeString(input.programManagerEmail, existing.programManagerEmail || ""),
     melSupervisorEmail: normalizeString(input.melSupervisorEmail, existing.melSupervisorEmail || ""),
     indicatorBlueprints: Array.isArray(input.indicatorBlueprints)
       ? structuredClone(input.indicatorBlueprints)
@@ -366,9 +376,11 @@ export function saveReportStatusDecision(reportId, decision = {}) {
   };
 
   reportStatusHistory.unshift(historyEntry);
+  const followUpNotifications = createReviewNotificationsForReport(report);
   return {
     report: structuredClone(report),
     historyEntry: structuredClone(historyEntry),
+    followUpNotifications,
   };
 }
 

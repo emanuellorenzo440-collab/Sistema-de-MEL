@@ -16,6 +16,7 @@ CREATE TABLE programs (
   name TEXT NOT NULL UNIQUE,
   lead TEXT,
   coordinator_email TEXT,
+  program_manager_email TEXT,
   mel_supervisor_email TEXT,
   focus TEXT,
   primary_population TEXT,

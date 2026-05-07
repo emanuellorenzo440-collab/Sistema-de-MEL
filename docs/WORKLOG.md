@@ -71,3 +71,19 @@ Acciones realizadas:
 - Se agregaron endpoints para consultar alertas, marcar alertas como leidas y auditar correos en cola.
 - El frontend ahora muestra bandeja de alertas internas en resumen y supervision.
 - El esquema SQL incorpora `company_id`, `notifications` y `email_outbox` como base multiempresa.
+
+## 2026-05-07
+
+Pedido del usuario:
+
+- Cambiar la aprobacion de reportes a una cadena real: Coordinador de programa, luego Program Manager, luego Supervision M&E.
+- Solo despues de la aprobacion final el reporte debe alimentar graficas, indicadores y datos operativos del diseno de M&E.
+
+Acciones realizadas:
+
+- Se reemplazo el estado unico `Pendiente` por tres estados: `Pendiente coordinacion`, `Pendiente Program Manager` y `Pendiente Supervision M&E`.
+- Se actualizo la validacion del backend para que cada rol solo pueda aprobar la etapa que le corresponde.
+- Las alertas y correos en outbox ahora se generan por etapa y pasan al siguiente aprobador en la cadena.
+- El frontend filtra la cola de revision segun el rol activo y renombra la accion principal segun el siguiente paso.
+- La recomputacion de indicadores en frontend y runtime bridge ahora usa solo reportes aprobados por Supervision M&E.
+- Se agrego correo de Program Manager en la configuracion del programa y en el esquema SQL.

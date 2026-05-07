@@ -44,4 +44,4 @@ node backend/src/server.js
 
 La lectura ejecutiva usa por defecto `scope=approved`. La vista operativa puede pedir `scope=all`, pero no debe reemplazar la lectura validada para direccion.
 
-Cuando un facilitador crea un reporte, el backend genera alertas internas para `Coordinador de programa` y `Supervision M&E`, y deja correos en `email_outbox` para que un proveedor real los envie en una fase de integracion.
+Cuando un facilitador crea un reporte, el backend inicia la cadena `Coordinador de programa -> Program Manager -> Supervision M&E`. Cada paso genera la alerta interna y el correo en `email_outbox` para el siguiente aprobador. Solo la aprobacion final de `Supervision M&E` habilita el reporte para la lectura ejecutiva.

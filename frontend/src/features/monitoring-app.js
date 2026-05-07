@@ -3,6 +3,13 @@ import { $, $$, elements } from "../core/dom.js";
 import { loadStoredState, saveStoredState } from "../core/storage.js";
 import { seedState } from "../data/seed-state.js";
 import {
+  REPORT_STATUSES,
+  canReviewReports,
+  isApprovedReportStatus,
+  isPendingApprovalStatus,
+  reviewRoleForStatus,
+} from "../../../shared/contracts/reporting.js";
+import {
   createApiIndicator,
   createApiProgram,
   deleteApiIndicator,
@@ -58,6 +65,9 @@ function normalizeState(savedState) {
       ...program,
       expectedResults: program.expectedResults || seeded.expectedResults || [],
       primaryPopulation: program.primaryPopulation || seeded.primaryPopulation || "Participantes del programa",
+      coordinatorEmail: program.coordinatorEmail || seeded.coordinatorEmail || "",
+      programManagerEmail: program.programManagerEmail || seeded.programManagerEmail || "",
+      melSupervisorEmail: program.melSupervisorEmail || seeded.melSupervisorEmail || "",
     };
   });
   nextState.indicators = mergeByKey(savedState.indicators || [], seedState.indicators, (item) => item.id || item.name);
@@ -98,6 +108,22 @@ function selectedProgramForIndicatorForm() {
     : state.programs.find((item) => item.name === state.filters.program) || state.programs[0];
 }
 
+function approvedReports() {
+  return state.reports.filter((report) => isApprovedReportStatus(report.status));
+}
+
+function recomputeIndicatorValues() {
+  const totals = approvedReports().reduce((groups, report) => {
+    groups[report.indicatorId] = (groups[report.indicatorId] || 0) + Number(report.value || 0);
+    return groups;
+  }, {});
+
+  state.indicators = state.indicators.map((indicator) => ({
+    ...indicator,
+    value: totals[indicator.id] || 0,
+  }));
+}
+
 function indicatorById(id) {
   return state.indicators.find((indicator) => indicator.id === id);
 }
@@ -120,7 +146,7 @@ function getAnalyticsReports() {
   if (getChartDataScope() === "all") {
     return reports;
   }
-  return reports.filter((report) => report.status === "Aprobado");
+  return reports.filter((report) => isApprovedReportStatus(report.status));
 }
 
 function renderFilters() {
@@ -156,7 +182,7 @@ function renderFilters() {
 }
 
 function canValidate() {
-  return ["Program Manager", "Director Nacional", "Supervision M&E"].includes(state.role);
+  return canReviewReports(state.role || "");
 }
 
 function renderMetrics() {
@@ -164,7 +190,7 @@ function renderMetrics() {
   const totalValue = state.indicators.reduce((sum, indicator) => sum + indicator.value, 0);
   const totalTarget = state.indicators.reduce((sum, indicator) => sum + indicator.target, 0);
   const overallProgress = percent(totalValue, totalTarget);
-  const pending = state.reports.filter((report) => report.status === "Pendiente").length;
+  const pending = state.reports.filter((report) => isPendingApprovalStatus(report.status)).length;
   const riskCount = state.indicators.filter((indicator) => percent(indicator.value, indicator.target) < 70).length;
   const participants = reports.reduce((sum, report) => sum + report.women + report.men, 0);
 
@@ -258,9 +284,26 @@ function renderReports() {
 }
 
 function classForReportStatus(status) {
-  if (status === "Aprobado") return "good";
-  if (status === "Pendiente") return "pending";
+  if (status === REPORT_STATUSES.APPROVED) return "good";
+  if (isPendingApprovalStatus(status)) return "pending";
+  if (status === REPORT_STATUSES.NEEDS_CORRECTION) return "warning";
   return "danger";
+}
+
+function nextApprovalStatusForReport(report) {
+  if (report.status === "Pendiente") return REPORT_STATUSES.PENDING_PROGRAM_MANAGER;
+  if (report.status === REPORT_STATUSES.PENDING_COORDINATION) return REPORT_STATUSES.PENDING_PROGRAM_MANAGER;
+  if (report.status === REPORT_STATUSES.PENDING_PROGRAM_MANAGER) return REPORT_STATUSES.PENDING_MEL;
+  if (report.status === REPORT_STATUSES.PENDING_MEL) return REPORT_STATUSES.APPROVED;
+  return REPORT_STATUSES.APPROVED;
+}
+
+function approvalButtonLabel(report) {
+  if (report.status === "Pendiente") return "Enviar a Program Manager";
+  if (report.status === REPORT_STATUSES.PENDING_COORDINATION) return "Enviar a Program Manager";
+  if (report.status === REPORT_STATUSES.PENDING_PROGRAM_MANAGER) return "Enviar a Supervision M&E";
+  if (report.status === REPORT_STATUSES.PENDING_MEL) return "Aprobar final";
+  return "Aprobar";
 }
 
 function renderIndicators() {
@@ -501,7 +544,8 @@ function renderFormTemplate(form) {
 }
 
 function renderReviewQueue() {
-  const pendingReports = state.reports.filter((report) => report.status !== "Aprobado");
+  const currentRole = state.role || "Facilitador";
+  const pendingReports = state.reports.filter((report) => reviewRoleForStatus(report.status) === currentRole);
   const validationEnabled = canValidate();
   elements.reviewList.innerHTML = pendingReports.length
     ? pendingReports
@@ -526,6 +570,13 @@ function renderReviewQueue() {
         })
         .join("")
     : `<p class="item-meta">No hay reportes pendientes.</p>`;
+
+  pendingReports.forEach((report) => {
+    const button = elements.reviewList.querySelector(`[data-approve="${report.id}"]`);
+    if (button) {
+      button.textContent = approvalButtonLabel(report);
+    }
+  });
 }
 
 function renderNotificationCard(notification) {
@@ -696,7 +747,7 @@ function buildStatusChartSeries(reports) {
     value,
     valueText: Number(value).toLocaleString("es-DO"),
     meta: "reportes en este estado",
-    tone: status === "Aprobado" ? "good" : status === "Necesita correccion" ? "warning" : status === "Rechazado" ? "danger" : "info",
+    tone: status === REPORT_STATUSES.APPROVED ? "good" : status === REPORT_STATUSES.NEEDS_CORRECTION ? "warning" : status === REPORT_STATUSES.REJECTED ? "danger" : "info",
   }));
 }
 
@@ -706,12 +757,12 @@ function buildAutomaticStats(reports) {
   const periodSeries = buildPeriodChartSeries(reports);
   const programSeries = buildProgramChartSeries(reports);
   const statusSeries = buildStatusChartSeries(reports);
-  const approved = reports.filter((report) => report.status === "Aprobado").length;
+  const approved = reports.filter((report) => report.status === REPORT_STATUSES.APPROVED).length;
   const participants = reports.reduce((sum, report) => sum + Number(report.women || 0) + Number(report.men || 0), 0);
   const strongestPeriod = periodSeries.slice().sort((left, right) => right.value - left.value)[0];
   const topPeriod = strongestPeriod?.label || "Sin datos";
   const topProgram = programSeries[0]?.label || "Sin datos";
-  const pendingCount = statusSeries.find((item) => item.label === "Pendiente")?.value || 0;
+  const pendingCount = reports.filter((report) => isPendingApprovalStatus(report.status)).length;
   const approvalRate = reports.length ? Math.round((approved / reports.length) * 100) : 0;
 
   return [
@@ -752,7 +803,7 @@ function buildAnalysisBotInsights(reports) {
   const programSeries = buildProgramChartSeries(reports);
   const indicatorSeries = buildIndicatorChartSeries(reports);
   const statusSeries = buildStatusChartSeries(reports);
-  const pendingCount = statusSeries.find((item) => item.label === "Pendiente")?.value || 0;
+  const pendingCount = reports.filter((report) => isPendingApprovalStatus(report.status)).length;
   const correctionCount = statusSeries.find((item) => item.label === "Necesita correccion")?.value || 0;
   const totalReports = reports.length;
   const trend = buildTrendSummary(periodSeries);
@@ -1118,6 +1169,7 @@ function updateRoleUi() {
 }
 
 function renderAll() {
+  recomputeIndicatorValues();
   renderFilters();
   updateRoleUi();
   renderMetrics();
@@ -1161,20 +1213,27 @@ function showToast(message) {
 function createLocalReviewNotifications(report) {
   const program = state.programs.find((item) => item.name === report.program);
   const indicator = indicatorById(report.indicatorId);
-  const recipients = [
-    {
+  const recipients = {
+    "Coordinador de programa": {
       role: "Coordinador de programa",
       name: program?.lead || `Coordinacion ${report.program}`,
       email: program?.coordinatorEmail || "",
     },
-    {
+    "Program Manager": {
+      role: "Program Manager",
+      name: "Program Manager",
+      email: program?.programManagerEmail || "",
+    },
+    "Supervision M&E": {
       role: "Supervision M&E",
       name: "Supervision M&E",
       email: program?.melSupervisorEmail || "",
     },
-  ];
+  };
+  const recipient = recipients[reviewRoleForStatus(report.status)];
+  if (!recipient) return [];
 
-  return recipients.map((recipient) => ({
+  return [recipient].map((stageRecipient) => ({
     id: `notif-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
     companyId: report.companyId || "org-default",
     programId: report.programId || program?.id || null,
@@ -1185,9 +1244,9 @@ function createLocalReviewNotifications(report) {
     message: `${report.owner} envio ${report.value.toLocaleString("es-DO")} para ${indicator?.name || "un indicador"}.`,
     type: "report_review_requested",
     priority: "high",
-    recipientRole: recipient.role,
-    recipientName: recipient.name,
-    recipientEmail: recipient.email,
+    recipientRole: stageRecipient.role,
+    recipientName: stageRecipient.name,
+    recipientEmail: stageRecipient.email,
     status: "unread",
     createdAt: new Date().toISOString(),
     readAt: null,
@@ -1213,10 +1272,9 @@ function addReport(formData) {
     owner: formData.get("owner"),
     evidence: formData.get("evidence"),
     notes: formData.get("notes"),
-    status: "Pendiente",
+    status: REPORT_STATUSES.PENDING_COORDINATION,
   };
 
-  indicator.value += value;
   state.reports.unshift(newReport);
   state.notifications = [...createLocalReviewNotifications(newReport), ...(state.notifications || [])];
   if (!state.filters.period || state.filters.period === "Todos") {
@@ -1224,7 +1282,7 @@ function addReport(formData) {
   }
   saveState();
   renderAll();
-  showToast("Reporte enviado a supervision.");
+  showToast("Reporte enviado a coordinacion para primera aprobacion.");
 }
 
 function exportCsv() {
@@ -1482,7 +1540,7 @@ function rowsToReports(rows, fileName) {
         owner: record.responsable || metadata.responsable || form.owner,
         evidence: record.evidencia || fileName,
         notes: record.observaciones || `${form.title}: ${mapping.field}`,
-        status: "Pendiente",
+        status: REPORT_STATUSES.PENDING_COORDINATION,
         sourceFormId: form.id,
         submissionId,
       });
@@ -1543,11 +1601,8 @@ function importCompletedForm(file) {
       }
 
       reports.forEach((report) => {
-        const indicator = indicatorById(report.indicatorId);
-        if (indicator) {
-          indicator.value += report.value;
-        }
         state.reports.unshift(report);
+        state.notifications = [...createLocalReviewNotifications(report), ...(state.notifications || [])];
       });
 
       state.formSubmissions.unshift({
@@ -1703,9 +1758,7 @@ function notificationsForActiveRole() {
   return (state.notifications || [])
     .filter((notification) => {
       if (notification.status === "read") return false;
-      if (role === "Supervision M&E") return notification.recipientRole === "Supervision M&E";
-      if (role === "Coordinador de programa") return notification.recipientRole === "Coordinador de programa";
-      return ["Coordinador de programa", "Supervision M&E"].includes(notification.recipientRole);
+      return notification.recipientRole === role;
     })
     .sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || "")));
 }
@@ -1767,6 +1820,9 @@ function resetProgramForm() {
   elements.programBeneficiariesInput.value = 0;
   elements.programBudgetInput.value = "No especificado";
   elements.programProvincesInput.value = "Centros de programa";
+  elements.programCoordinatorEmailInput.value = "";
+  elements.programManagerEmailInput.value = "";
+  elements.programMelSupervisorEmailInput.value = "";
 }
 
 function fillProgramForm(program) {
@@ -1777,6 +1833,7 @@ function fillProgramForm(program) {
   elements.programBudgetInput.value = program.budget;
   elements.programProvincesInput.value = (program.provinces || []).join(", ");
   elements.programCoordinatorEmailInput.value = program.coordinatorEmail || "";
+  elements.programManagerEmailInput.value = program.programManagerEmail || "";
   elements.programMelSupervisorEmailInput.value = program.melSupervisorEmail || "";
   elements.programFocusInput.value = program.focus;
   elements.programPopulationInput.value = program.primaryPopulation || "";
@@ -1791,6 +1848,7 @@ async function saveProgramFromForm(formData) {
     beneficiaries: Number(formData.get("beneficiaries") || 0),
     budget: formData.get("budget"),
     coordinatorEmail: formData.get("coordinatorEmail"),
+    programManagerEmail: formData.get("programManagerEmail"),
     melSupervisorEmail: formData.get("melSupervisorEmail"),
     provinces: String(formData.get("provinces") || "")
       .split(",")
@@ -2010,12 +2068,19 @@ function bindEvents() {
     if (!report) return;
 
     if (approveId) {
-      report.status = "Aprobado";
-      showToast("Reporte aprobado.");
+      report.status = nextApprovalStatusForReport(report);
+      state.notifications = (state.notifications || []).filter((notification) => notification.reportId !== report.id);
+      state.notifications = [...createLocalReviewNotifications(report), ...state.notifications];
+      showToast(
+        report.status === REPORT_STATUSES.APPROVED
+          ? "Reporte aprobado y habilitado para analitica."
+          : `Reporte enviado a ${reviewRoleForStatus(report.status)}.`,
+      );
     }
 
     if (returnId) {
-      report.status = "Necesita correccion";
+      report.status = REPORT_STATUSES.NEEDS_CORRECTION;
+      state.notifications = (state.notifications || []).filter((notification) => notification.reportId !== report.id);
       state.actions.unshift({
         title: `Corregir reporte de ${report.program}`,
         owner: report.owner,

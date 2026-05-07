@@ -13,8 +13,9 @@ Sistema de MEL tiene una base organizada para crecer como producto completo:
 - Analitica ejecutiva definida por defecto sobre reportes aprobados.
 - El frontend ya puede sincronizar reportes y decisiones de revision con la API cuando esta disponible.
 - El frontend ya puede cargar, crear, editar y eliminar programas e indicadores usando la API cuando esta disponible.
-- Cuando entra un reporte nuevo, el backend genera alertas internas para Coordinador de programa y Supervision M&E, mas correos en una outbox auditable.
-- El frontend muestra una bandeja de alertas internas para perfiles de coordinacion y supervision.
+- Cuando entra un reporte nuevo, el backend inicia una cadena de aprobacion: Coordinador de programa, luego Program Manager, luego Supervision M&E.
+- Cada etapa genera su alerta interna y su correo en outbox para el siguiente aprobador.
+- El frontend muestra una bandeja de alertas internas para Coordinador de programa, Program Manager y Supervision M&E.
 - La vista de graficas ya consume el endpoint `analytics/overview` para pintar metricas, comparativas, tendencia y recomendaciones.
 
 ## Como ejecutar frontend
@@ -58,7 +59,7 @@ Endpoints iniciales:
 
 - Si el frontend corre en local, usa por defecto `http://127.0.0.1:8080/api/v1`.
 - Si el frontend corre en otro entorno, puede recibir `?apiBase=...` en la URL.
-- Cuando la API esta disponible, la interfaz arranca con programas, indicadores y reportes remotos, empuja nuevos reportes, importaciones y revisiones al backend y pinta la lectura analitica desde el overview remoto.
+- Cuando la API esta disponible, la interfaz arranca con programas, indicadores, reportes y alertas remotas, empuja nuevos reportes, importaciones y revisiones al backend y pinta la lectura analitica desde el overview remoto.
 
 ## Como validar sintaxis
 
@@ -87,6 +88,7 @@ node --check backend/src/server.js
 - La persistencia del backend actual es en memoria.
 - El CRUD de programas e indicadores ya existe en API, pero todavia no persiste despues de reiniciar el proceso backend.
 - Los correos quedan en outbox; falta conectar un proveedor real como SMTP, SendGrid, Microsoft Graph o Gmail API.
+- El frontend aun conserva fallback local para la cadena de aprobacion cuando no hay API, pero la fuente final de verdad debe ser el backend.
 - El esquema SQL todavia no tiene migrador automatizado.
 - Falta una capa de autenticacion real para reemplazar actorId manual.
 - El dashboard principal todavia conserva logica local en algunas tarjetas, aunque la vista analitica ya sale de la API.

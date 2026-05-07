@@ -49,6 +49,9 @@ Base propuesta para conectar frontend, backend y base de datos.
 {
   "name": "Programa ejemplo",
   "lead": "Coordinacion del programa",
+  "coordinatorEmail": "coordinacion@empresa.org",
+  "programManagerEmail": "pm@empresa.org",
+  "melSupervisorEmail": "supervision-me@empresa.org",
   "provinces": ["Centros de programa"],
   "beneficiaries": 250,
   "budget": "US$ 10,000",
@@ -89,7 +92,7 @@ Base propuesta para conectar frontend, backend y base de datos.
   "men": 0,
   "youth": 24,
   "owner": "Facilitadora local",
-  "status": "Pendiente"
+  "status": "Pendiente coordinacion"
 }
 ```
 
@@ -126,8 +129,8 @@ Base propuesta para conectar frontend, backend y base de datos.
   "data": [
     {
       "id": "email-1714743453000",
-      "toRole": "Supervision M&E",
-      "toEmail": "supervision-me@pulso-me.local",
+      "toRole": "Coordinador de programa",
+      "toEmail": "coordinacion@empresa.org",
       "subject": "Nuevo reporte pendiente de aprobacion - Girls Empowerment",
       "status": "queued"
     }
@@ -139,10 +142,10 @@ Base propuesta para conectar frontend, backend y base de datos.
 
 ```json
 {
-  "status": "Aprobado",
-  "actorId": "usr-supervision",
-  "actorRole": "Supervision M&E",
-  "note": "Datos consistentes con evidencia adjunta"
+  "status": "Pendiente Program Manager",
+  "actorId": "usr-coordinacion",
+  "actorRole": "Coordinador de programa",
+  "note": "Revision operativa completada y enviada al siguiente nivel."
 }
 ```
 

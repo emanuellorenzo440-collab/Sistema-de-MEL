@@ -1,6 +1,7 @@
 import {
   ANALYTICS_SCOPES,
   DEFAULT_ANALYTICS_SCOPE,
+  isPendingApprovalStatus,
   REPORT_STATUSES,
   isApprovedReportStatus,
   normalizeAnalyticsScope,
@@ -200,7 +201,7 @@ export function buildAnalyticsOverview({ programs = [], indicators = [], reports
     totalValue: sum(analyzedReports.map((report) => report.value)),
     participants: sum(analyzedReports.map((report) => asNumber(report.women) + asNumber(report.men))),
     approvedReports: visibleReports.filter((report) => report.status === REPORT_STATUSES.APPROVED).length,
-    pendingReports: visibleReports.filter((report) => report.status === REPORT_STATUSES.PENDING).length,
+    pendingReports: visibleReports.filter((report) => isPendingApprovalStatus(report.status)).length,
     needsCorrectionReports: visibleReports.filter((report) => report.status === REPORT_STATUSES.NEEDS_CORRECTION).length,
   };
 

@@ -1,5 +1,6 @@
 import { STORAGE_KEY } from "../core/config.js";
 import { seedState } from "../data/seed-state.js";
+import { isApprovedReportStatus } from "../../../shared/contracts/reporting.js";
 import {
   createApiReport,
   createApiReportsBulk,
@@ -108,7 +109,7 @@ function recomputeIndicators(state) {
   const nextState = { ...state };
   const indicatorValues = new Map();
 
-  nextState.reports.forEach((report) => {
+  nextState.reports.filter((report) => isApprovedReportStatus(report.status)).forEach((report) => {
     indicatorValues.set(report.indicatorId, (indicatorValues.get(report.indicatorId) || 0) + asNumber(report.value));
   });
 
