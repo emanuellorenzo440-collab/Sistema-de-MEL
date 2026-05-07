@@ -1,6 +1,6 @@
 import { STORAGE_KEY } from "../core/config.js";
 import { seedState } from "../data/seed-state.js";
-import { REPORT_STATUSES, isApprovedReportStatus } from "../../../shared/contracts/reporting.js";
+import { REPORT_STATUSES, isApprovedReportStatus, isPendingApprovalStatus } from "../../../shared/contracts/reporting.js";
 import {
   createApiReport,
   createApiReportsBulk,
@@ -55,6 +55,19 @@ function readStoredState() {
 
 function saveStoredState(state) {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function commitStoredState(state, options = {}) {
+  saveStoredState(state);
+  if (options.broadcast !== false) {
+    window.dispatchEvent(
+      new CustomEvent("mel:state-synced", {
+        detail: {
+          source: options.source || "runtime-bridge",
+        },
+      }),
+    );
+  }
 }
 
 function mergeByKey(savedItems = [], seedItems = [], keyFn) {
@@ -513,7 +526,7 @@ async function pullRemoteReports() {
     ...currentState,
     reports: mergeRemoteReports(currentState.reports, remoteReports),
   });
-  saveStoredState(nextState);
+  commitStoredState(nextState, { source: "pullRemoteReports" });
   return nextState;
 }
 
@@ -524,7 +537,7 @@ async function pullRemoteNotifications() {
     ...currentState,
     notifications: remoteNotifications,
   });
-  saveStoredState(nextState);
+  commitStoredState(nextState, { source: "pullRemoteNotifications" });
   return nextState;
 }
 
@@ -536,7 +549,7 @@ async function pullRemotePlanningData() {
     programs: remotePrograms.length ? remotePrograms : currentState.programs,
     indicators: remoteIndicators.length ? remoteIndicators : currentState.indicators,
   });
-  saveStoredState(nextState);
+  commitStoredState(nextState, { source: "pullRemotePlanningData" });
   return nextState;
 }
 
@@ -561,7 +574,7 @@ async function pushMissingReports() {
     ...state,
     reports: mergeRemoteReports(state.reports, refreshedReports),
   });
-  saveStoredState(nextState);
+  commitStoredState(nextState, { source: "pushMissingReports" });
   return { state: nextState, remoteReports: refreshedReports };
 }
 
@@ -574,7 +587,15 @@ async function pushReviewDecision(reportId) {
   const remoteReport = remoteReports.find((report) => report.id === reportId);
   if (!remoteReport || remoteReport.status === localReport.status) return;
 
-  if (!["Aprobado", "Necesita correccion", "Rechazado", "Pendiente"].includes(localReport.status)) {
+  if (
+    ![
+      REPORT_STATUSES.APPROVED,
+      REPORT_STATUSES.NEEDS_CORRECTION,
+      REPORT_STATUSES.REJECTED,
+      "Pendiente",
+    ].includes(localReport.status) &&
+    !isPendingApprovalStatus(localReport.status)
+  ) {
     return;
   }
 
@@ -591,6 +612,7 @@ async function pushReviewDecision(reportId) {
   });
 
   await pullRemoteReports();
+  await pullRemoteNotifications();
   await refreshAnalyticsOverview();
 }
 

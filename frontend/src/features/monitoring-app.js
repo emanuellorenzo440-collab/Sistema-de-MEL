@@ -32,10 +32,15 @@ import {
   unique,
 } from "../shared/utils.js";
 
-let state = loadState();
+let state = null;
 
 function loadState() {
   return loadStoredState(STORAGE_KEY, seedState, normalizeState);
+}
+
+function hydrateState() {
+  state = loadState();
+  return state;
 }
 
 function normalizeState(savedState) {
@@ -1204,6 +1209,7 @@ function updateRoleUi() {
 }
 
 function renderAll() {
+  hydrateState();
   recomputeIndicatorValues();
   renderFilters();
   updateRoleUi();
@@ -2400,8 +2406,12 @@ function bindEvents() {
 export function createMonitoringApp() {
   return {
     start() {
+      hydrateState();
       renderAll();
       bindEvents();
+      window.addEventListener("mel:state-synced", () => {
+        renderAll();
+      });
     },
   };
 }
