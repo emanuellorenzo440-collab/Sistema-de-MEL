@@ -43,6 +43,30 @@ function hydrateState() {
   return state;
 }
 
+const ROLE_LABELS = {
+  facilitador: "Facilitador",
+  "coordinador de programa": "Coordinador de programa",
+  "program manager": "Program Manager",
+  "director nacional": "Director Nacional",
+  "supervision m&e": "Supervision M&E",
+  "supervision me": "Supervision M&E",
+  "supervisión m&e": "Supervision M&E",
+  supervisor: "Supervision M&E",
+};
+
+function normalizeRoleLabel(value) {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  return ROLE_LABELS[normalized] || String(value || "").trim() || "Facilitador";
+}
+
+function activeRole() {
+  return normalizeRoleLabel(elements.roleSelect?.value || state?.role || "Facilitador");
+}
+
 function normalizeState(savedState) {
   const nextState = { ...structuredClone(seedState), ...savedState };
   const mergeByKey = (savedItems = [], seedItems = [], keyFn) => {
@@ -82,6 +106,7 @@ function normalizeState(savedState) {
   nextState.reportDrafts = Array.isArray(savedState.reportDrafts) ? savedState.reportDrafts : [];
   nextState.formSubmissions = savedState.formSubmissions || [];
   nextState.chartPreferences = { ...seedState.chartPreferences, ...(savedState.chartPreferences || {}) };
+  nextState.role = normalizeRoleLabel(nextState.role || seedState.role);
   nextState.designProgram = savedState.designProgram || nextState.programs[0]?.name;
   nextState.formsProgram = savedState.formsProgram || nextState.designProgram || nextState.programs[0]?.name;
   nextState.selectedConceptPaper = savedState.selectedConceptPaper || nextState.conceptPapers[0]?.id;
@@ -175,7 +200,7 @@ function renderFilters() {
   setOptions(elements.designProgramSelect, programNames, state.designProgram || selectedProgram);
   setOptions(elements.formsProgramSelect, programNames, state.formsProgram || state.designProgram || selectedProgram);
   elements.reportPeriod.value = state.filters.period === "Todos" ? currentMonth() : state.filters.period;
-  elements.roleSelect.value = state.role || "Facilitador";
+  elements.roleSelect.value = normalizeRoleLabel(state.role || "Facilitador");
   if (elements.indicatorChartTypeSelect) {
     elements.indicatorChartTypeSelect.value = state.chartPreferences?.indicatorType || "bars";
   }
@@ -188,7 +213,7 @@ function renderFilters() {
 }
 
 function canValidate() {
-  return canReviewReports(state.role || "");
+  return canReviewReports(activeRole());
 }
 
 function renderMetrics() {
@@ -313,21 +338,23 @@ function approvalButtonLabel(report) {
 }
 
 function reportsAssignedToRole(role) {
+  const currentRole = normalizeRoleLabel(role);
   return state.reports
-    .filter((report) => reviewRoleForStatus(report.status) === role)
+    .filter((report) => reviewRoleForStatus(report.status) === currentRole)
     .sort((left, right) => String(right.date || "").localeCompare(String(left.date || "")));
 }
 
 function inboxReportsForRole(role) {
-  if (!role) return [];
-  if (role === "Facilitador") {
+  const currentRole = normalizeRoleLabel(role);
+  if (!currentRole) return [];
+  if (currentRole === "Facilitador") {
     return state.reports
       .filter((report) => isPendingApprovalStatus(report.status))
       .sort((left, right) => String(right.date || "").localeCompare(String(left.date || "")));
   }
 
-  if (canReviewReports(role)) {
-    return reportsAssignedToRole(role);
+  if (canReviewReports(currentRole)) {
+    return reportsAssignedToRole(currentRole);
   }
 
   return [];
@@ -347,17 +374,18 @@ function formatPendingStageBreakdown(reports) {
 }
 
 function waitingMessageForRole(role) {
-  if (!role || role === "Facilitador") {
+  const currentRole = normalizeRoleLabel(role);
+  if (!currentRole || currentRole === "Facilitador") {
     return "No hay reportes pendientes por seguimiento.";
   }
 
   const pendingReports = state.reports.filter((report) => isPendingApprovalStatus(report.status));
-  const assignedReports = reportsAssignedToRole(role);
+  const assignedReports = reportsAssignedToRole(currentRole);
   if (assignedReports.length) {
     return "No hay reportes pendientes.";
   }
 
-  const earlierStageReports = pendingReports.filter((report) => reviewRoleForStatus(report.status) !== role);
+  const earlierStageReports = pendingReports.filter((report) => reviewRoleForStatus(report.status) !== currentRole);
   if (!earlierStageReports.length) {
     return "No hay reportes pendientes.";
   }
@@ -604,7 +632,7 @@ function renderFormTemplate(form) {
 }
 
 function renderReviewQueue() {
-  const currentRole = state.role || "Facilitador";
+  const currentRole = activeRole();
   const pendingReports = reportsAssignedToRole(currentRole);
   const validationEnabled = canValidate();
   elements.reviewList.innerHTML = pendingReports.length
@@ -698,7 +726,7 @@ function renderReportInboxCard(report, role) {
 }
 
 function renderNotifications() {
-  const role = state.role || "Facilitador";
+  const role = activeRole();
   const inboxReports = inboxReportsForRole(role);
   const visibleNotifications = notificationsForActiveRole();
   const visibleCount = inboxReports.length || visibleNotifications.length;
@@ -1270,7 +1298,7 @@ function renderCharts() {
 }
 
 function updateRoleUi() {
-  const role = state.role || "Facilitador";
+  const role = activeRole();
   elements.roleBadge.textContent = role;
   elements.roleBadge.className = `status-pill ${canValidate() ? "info" : "neutral"}`;
 }
@@ -2026,7 +2054,7 @@ function createFormTemplate(type) {
 }
 
 function notificationsForActiveRole() {
-  const role = state.role || "Facilitador";
+  const role = activeRole();
   if (role === "Facilitador") return [];
   return (state.notifications || [])
     .filter((notification) => {
@@ -2216,7 +2244,8 @@ function bindEvents() {
   });
 
   elements.roleSelect.addEventListener("change", () => {
-    state.role = elements.roleSelect.value;
+    state.role = normalizeRoleLabel(elements.roleSelect.value);
+    elements.roleSelect.value = state.role;
     saveState();
     renderAll();
     showToast(`Perfil activo: ${state.role}.`);
@@ -2235,7 +2264,7 @@ function bindEvents() {
         void (async () => {
           try {
             if (isApiConfigured()) {
-              await markApiNotificationRead(notificationId, { actorId: `local-${slugify(state.role || "usuario")}` });
+              await markApiNotificationRead(notificationId, { actorId: `local-${slugify(activeRole() || "usuario")}` });
             }
             state.notifications = (state.notifications || []).map((notification) =>
               notification.id === notificationId
