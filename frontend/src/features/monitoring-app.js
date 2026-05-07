@@ -114,6 +114,29 @@ function normalizeState(savedState) {
 }
 
 function saveState() {
+  const latest = loadState();
+  const nextState = normalizeState({
+    ...state,
+    reports:
+      Array.isArray(state?.reports) && state.reports.length === 0 && Array.isArray(latest?.reports) && latest.reports.length
+        ? latest.reports
+        : state.reports,
+    notifications:
+      Array.isArray(state?.notifications) &&
+      state.notifications.length === 0 &&
+      Array.isArray(latest?.notifications) &&
+      latest.notifications.length
+        ? latest.notifications
+        : state.notifications,
+    formSubmissions:
+      Array.isArray(state?.formSubmissions) &&
+      state.formSubmissions.length === 0 &&
+      Array.isArray(latest?.formSubmissions) &&
+      latest.formSubmissions.length
+        ? latest.formSubmissions
+        : state.formSubmissions,
+  });
+  state = nextState;
   saveStoredState(STORAGE_KEY, state);
 }
 
@@ -2243,6 +2266,8 @@ function bindEvents() {
   });
 
   elements.roleSelect.addEventListener("change", () => {
+    const latest = loadState();
+    state = latest;
     state.role = normalizeRoleLabel(elements.roleSelect.value);
     elements.roleSelect.value = state.role;
     saveState();
