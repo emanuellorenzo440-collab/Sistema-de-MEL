@@ -74,6 +74,7 @@ function normalizeState(savedState) {
   nextState.monitoringForms = mergeByKey(savedState.monitoringForms || [], seedState.monitoringForms, (item) => item.id);
   nextState.conceptPapers = mergeByKey(savedState.conceptPapers || [], seedState.conceptPapers, (item) => item.id);
   nextState.notifications = Array.isArray(savedState.notifications) ? savedState.notifications : [];
+  nextState.reportDrafts = Array.isArray(savedState.reportDrafts) ? savedState.reportDrafts : [];
   nextState.formSubmissions = savedState.formSubmissions || [];
   nextState.chartPreferences = { ...seedState.chartPreferences, ...(savedState.chartPreferences || {}) };
   nextState.designProgram = savedState.designProgram || nextState.programs[0]?.name;
@@ -1176,6 +1177,7 @@ function renderAll() {
   renderProgramChart();
   renderRisks();
   renderReports();
+  renderReportDrafts();
   renderIndicators();
   renderDesignStudio();
   renderForms();
@@ -1253,6 +1255,175 @@ function createLocalReviewNotifications(report) {
   }));
 }
 
+function queueReportForReview(report) {
+  state.reports.unshift(report);
+  state.notifications = [...createLocalReviewNotifications(report), ...(state.notifications || [])];
+  if (!state.filters.period || state.filters.period === "Todos") {
+    state.filters.period = report.period;
+  }
+}
+
+function botSummaryForDraft(report, formTitle = "Formulario") {
+  const indicator = indicatorById(report.indicatorId);
+  const fragments = [
+    `${formTitle} leido para ${report.program}.`,
+    `Indicador detectado: ${indicator?.name || report.indicatorId}.`,
+    `Valor: ${Number(report.value || 0).toLocaleString("es-DO")}.`,
+    report.notes ? `Observacion base: ${report.notes}.` : "",
+  ].filter(Boolean);
+  return fragments.join(" ");
+}
+
+function clearReportDrafts() {
+  state.reportDrafts = [];
+  saveState();
+  renderAll();
+}
+
+function applyDraftToReportForm(draft) {
+  const indicator = indicatorById(draft.indicatorId);
+  elements.reportProgram.value = draft.program;
+  const indicators = state.indicators.filter((item) => item.program === draft.program);
+  setOptions(elements.reportIndicator, indicators.map((item) => item.name), indicator?.name || indicators[0]?.name);
+  elements.reportProvince.value = draft.province || "Centros de programa";
+  elements.reportPeriod.value = draft.period || currentMonth();
+  document.querySelector("#reportOwner").value = draft.owner || "";
+  document.querySelector("#reportValue").value = draft.value || 0;
+  document.querySelector("#reportWomen").value = draft.women || 0;
+  document.querySelector("#reportMen").value = draft.men || 0;
+  document.querySelector("#reportYouth").value = draft.youth || 0;
+  document.querySelector("#reportEvidence").value = draft.evidence || "";
+  document.querySelector("#reportNotes").value = draft.botSummary || draft.notes || "";
+}
+
+function renderReportDrafts() {
+  const drafts = state.reportDrafts || [];
+  elements.reportDraftList.innerHTML = drafts.length
+    ? drafts
+        .map(
+          (draft, index) => `
+            <article class="draft-item">
+              <div class="draft-top">
+                <div>
+                  <h3>${draft.program}</h3>
+                  <p class="item-meta">${draft.formTitle || "Formulario"} · ${draft.period} · ${draft.sourceFileName}</p>
+                </div>
+                <span class="status-pill info">${indicatorById(draft.indicatorId)?.name || "Indicador"}</span>
+              </div>
+              <p>${draft.botSummary}</p>
+              <div class="coverage">
+                <span>Valor ${Number(draft.value || 0).toLocaleString("es-DO")}</span>
+                <span>${draft.owner || "Sin responsable"}</span>
+                <span>${draft.province || "Centros de programa"}</span>
+              </div>
+              <div class="item-actions">
+                <button type="button" data-apply-draft="${index}">Cargar en captura</button>
+              </div>
+            </article>
+          `,
+        )
+        .join("")
+    : `<p class="item-meta">Sube un formulario del sistema y el asistente preparara borradores de reporte aqui.</p>`;
+}
+
+function buildDraftsFromImportedRows(rows, fileName) {
+  const { form, reports, submissionId } = rowsToReports(rows, fileName);
+  const drafts = reports.map((report) => ({
+    ...report,
+    sourceFileName: fileName,
+    formTitle: form.title,
+    submissionId,
+    botSummary: botSummaryForDraft(report, form.title),
+  }));
+  return { form, drafts, submissionId };
+}
+
+function analyzeReportFormFile(file) {
+  if (!file) {
+    showToast("Selecciona un formulario para leer.");
+    return;
+  }
+
+  const extension = fileExtension(file.name);
+  if (extension !== "csv") {
+    elements.reportUploadStatus.textContent = "Soporte";
+    elements.reportUploadStatus.className = "status-pill warning";
+    elements.reportUploadPreview.innerHTML = `<p class="item-meta">${file.name} se puede guardar como soporte, pero el autocompletado automatico funciona con CSV descargados desde Formularios.</p>`;
+    state.reportDrafts = [];
+    saveState();
+    renderReportDrafts();
+    showToast("Para autocompletar reportes, usa el CSV del sistema.");
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const rows = parseCsv(String(reader.result || ""));
+      const { drafts } = buildDraftsFromImportedRows(rows, file.name);
+      if (!drafts.length) {
+        throw new Error("El formulario fue leido, pero no encontre datos que puedan alimentar la captura.");
+      }
+      state.reportDrafts = drafts;
+      saveState();
+      renderReportDrafts();
+      elements.reportUploadStatus.textContent = `${drafts.length} borradores`;
+      elements.reportUploadStatus.className = "status-pill good";
+      elements.reportUploadPreview.innerHTML = `<p class="item-meta">El asistente leyo ${file.name} y preparo ${drafts.length} borradores para la captura de actividades y metricas.</p>`;
+      applyDraftToReportForm(drafts[0]);
+      showToast("Formulario leido y captura autocompletada.");
+    } catch (error) {
+      elements.reportUploadStatus.textContent = "Error";
+      elements.reportUploadStatus.className = "status-pill danger";
+      elements.reportUploadPreview.innerHTML = `<p class="item-meta">${error.message}</p>`;
+      state.reportDrafts = [];
+      saveState();
+      renderReportDrafts();
+      showToast("No pude leer ese formulario.");
+    }
+  };
+  reader.readAsText(file);
+}
+
+function submitDraftReports() {
+  const drafts = state.reportDrafts || [];
+  if (!drafts.length) {
+    showToast("No hay borradores listos para enviar.");
+    return;
+  }
+
+  drafts.forEach((draft) => {
+    queueReportForReview({
+      ...draft,
+      botSummary: undefined,
+      formTitle: undefined,
+      sourceFileName: undefined,
+    });
+  });
+
+  state.formSubmissions.unshift({
+    id: drafts[0].submissionId || `sub-${Date.now()}`,
+    fileName: drafts[0].sourceFileName || "formulario.csv",
+    formId: drafts[0].sourceFormId || null,
+    formTitle: drafts[0].formTitle || "Formulario importado",
+    program: drafts[0].program,
+    period: drafts[0].period,
+    reportCount: drafts.length,
+    importedAt: new Date().toISOString(),
+    sourceType: "csv",
+    processing: "automatico",
+  });
+
+  state.reportDrafts = [];
+  saveState();
+  renderAll();
+  switchView("supervision");
+  elements.reportUploadStatus.textContent = "Enviados";
+  elements.reportUploadStatus.className = "status-pill good";
+  elements.reportUploadPreview.innerHTML = `<p class="item-meta">${drafts.length} borradores fueron enviados a la cadena de revision.</p>`;
+  showToast("Borradores enviados a revision.");
+}
+
 function addReport(formData) {
   const indicator = state.indicators.find((item) => item.name === formData.get("indicator"));
   const value = Number(formData.get("value"));
@@ -1275,11 +1446,7 @@ function addReport(formData) {
     status: REPORT_STATUSES.PENDING_COORDINATION,
   };
 
-  state.reports.unshift(newReport);
-  state.notifications = [...createLocalReviewNotifications(newReport), ...(state.notifications || [])];
-  if (!state.filters.period || state.filters.period === "Todos") {
-    state.filters.period = newReport.period;
-  }
+  queueReportForReview(newReport);
   saveState();
   renderAll();
   showToast("Reporte enviado a coordinacion para primera aprobacion.");
@@ -1601,8 +1768,7 @@ function importCompletedForm(file) {
       }
 
       reports.forEach((report) => {
-        state.reports.unshift(report);
-        state.notifications = [...createLocalReviewNotifications(report), ...(state.notifications || [])];
+        queueReportForReview(report);
       });
 
       state.formSubmissions.unshift({
@@ -1620,11 +1786,11 @@ function importCompletedForm(file) {
       state.filters.period = reports[0].period;
       saveState();
       renderAll();
-      switchView("charts");
+      switchView("supervision");
       elements.uploadStatus.textContent = `${reports.length} registros`;
       elements.uploadStatus.className = "status-pill good";
-      elements.uploadPreview.innerHTML = `<p class="item-meta">${reports.length} registros importados desde ${file.name}. Las graficas ya fueron actualizadas.</p>`;
-      showToast("Formulario subido y graficas actualizadas.");
+      elements.uploadPreview.innerHTML = `<p class="item-meta">${reports.length} registros importados desde ${file.name}. Ya entraron a la cadena de revision y alimentaran la analitica cuando M&E apruebe.</p>`;
+      showToast("Formulario subido y enviado a revision.");
     } catch (error) {
       elements.uploadStatus.textContent = "Error";
       elements.uploadStatus.className = "status-pill danger";
@@ -1902,6 +2068,32 @@ function bindEvents() {
   $("#clearFormButton").addEventListener("click", () => {
     elements.reportForm.reset();
     elements.reportPeriod.value = state.filters.period === "Todos" ? currentMonth() : state.filters.period;
+  });
+  elements.reportFormUploadInput.addEventListener("change", () => {
+    const file = elements.reportFormUploadInput.files?.[0];
+    elements.reportUploadStatus.textContent = file ? file.name : "Sin archivo";
+    elements.reportUploadStatus.className = `status-pill ${file ? "info" : "neutral"}`;
+  });
+  elements.analyzeReportFormButton.addEventListener("click", () => {
+    analyzeReportFormFile(elements.reportFormUploadInput.files?.[0]);
+  });
+  elements.applyFirstDraftButton.addEventListener("click", () => {
+    const firstDraft = state.reportDrafts?.[0];
+    if (!firstDraft) {
+      showToast("No hay borradores para cargar.");
+      return;
+    }
+    applyDraftToReportForm(firstDraft);
+    showToast("Primer borrador cargado en captura.");
+  });
+  elements.submitDraftReportsButton.addEventListener("click", submitDraftReports);
+  elements.reportDraftList.addEventListener("click", (event) => {
+    const draftIndex = Number(event.target.closest("[data-apply-draft]")?.dataset.applyDraft);
+    if (Number.isNaN(draftIndex)) return;
+    const draft = state.reportDrafts?.[draftIndex];
+    if (!draft) return;
+    applyDraftToReportForm(draft);
+    showToast("Borrador cargado en captura.");
   });
 
   $("#exportButton").addEventListener("click", exportCsv);

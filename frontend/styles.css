@@ -564,6 +564,27 @@ textarea {
   gap: 12px;
 }
 
+.draft-list {
+  display: grid;
+  gap: 12px;
+}
+
+.draft-item {
+  background: #f8faf9;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.draft-top {
+  align-items: start;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
 .notification-list.compact {
   margin-bottom: 14px;
 }

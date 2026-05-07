@@ -1,6 +1,6 @@
 import { STORAGE_KEY } from "../core/config.js";
 import { seedState } from "../data/seed-state.js";
-import { isApprovedReportStatus } from "../../../shared/contracts/reporting.js";
+import { REPORT_STATUSES, isApprovedReportStatus } from "../../../shared/contracts/reporting.js";
 import {
   createApiReport,
   createApiReportsBulk,
@@ -94,6 +94,7 @@ function normalizeState(savedState = {}) {
   nextState.conceptPapers = mergeByKey(savedState.conceptPapers || [], seedState.conceptPapers, (item) => item.id);
   nextState.reports = Array.isArray(savedState.reports) ? savedState.reports.slice() : [];
   nextState.notifications = Array.isArray(savedState.notifications) ? savedState.notifications.slice() : [];
+  nextState.reportDrafts = Array.isArray(savedState.reportDrafts) ? savedState.reportDrafts.slice() : [];
   nextState.actions = Array.isArray(savedState.actions) ? savedState.actions.slice() : [];
   nextState.formSubmissions = Array.isArray(savedState.formSubmissions) ? savedState.formSubmissions.slice() : [];
   nextState.chartPreferences = { ...seedState.chartPreferences, ...(savedState.chartPreferences || {}) };
@@ -164,7 +165,7 @@ function mapLocalReportToApi(report) {
     owner: report.owner,
     evidence: report.evidence || "",
     notes: report.notes || "",
-    status: report.status || "Pendiente",
+    status: report.status || REPORT_STATUSES.PENDING_COORDINATION,
     sourceFormId: report.sourceFormId || null,
     submissionId: report.submissionId || null,
   };

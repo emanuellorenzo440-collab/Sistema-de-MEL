@@ -231,6 +231,32 @@
                 </button>
               </div>
             </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <p class="eyebrow">Asistente de formularios</p>
+                  <h2>Subir y autocompletar reportes</h2>
+                </div>
+                <span class="status-pill neutral" id="reportUploadStatus">Sin archivo</span>
+              </div>
+              <div class="upload-grid">
+                <label class="span-2">
+                  Formulario completado
+                  <input id="reportFormUploadInput" type="file" accept=".csv,text/csv,.xlsx,.xls,.doc,.docx,.pdf,.txt" />
+                </label>
+                <button class="primary-action" id="analyzeReportFormButton" type="button">
+                  <span aria-hidden="true">â—Ž</span>
+                  Leer formulario
+                </button>
+              </div>
+              <div class="upload-preview" id="reportUploadPreview"></div>
+              <div class="draft-list" id="reportDraftList"></div>
+              <div class="form-actions">
+                <button class="ghost-action" id="applyFirstDraftButton" type="button">Cargar primer borrador</button>
+                <button class="primary-action" id="submitDraftReportsButton" type="button">Enviar borradores a revision</button>
+              </div>
+            </section>
           </form>
         </section>
 

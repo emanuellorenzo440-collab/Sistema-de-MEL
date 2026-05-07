@@ -87,3 +87,17 @@ Acciones realizadas:
 - El frontend filtra la cola de revision segun el rol activo y renombra la accion principal segun el siguiente paso.
 - La recomputacion de indicadores en frontend y runtime bridge ahora usa solo reportes aprobados por Supervision M&E.
 - Se agrego correo de Program Manager en la configuracion del programa y en el esquema SQL.
+
+Pedido del usuario:
+
+- Permitir subir en Reportes los formularios ya creados en Formularios.
+- Leer esos formularios y completar automaticamente la captura de actividades y metricas.
+- Usar esa informacion para alimentar luego la cadena de aprobacion, indicadores y graficas.
+
+Acciones realizadas:
+
+- Se agrego un asistente de formularios dentro de la vista Reportes.
+- El asistente lee CSV descargados desde Formularios y genera borradores de reporte.
+- Cada borrador puede cargar automaticamente programa, indicador, periodo, responsable, evidencia y observaciones dentro de la captura manual.
+- Tambien se pueden enviar varios borradores a revision en lote sin reescribir la informacion.
+- La importacion desde Formularios y la nueva carga desde Reportes ahora usan la misma logica de cola de revision.

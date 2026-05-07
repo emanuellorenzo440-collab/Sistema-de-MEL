@@ -16,6 +16,7 @@ Sistema de MEL tiene una base organizada para crecer como producto completo:
 - Cuando entra un reporte nuevo, el backend inicia una cadena de aprobacion: Coordinador de programa, luego Program Manager, luego Supervision M&E.
 - Cada etapa genera su alerta interna y su correo en outbox para el siguiente aprobador.
 - El frontend muestra una bandeja de alertas internas para Coordinador de programa, Program Manager y Supervision M&E.
+- La vista de reportes ya permite subir formularios CSV del sistema, leerlos y convertirlos en borradores que autocompletan la captura antes de enviarlos a revision.
 - La vista de graficas ya consume el endpoint `analytics/overview` para pintar metricas, comparativas, tendencia y recomendaciones.
 
 ## Como ejecutar frontend
