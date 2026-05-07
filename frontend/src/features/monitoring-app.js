@@ -307,6 +307,39 @@ function approvalButtonLabel(report) {
   return "Aprobar";
 }
 
+function formatPendingStageBreakdown(reports) {
+  const counts = reports.reduce((groups, report) => {
+    const reviewRole = reviewRoleForStatus(report.status);
+    if (!reviewRole) return groups;
+    groups[reviewRole] = (groups[reviewRole] || 0) + 1;
+    return groups;
+  }, {});
+
+  return Object.entries(counts)
+    .map(([role, total]) => `${total} en ${role}`)
+    .join(", ");
+}
+
+function waitingMessageForRole(role) {
+  if (!role || role === "Facilitador") {
+    return "No hay reportes pendientes.";
+  }
+
+  const pendingReports = state.reports.filter((report) => isPendingApprovalStatus(report.status));
+  const assignedReports = pendingReports.filter((report) => reviewRoleForStatus(report.status) === role);
+  if (assignedReports.length) {
+    return "No hay reportes pendientes.";
+  }
+
+  const earlierStageReports = pendingReports.filter((report) => reviewRoleForStatus(report.status) !== role);
+  if (!earlierStageReports.length) {
+    return "No hay reportes pendientes.";
+  }
+
+  const breakdown = formatPendingStageBreakdown(earlierStageReports);
+  return `Todavia no te llego ningun reporte. Siguen en etapas previas: ${breakdown}.`;
+}
+
 function renderIndicators() {
   const programIndicators =
     state.filters.program === "Todos"
@@ -570,7 +603,7 @@ function renderReviewQueue() {
           `;
         })
         .join("")
-    : `<p class="item-meta">No hay reportes pendientes.</p>`;
+    : `<p class="item-meta">${waitingMessageForRole(currentRole)}</p>`;
 
   pendingReports.forEach((report) => {
     const button = elements.reviewList.querySelector(`[data-approve="${report.id}"]`);
@@ -604,14 +637,15 @@ function renderNotifications() {
   const countText = `${visibleNotifications.length} pendiente${visibleNotifications.length === 1 ? "" : "s"}`;
   elements.notificationCount.textContent = countText;
   elements.notificationCount.className = `status-pill ${visibleNotifications.length ? "warning" : "good"}`;
+  const waitingMessage = waitingMessageForRole(state.role || "Facilitador");
   const markup = visibleNotifications.length
     ? visibleNotifications.slice(0, 6).map(renderNotificationCard).join("")
-    : `<p class="item-meta">No hay alertas pendientes para tu perfil.</p>`;
+    : `<p class="item-meta">${waitingMessage}</p>`;
 
   elements.notificationList.innerHTML = markup;
   elements.supervisionNotificationList.innerHTML = visibleNotifications.length
     ? visibleNotifications.slice(0, 3).map(renderNotificationCard).join("")
-    : `<p class="item-meta">Sin alertas internas pendientes.</p>`;
+    : `<p class="item-meta">${waitingMessage}</p>`;
 }
 
 function renderActions() {
