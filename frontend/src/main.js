@@ -1,4 +1,4 @@
-import { initializeAccessLobby } from "./features/access-lobby.js?v=20260508c";
+import { initializeAccessLobby } from "./features/access-lobby.js?v=20260508d";
 import { createMonitoringApp } from "./features/monitoring-app.js?v=20260508a";
 import { bootstrapApiBridge, startRuntimeBridge } from "./services/mel-runtime-bridge.js?v=20260508a";
 

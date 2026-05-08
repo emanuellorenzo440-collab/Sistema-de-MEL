@@ -81,6 +81,5 @@ export const elements = {
   programGrid: $("#programGrid"),
   accessRequestCount: $("#accessRequestCount"),
   accessUserGrid: $("#accessUserGrid"),
-  accessEmailLog: $("#accessEmailLog"),
   toast: $("#toast"),
 };

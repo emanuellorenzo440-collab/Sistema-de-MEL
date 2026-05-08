@@ -15,7 +15,6 @@ import {
   getAllowedRoles,
   getCurrentUser,
   getSessionRole,
-  listAuthEmails,
   listManagedUsers,
   listVisibleViews,
   setSessionRole,
@@ -890,18 +889,17 @@ function renderPrograms() {
 }
 
 function renderAccessWorkspace() {
-  if (!elements.accessUserGrid || !elements.accessEmailLog || !elements.accessRequestCount) return;
+  if (!elements.accessUserGrid || !elements.accessRequestCount) return;
 
   if (!viewIsEnabled("access")) {
     elements.accessRequestCount.textContent = "Sin acceso";
     elements.accessRequestCount.className = "status-pill neutral";
     elements.accessUserGrid.innerHTML = `<p class="item-meta">Solo supervision M&E puede administrar accesos.</p>`;
-    elements.accessEmailLog.innerHTML = `<p class="item-meta">No tienes permiso para ver la bandeja de verificacion.</p>`;
     return;
   }
 
   void (async () => {
-    const [users, emails] = await Promise.all([listManagedUsers(), listAuthEmails()]);
+    const users = await listManagedUsers();
     const pendingCount = users.filter((user) => user.status === "pending_approval").length;
     elements.accessRequestCount.textContent = `${pendingCount} pendiente${pendingCount === 1 ? "" : "s"}`;
     elements.accessRequestCount.className = `status-pill ${pendingCount ? "warning" : "good"}`;
@@ -972,29 +970,6 @@ function renderAccessWorkspace() {
           })
           .join("")
       : `<p class="item-meta">Todavia no hay usuarios registrados.</p>`;
-
-    elements.accessEmailLog.innerHTML = emails.length
-      ? emails
-          .slice(0, 8)
-          .map(
-            (email) => `
-              <article class="delivery-item">
-                <div class="delivery-top">
-                  <strong>${email.toEmail}</strong>
-                  <span class="status-pill info">${email.type === "verification" ? "Verificacion" : "Recuperacion"}</span>
-                </div>
-                <p class="item-meta">${email.subject}</p>
-                ${
-                  email.type === "verification"
-                    ? `<a class="primary-action delivery-link" href="${email.previewLink || "#"}">Abrir enlace de verificacion</a>`
-                    : `<div class="delivery-code">${email.previewCode}</div>`
-                }
-                <p class="item-meta">Expira: ${new Date(email.expiresAt).toLocaleString("es-DO")}</p>
-              </article>
-            `,
-          )
-          .join("")
-      : `<p class="item-meta">Todavia no se han emitido correos de verificacion o recuperacion.</p>`;
   })().catch((error) => {
     console.error(error);
     elements.accessUserGrid.innerHTML = `<p class="item-meta">No pude cargar los accesos.</p>`;

@@ -2,8 +2,6 @@ import {
   SYSTEM_ROLES,
   ensureAuthState,
   getCurrentUser,
-  getDemoSupervisorCredentials,
-  listAuthEmails,
   onAuthStateChange,
   requestPasswordReset,
   resetPassword,
@@ -39,38 +37,6 @@ function showSection(sectionId) {
   });
 }
 
-async function renderDeliveryPreview(targetEmail = "") {
-  const container = $("#authDeliveryList");
-  if (!container) return;
-
-  const emails = await listAuthEmails(targetEmail ? { toEmail: targetEmail } : {});
-  if (!emails.length) {
-    container.innerHTML = `<p class="item-meta">Todavia no hay codigos emitidos.</p>`;
-    return;
-  }
-
-  container.innerHTML = emails
-    .slice(0, 4)
-    .map(
-      (email) => `
-        <article class="delivery-item">
-          <div class="delivery-top">
-            <strong>${email.toEmail}</strong>
-            <span class="status-pill info">${email.type === "verification" ? "Verificacion" : "Recuperacion"}</span>
-          </div>
-          <p class="item-meta">${email.subject}</p>
-          ${
-            email.type === "verification"
-              ? `<a class="primary-action delivery-link" href="${email.previewLink || "#"}">Abrir enlace de verificacion</a>`
-              : `<div class="delivery-code">${email.previewCode}</div>`
-          }
-          <p class="item-meta">Expira: ${new Date(email.expiresAt).toLocaleString("es-DO")}</p>
-        </article>
-      `,
-    )
-    .join("");
-}
-
 async function consumeVerificationLink() {
   const url = new URL(window.location.href);
   const token = url.searchParams.get("verifyToken");
@@ -104,15 +70,6 @@ async function updateLobbyVisibility() {
   } else {
     onSignedOutCallback();
   }
-}
-
-function fillDemoCredentials() {
-  const credentials = getDemoSupervisorCredentials();
-  const emailInput = $("#signinEmail");
-  const passwordInput = $("#signinPassword");
-  if (emailInput) emailInput.value = credentials.email;
-  if (passwordInput) passwordInput.value = credentials.password;
-  showToastMessage("Credenciales de supervision cargadas.");
 }
 
 function bindLobbyEvents() {
@@ -159,7 +116,6 @@ function bindLobbyEvents() {
           password,
           requestedRole: formData.get("requestedRole"),
         });
-        await renderDeliveryPreview(result.email);
         showSection("signin");
         showToastMessage("Registro creado. Te envie un enlace de verificacion.");
       } catch (error) {
@@ -177,7 +133,6 @@ function bindLobbyEvents() {
           email: formData.get("email"),
         });
         $("#resetEmail").value = result.email;
-        await renderDeliveryPreview(result.email);
         $("#forgotResetBox").hidden = false;
         showToastMessage("Codigo de recuperacion emitido.");
       } catch (error) {
@@ -203,7 +158,6 @@ function bindLobbyEvents() {
           code: formData.get("code"),
           password,
         });
-        await renderDeliveryPreview(formData.get("email"));
         showSection("signin");
         showToastMessage("Contrasena actualizada.");
       } catch (error) {
@@ -239,11 +193,9 @@ export async function initializeAccessLobby({ onAuthenticated, onSignedOut } = {
   bindLobbyEvents();
   showSection("signin");
   $("#forgotResetBox").hidden = true;
-  await renderDeliveryPreview();
   await updateLobbyVisibility();
 
   onAuthStateChange(async () => {
-    await renderDeliveryPreview($("#signupEmail")?.value || $("#resetEmail")?.value || $("#forgotEmail")?.value || "");
     await updateLobbyVisibility();
   });
 }
