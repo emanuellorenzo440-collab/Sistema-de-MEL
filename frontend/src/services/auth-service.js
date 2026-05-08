@@ -54,6 +54,12 @@ const SEEDED_ACCESS_MANAGER = {
   fullName: "L Lorenzo",
 };
 
+const SEEDED_FACILITATOR_APUJOLS = {
+  email: "apujols@convoyofhope.org",
+  password: "Facilitador2026!",
+  fullName: "A Pujols",
+};
+
 const SEEDED_ACCOUNTS_CREATED_AT = "2026-05-08T00:00:00.000Z";
 let presetAccountTemplatesPromise = null;
 
@@ -169,7 +175,8 @@ async function getPresetAccountTemplates() {
     presetAccountTemplatesPromise = Promise.all([
       sha256(DEMO_SUPERVISOR.password),
       sha256(SEEDED_ACCESS_MANAGER.password),
-    ]).then(([supervisorPasswordHash, accessManagerPasswordHash]) => [
+      sha256(SEEDED_FACILITATOR_APUJOLS.password),
+    ]).then(([supervisorPasswordHash, accessManagerPasswordHash, apujolsPasswordHash]) => [
       {
         id: "usr-supervision-root",
         fullName: DEMO_SUPERVISOR.fullName,
@@ -195,6 +202,19 @@ async function getPresetAccountTemplates() {
         viewPermissions: VIEW_DEFINITIONS.map((view) => view.id),
         verifiedAt: SEEDED_ACCOUNTS_CREATED_AT,
         accessNote: "Cuenta habilitada para revisar solicitudes y administrar accesos.",
+      },
+      {
+        id: "usr-apujols-facilitator",
+        fullName: SEEDED_FACILITATOR_APUJOLS.fullName,
+        email: SEEDED_FACILITATOR_APUJOLS.email,
+        passwordHash: apujolsPasswordHash,
+        status: "active",
+        systemRole: "Facilitador",
+        requestedRole: "Facilitador",
+        allowedRoles: ["Facilitador"],
+        viewPermissions: defaultPermissionsForRole("Facilitador"),
+        verifiedAt: SEEDED_ACCOUNTS_CREATED_AT,
+        accessNote: "Cuenta facilitadora configurada para iniciar sesion directamente.",
       },
     ]);
   }

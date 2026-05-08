@@ -9,7 +9,7 @@ import {
   signOutUser,
   signUpUser,
   verifyRegisteredUserByLink,
-} from "../services/auth-service.js?v=20260508u";
+} from "../services/auth-service.js?v=20260508v";
 
 const sections = ["signin", "signup", "forgot"];
 let wired = false;
