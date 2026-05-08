@@ -61,6 +61,7 @@ const SEEDED_FACILITATOR_APUJOLS = {
 };
 
 const SEEDED_ACCOUNTS_CREATED_AT = "2026-05-08T00:00:00.000Z";
+const PRESET_ACCOUNT_VERSION = 2;
 let presetAccountTemplatesPromise = null;
 
 function clone(value) {
@@ -111,6 +112,12 @@ function dispatchAuthChange(type, detail = {}) {
     }),
   );
 }
+
+window.addEventListener("storage", (event) => {
+  if (event.key === AUTH_STORAGE_KEY || event.key === AUTH_SESSION_KEY) {
+    dispatchAuthChange("storage-synced", { session: readStoredAuthState()?.session || null });
+  }
+});
 
 async function sha256(value) {
   const source = String(value || "");
@@ -257,6 +264,7 @@ function normalizeAuthState(rawState = {}) {
     users: Array.isArray(rawState.users) ? rawState.users.map(normalizeUser) : [],
     emailOutbox: Array.isArray(rawState.emailOutbox) ? rawState.emailOutbox.slice() : [],
     session: rawState.session || null,
+    presetAccountVersion: Number(rawState.presetAccountVersion || 0),
   };
 
   if (state.session?.userId) {
@@ -352,6 +360,7 @@ async function buildSeedAuthState() {
     })),
     emailOutbox: [],
     session: null,
+    presetAccountVersion: PRESET_ACCOUNT_VERSION,
   });
 }
 
@@ -361,19 +370,21 @@ async function ensurePresetUsers(state) {
 
   const nextState = normalizeAuthState(state);
   let changed = false;
+  const shouldApplyPresetMigration = nextState.presetAccountVersion < PRESET_ACCOUNT_VERSION;
   presets.forEach((preset) => {
     const index = nextState.users.findIndex((user) => user.email === preset.email);
     if (index >= 0) {
       const existing = nextState.users[index];
       const shouldUpdate =
-        existing.passwordHash !== preset.passwordHash ||
-        existing.status !== preset.status ||
-        existing.systemRole !== preset.systemRole ||
-        JSON.stringify(existing.allowedRoles || []) !== JSON.stringify(preset.allowedRoles || []) ||
-        JSON.stringify(existing.viewPermissions || []) !== JSON.stringify(preset.viewPermissions || []) ||
-        existing.verifiedAt !== preset.verifiedAt ||
-        existing.accessNote !== preset.accessNote ||
-        existing.fullName !== preset.fullName;
+        shouldApplyPresetMigration &&
+        (existing.passwordHash !== preset.passwordHash ||
+          existing.status !== preset.status ||
+          existing.systemRole !== preset.systemRole ||
+          JSON.stringify(existing.allowedRoles || []) !== JSON.stringify(preset.allowedRoles || []) ||
+          JSON.stringify(existing.viewPermissions || []) !== JSON.stringify(preset.viewPermissions || []) ||
+          existing.verifiedAt !== preset.verifiedAt ||
+          existing.accessNote !== preset.accessNote ||
+          existing.fullName !== preset.fullName);
 
       if (shouldUpdate) {
         nextState.users[index] = normalizeUser({
@@ -397,6 +408,11 @@ async function ensurePresetUsers(state) {
       }),
     );
   });
+
+  if (nextState.presetAccountVersion !== PRESET_ACCOUNT_VERSION) {
+    nextState.presetAccountVersion = PRESET_ACCOUNT_VERSION;
+    changed = true;
+  }
 
   return {
     state: normalizeAuthState(nextState),
@@ -807,9 +823,13 @@ export async function updateManagedUserAccess(userId, updates = {}) {
   }
 
   if (state.session?.userId === user.id) {
-    state.session.activeRole = user.allowedRoles.includes(state.session.activeRole)
-      ? state.session.activeRole
-      : user.systemRole;
+    if (user.status !== "active") {
+      state.session = null;
+    } else {
+      state.session.activeRole = user.allowedRoles.includes(state.session.activeRole)
+        ? state.session.activeRole
+        : user.systemRole;
+    }
   }
 
   writeStoredAuthState(state, "access-updated");
