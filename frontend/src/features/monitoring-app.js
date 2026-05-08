@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260507i";
-import { $, $$, elements } from "../core/dom.js?v=20260508s";
+import { $, $$, elements } from "../core/dom.js?v=20260508t";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260507i";
 import { seedState } from "../data/seed-state.js?v=20260507i";
 import {
@@ -19,7 +19,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260508s";
+} from "../services/auth-service.js?v=20260508t";
 import {
   createApiIndicator,
   createApiProgram,
@@ -272,10 +272,10 @@ function renderFilters() {
   setOptions(elements.formsProgramSelect, programNames, state.formsProgram || state.designProgram || selectedProgram);
   elements.reportPeriod.value = state.filters.period === "Todos" ? currentMonth() : state.filters.period;
   const sessionRole = normalizeRoleLabel(state.role || currentUser?.systemRole || "Facilitador");
-  setOptions(elements.roleSelect, SYSTEM_ROLES, sessionRole);
-  elements.roleSelect.disabled = false;
+  setOptions(elements.roleSelect, [sessionRole], sessionRole);
+  elements.roleSelect.disabled = true;
   elements.roleSelect.value = sessionRole;
-  elements.roleSelect.setAttribute("aria-label", `Perfil de usuario: ${sessionRole}`);
+  elements.roleSelect.setAttribute("aria-label", `Perfil fijo del usuario: ${sessionRole}`);
   if (elements.currentUserName) {
     elements.currentUserName.textContent = currentUser?.fullName || "Sin sesion";
   }
@@ -298,15 +298,15 @@ function renderFilters() {
 }
 
 function canValidate() {
-  return true;
+  return isSystemAdminRole() || canReviewReports(activeRole());
 }
 
 function isSystemAdminRole(role = activeRole()) {
-  return true;
+  return normalizeRoleLabel(role) === "Supervision M&E";
 }
 
 function viewIsEnabled(viewId) {
-  return true;
+  return isSystemAdminRole() || currentUserViews.includes(viewId);
 }
 
 function renderMetrics() {
@@ -1553,12 +1553,17 @@ function activeViewName() {
 
 function applyAccessControl() {
   $$(".nav-item").forEach((button) => {
-    button.hidden = false;
+    button.hidden = !viewIsEnabled(button.dataset.view);
   });
 
   const quickReportButton = $("#quickReportButton");
   if (quickReportButton) {
-    quickReportButton.hidden = false;
+    quickReportButton.hidden = !viewIsEnabled("report");
+  }
+
+  const currentView = activeViewName();
+  if (!viewIsEnabled(currentView)) {
+    switchView(firstAllowedView());
   }
 }
 
@@ -1597,6 +1602,9 @@ function switchView(viewName) {
     programs: "Programas",
     access: "Usuarios y accesos",
   };
+  if (!viewIsEnabled(viewName)) {
+    viewName = firstAllowedView();
+  }
   $$(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.view === viewName));
   $$(".view").forEach((panel) => panel.classList.toggle("active", panel.dataset.viewPanel === viewName));
   if (elements.globalFilters) {
@@ -2507,14 +2515,6 @@ function bindEvents() {
     });
   });
 
-  elements.roleSelect.addEventListener("change", () => {
-    state.role = normalizeRoleLabel(elements.roleSelect.value);
-    saveRolePreference(state.role);
-    saveState();
-    renderAll();
-    showToast(`Perfil activo: ${state.role}.`);
-  });
-
   [elements.notificationList, elements.supervisionNotificationList].forEach((list) => {
     list.addEventListener("click", (event) => {
       const reportId = event.target.closest("[data-open-report]")?.dataset.openReport;
@@ -2776,7 +2776,6 @@ function bindEvents() {
             systemRole,
             status: formData.get("status"),
             allowedRoles: [systemRole],
-            viewPermissions: VIEW_DEFINITIONS.map((view) => view.id),
             accessNote: formData.get("accessNote"),
           });
           event.target.reset();
