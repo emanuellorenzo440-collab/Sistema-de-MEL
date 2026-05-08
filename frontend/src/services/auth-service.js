@@ -47,6 +47,12 @@ const DEMO_SUPERVISOR = {
   fullName: "Supervision MEL",
 };
 
+const SEEDED_ACCESS_MANAGER = {
+  email: "llorenzo@convoyofhope.org",
+  password: "ConvoyHope2026!",
+  fullName: "L Lorenzo",
+};
+
 function clone(value) {
   return structuredClone(value);
 }
@@ -227,6 +233,7 @@ function writeStoredAuthState(state, eventType = "updated") {
 async function buildSeedAuthState() {
   const timestamp = nowIso();
   const passwordHash = await sha256(DEMO_SUPERVISOR.password);
+  const accessManagerPasswordHash = await sha256(SEEDED_ACCESS_MANAGER.password);
   return normalizeAuthState({
     users: [
       {
@@ -245,20 +252,116 @@ async function buildSeedAuthState() {
         updatedAt: timestamp,
         accessNote: "Cuenta inicial para gestionar accesos del sistema.",
       },
+      {
+        id: "usr-llorenzo-access",
+        fullName: SEEDED_ACCESS_MANAGER.fullName,
+        email: SEEDED_ACCESS_MANAGER.email,
+        passwordHash: accessManagerPasswordHash,
+        status: "active",
+        systemRole: "Supervision M&E",
+        requestedRole: "Supervision M&E",
+        allowedRoles: ["Supervision M&E"],
+        viewPermissions: VIEW_DEFINITIONS.map((view) => view.id),
+        verifiedAt: timestamp,
+        lastLoginAt: null,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        accessNote: "Cuenta habilitada para revisar solicitudes y administrar accesos.",
+      },
     ],
     emailOutbox: [],
     session: null,
   });
 }
 
+async function ensurePresetUsers(state) {
+  const timestamp = nowIso();
+  const presets = [
+    {
+      id: "usr-supervision-root",
+      fullName: DEMO_SUPERVISOR.fullName,
+      email: DEMO_SUPERVISOR.email,
+      passwordHash: await sha256(DEMO_SUPERVISOR.password),
+      status: "active",
+      systemRole: "Supervision M&E",
+      requestedRole: "Supervision M&E",
+      allowedRoles: ["Supervision M&E"],
+      viewPermissions: VIEW_DEFINITIONS.map((view) => view.id),
+      verifiedAt: timestamp,
+      accessNote: "Cuenta inicial para gestionar accesos del sistema.",
+    },
+    {
+      id: "usr-llorenzo-access",
+      fullName: SEEDED_ACCESS_MANAGER.fullName,
+      email: SEEDED_ACCESS_MANAGER.email,
+      passwordHash: await sha256(SEEDED_ACCESS_MANAGER.password),
+      status: "active",
+      systemRole: "Supervision M&E",
+      requestedRole: "Supervision M&E",
+      allowedRoles: ["Supervision M&E"],
+      viewPermissions: VIEW_DEFINITIONS.map((view) => view.id),
+      verifiedAt: timestamp,
+      accessNote: "Cuenta habilitada para revisar solicitudes y administrar accesos.",
+    },
+  ];
+
+  const nextState = normalizeAuthState(state);
+  let changed = false;
+  presets.forEach((preset) => {
+    const index = nextState.users.findIndex((user) => user.email === preset.email);
+    if (index >= 0) {
+      const existing = nextState.users[index];
+      const shouldUpdate =
+        existing.passwordHash !== preset.passwordHash ||
+        existing.status !== preset.status ||
+        existing.systemRole !== preset.systemRole ||
+        JSON.stringify(existing.allowedRoles || []) !== JSON.stringify(preset.allowedRoles || []) ||
+        JSON.stringify(existing.viewPermissions || []) !== JSON.stringify(preset.viewPermissions || []) ||
+        existing.verifiedAt !== preset.verifiedAt ||
+        existing.accessNote !== preset.accessNote ||
+        existing.fullName !== preset.fullName;
+
+      if (shouldUpdate) {
+        nextState.users[index] = normalizeUser({
+          ...existing,
+          ...preset,
+          id: existing.id || preset.id,
+          createdAt: existing.createdAt || timestamp,
+          updatedAt: timestamp,
+        });
+        changed = true;
+      }
+      return;
+    }
+
+    changed = true;
+    nextState.users.push(
+      normalizeUser({
+        ...preset,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }),
+    );
+  });
+
+  return {
+    state: normalizeAuthState(nextState),
+    changed,
+  };
+}
+
 export async function ensureAuthState() {
   const existing = readStoredAuthState();
   if (existing) {
-    return existing;
+    const hydrated = await ensurePresetUsers(existing);
+    if (hydrated.changed) {
+      return writeStoredAuthState(hydrated.state, "seeded");
+    }
+    return hydrated.state;
   }
 
-  const seeded = await buildSeedAuthState();
-  return writeStoredAuthState(seeded, "seeded");
+  const seeded = await ensurePresetUsers(await buildSeedAuthState());
+  return writeStoredAuthState(seeded.state, "seeded");
 }
 
 export async function getAuthState() {
@@ -603,4 +706,8 @@ export function onAuthStateChange(listener) {
 
 export function getDemoSupervisorCredentials() {
   return clone(DEMO_SUPERVISOR);
+}
+
+export function getSeededAccessManagerCredentials() {
+  return clone(SEEDED_ACCESS_MANAGER);
 }

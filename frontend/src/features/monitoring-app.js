@@ -19,7 +19,7 @@ import {
   listVisibleViews,
   setSessionRole,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260508b";
+} from "../services/auth-service.js?v=20260508e";
 import {
   createApiIndicator,
   createApiProgram,
@@ -900,75 +900,123 @@ function renderAccessWorkspace() {
 
   void (async () => {
     const users = await listManagedUsers();
+    const groups = [
+      { key: "pending_verification", label: "Solicitudes nuevas", empty: "No hay usuarios pendientes de verificacion." },
+      { key: "pending_approval", label: "Pendientes de aprobacion", empty: "No hay usuarios esperando aprobacion." },
+      { key: "active", label: "Usuarios activos", empty: "No hay usuarios activos." },
+      { key: "suspended", label: "Usuarios suspendidos", empty: "No hay usuarios suspendidos." },
+    ];
     const pendingCount = users.filter((user) => user.status === "pending_approval").length;
     elements.accessRequestCount.textContent = `${pendingCount} pendiente${pendingCount === 1 ? "" : "s"}`;
     elements.accessRequestCount.className = `status-pill ${pendingCount ? "warning" : "good"}`;
 
-    elements.accessUserGrid.innerHTML = users.length
-      ? users
-          .map((user) => {
-            const allowedRoleMarkup = SYSTEM_ROLES.map(
-              (role) => `
-                <label class="access-chip">
-                  <input type="checkbox" name="allowedRoles" value="${role}" ${user.allowedRoles.includes(role) ? "checked" : ""} />
-                  <span>${role}</span>
-                </label>
-              `,
-            ).join("");
-            const permissionMarkup = VIEW_DEFINITIONS.map(
-              (view) => `
-                <label class="access-chip">
-                  <input type="checkbox" name="viewPermissions" value="${view.id}" ${user.viewPermissions.includes(view.id) ? "checked" : ""} />
-                  <span>${view.label}</span>
-                </label>
-              `,
-            ).join("");
-
+    const summaryMarkup = `
+      <div class="access-summary-grid">
+        ${groups
+          .map((group) => {
+            const total = users.filter((user) => user.status === group.key).length;
+            const tone = group.key === "active" ? "good" : total ? "warning" : "neutral";
             return `
-              <form class="user-access-card" data-user-access-form="${user.id}">
-                <div class="user-access-top">
-                  <div>
-                    <h3>${user.fullName}</h3>
-                    <p class="item-meta">${user.email}</p>
-                  </div>
-                  <span class="status-pill ${user.status === "active" ? "good" : user.status === "suspended" ? "danger" : "warning"}">${user.status}</span>
-                </div>
-                <div class="access-card-grid">
-                  <label>
-                    Rol principal
-                    <select name="systemRole">
-                      ${SYSTEM_ROLES.map((role) => `<option value="${role}" ${role === user.systemRole ? "selected" : ""}>${role}</option>`).join("")}
-                    </select>
-                  </label>
-                  <label>
-                    Estado
-                    <select name="status">
-                      <option value="pending_verification" ${user.status === "pending_verification" ? "selected" : ""}>Pendiente verificacion</option>
-                      <option value="pending_approval" ${user.status === "pending_approval" ? "selected" : ""}>Pendiente aprobacion</option>
-                      <option value="active" ${user.status === "active" ? "selected" : ""}>Activo</option>
-                      <option value="suspended" ${user.status === "suspended" ? "selected" : ""}>Suspendido</option>
-                    </select>
-                  </label>
-                </div>
-                <div>
-                  <p class="eyebrow">Perfiles habilitados</p>
-                  <div class="access-chip-list">${allowedRoleMarkup}</div>
-                </div>
-                <div>
-                  <p class="eyebrow">Modulos permitidos</p>
-                  <div class="access-chip-list">${permissionMarkup}</div>
-                </div>
-                <label>
-                  Nota de acceso
-                  <textarea name="accessNote" rows="3">${escapeHtml(user.accessNote || "")}</textarea>
-                </label>
-                <div class="item-actions">
-                  <button class="primary-action" data-save-access="${user.id}" type="submit">Guardar acceso</button>
-                </div>
-              </form>
+              <article class="program-summary">
+                <p class="eyebrow">${group.label}</p>
+                <h2>${total}</h2>
+                <p class="item-meta">${group.key === "active" ? "cuentas con acceso" : "cuentas en esta bandeja"}</p>
+                <span class="status-pill ${tone}">${total ? "Con actividad" : "Sin items"}</span>
+              </article>
             `;
           })
-          .join("")
+          .join("")}
+      </div>
+    `;
+
+    const cardsMarkup = groups
+      .map((group) => {
+        const groupUsers = users.filter((user) => user.status === group.key);
+        return `
+          <section class="access-group">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">${group.label}</p>
+                <h2>${groupUsers.length} usuario${groupUsers.length === 1 ? "" : "s"}</h2>
+              </div>
+            </div>
+            <div class="user-access-group-grid">
+              ${
+                groupUsers.length
+                  ? groupUsers
+                      .map((user) => {
+                        const allowedRoleMarkup = SYSTEM_ROLES.map(
+                          (role) => `
+                            <label class="access-chip">
+                              <input type="checkbox" name="allowedRoles" value="${role}" ${user.allowedRoles.includes(role) ? "checked" : ""} />
+                              <span>${role}</span>
+                            </label>
+                          `,
+                        ).join("");
+                        const permissionMarkup = VIEW_DEFINITIONS.map(
+                          (view) => `
+                            <label class="access-chip">
+                              <input type="checkbox" name="viewPermissions" value="${view.id}" ${user.viewPermissions.includes(view.id) ? "checked" : ""} />
+                              <span>${view.label}</span>
+                            </label>
+                          `,
+                        ).join("");
+
+                        return `
+                          <form class="user-access-card" data-user-access-form="${user.id}">
+                            <div class="user-access-top">
+                              <div>
+                                <h3>${user.fullName}</h3>
+                                <p class="item-meta">${user.email}</p>
+                              </div>
+                              <span class="status-pill ${user.status === "active" ? "good" : user.status === "suspended" ? "danger" : "warning"}">${user.status}</span>
+                            </div>
+                            <div class="access-card-grid">
+                              <label>
+                                Rol principal
+                                <select name="systemRole">
+                                  ${SYSTEM_ROLES.map((role) => `<option value="${role}" ${role === user.systemRole ? "selected" : ""}>${role}</option>`).join("")}
+                                </select>
+                              </label>
+                              <label>
+                                Estado
+                                <select name="status">
+                                  <option value="pending_verification" ${user.status === "pending_verification" ? "selected" : ""}>Pendiente verificacion</option>
+                                  <option value="pending_approval" ${user.status === "pending_approval" ? "selected" : ""}>Pendiente aprobacion</option>
+                                  <option value="active" ${user.status === "active" ? "selected" : ""}>Activo</option>
+                                  <option value="suspended" ${user.status === "suspended" ? "selected" : ""}>Suspendido</option>
+                                </select>
+                              </label>
+                            </div>
+                            <div>
+                              <p class="eyebrow">Perfiles habilitados</p>
+                              <div class="access-chip-list">${allowedRoleMarkup}</div>
+                            </div>
+                            <div>
+                              <p class="eyebrow">Modulos permitidos</p>
+                              <div class="access-chip-list">${permissionMarkup}</div>
+                            </div>
+                            <label>
+                              Nota de acceso
+                              <textarea name="accessNote" rows="3">${escapeHtml(user.accessNote || "")}</textarea>
+                            </label>
+                            <div class="item-actions">
+                              <button class="primary-action" data-save-access="${user.id}" type="submit">Guardar acceso</button>
+                            </div>
+                          </form>
+                        `;
+                      })
+                      .join("")
+                  : `<p class="item-meta">${group.empty}</p>`
+              }
+            </div>
+          </section>
+        `;
+      })
+      .join("");
+
+    elements.accessUserGrid.innerHTML = users.length
+      ? `${summaryMarkup}${cardsMarkup}`
       : `<p class="item-meta">Todavia no hay usuarios registrados.</p>`;
   })().catch((error) => {
     console.error(error);

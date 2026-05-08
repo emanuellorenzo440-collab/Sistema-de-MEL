@@ -117,6 +117,24 @@ button:disabled {
   gap: 12px;
 }
 
+.access-summary-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(180px, 1fr));
+  margin-bottom: 8px;
+}
+
+.access-group {
+  display: grid;
+  gap: 14px;
+}
+
+.user-access-group-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(280px, 1fr));
+}
+
 .delivery-item,
 .user-access-card {
   background: #f8faf9;
@@ -1058,6 +1076,7 @@ textarea {
   }
 
   .metric-grid,
+  .access-summary-grid,
   .dashboard-grid,
   .supervision-grid,
   .design-grid,
@@ -1106,6 +1125,7 @@ textarea {
 
   .filters,
   .metric-grid,
+  .access-summary-grid,
   .dashboard-grid,
   .supervision-grid,
   .design-grid,
@@ -1117,6 +1137,7 @@ textarea {
   .form-template-grid,
   .upload-grid,
   .program-grid,
+  .user-access-group-grid,
   .chart-filter-grid,
   .circular-chart-layout,
   .stats-grid {
