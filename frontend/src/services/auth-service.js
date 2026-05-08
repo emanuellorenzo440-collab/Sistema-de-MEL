@@ -1,0 +1,552 @@
+const AUTH_STORAGE_KEY = "pulso-me-auth-v1";
+const AUTH_EVENT_NAME = "mel:auth-changed";
+
+export const SYSTEM_ROLES = [
+  "Facilitador",
+  "Coordinador de programa",
+  "Program Manager",
+  "Director Nacional",
+  "Supervision M&E",
+];
+
+export const VIEW_DEFINITIONS = [
+  { id: "dashboard", label: "Resumen" },
+  { id: "report", label: "Reportar" },
+  { id: "indicators", label: "Indicadores" },
+  { id: "design", label: "Diseno M&E" },
+  { id: "forms", label: "Formularios" },
+  { id: "charts", label: "Graficas" },
+  { id: "concepts", label: "Concept Papers" },
+  { id: "supervision", label: "Supervision" },
+  { id: "programs", label: "Programas" },
+  { id: "access", label: "Accesos" },
+];
+
+const ROLE_LABELS = {
+  facilitador: "Facilitador",
+  "coordinador de programa": "Coordinador de programa",
+  "program manager": "Program Manager",
+  "director nacional": "Director Nacional",
+  "supervision m&e": "Supervision M&E",
+  "supervision me": "Supervision M&E",
+  "supervision de m&e": "Supervision M&E",
+  supervisor: "Supervision M&E",
+};
+
+const DEFAULT_VIEW_PERMISSIONS = {
+  Facilitador: ["dashboard", "report", "forms", "charts"],
+  "Coordinador de programa": ["dashboard", "report", "forms", "charts", "supervision"],
+  "Program Manager": ["dashboard", "charts", "supervision", "programs", "concepts"],
+  "Director Nacional": ["dashboard", "charts", "programs", "concepts"],
+  "Supervision M&E": VIEW_DEFINITIONS.map((view) => view.id),
+};
+
+const DEMO_SUPERVISOR = {
+  email: "supervision@pulso-me.org",
+  password: "PulsoMEL2026!",
+  fullName: "Supervision MEL",
+};
+
+function clone(value) {
+  return structuredClone(value);
+}
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function normalizeEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+export function normalizeRoleLabel(value) {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  return ROLE_LABELS[normalized] || "Facilitador";
+}
+
+function uniqueStrings(items = []) {
+  return Array.from(new Set(items.filter(Boolean)));
+}
+
+function normalizeRoleList(items = []) {
+  return uniqueStrings(items.map((item) => normalizeRoleLabel(item)));
+}
+
+function normalizeViewPermissions(items = []) {
+  const allowedIds = new Set(VIEW_DEFINITIONS.map((view) => view.id));
+  return uniqueStrings(items.filter((item) => allowedIds.has(item)));
+}
+
+function defaultPermissionsForRole(role) {
+  return clone(DEFAULT_VIEW_PERMISSIONS[normalizeRoleLabel(role)] || DEFAULT_VIEW_PERMISSIONS.Facilitador);
+}
+
+function dispatchAuthChange(type, detail = {}) {
+  window.dispatchEvent(
+    new CustomEvent(AUTH_EVENT_NAME, {
+      detail: {
+        type,
+        ...detail,
+      },
+    }),
+  );
+}
+
+async function sha256(value) {
+  const source = String(value || "");
+  if (window.crypto?.subtle) {
+    const bytes = new TextEncoder().encode(source);
+    const hashBuffer = await window.crypto.subtle.digest("SHA-256", bytes);
+    return Array.from(new Uint8Array(hashBuffer))
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+  }
+
+  return btoa(source);
+}
+
+function createCode() {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+function createEmailRecord({ user, type, code, expiresAt }) {
+  const labels = {
+    verification: "Codigo de verificacion",
+    reset: "Codigo para restablecer contrasena",
+  };
+  return {
+    id: `mail-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+    type,
+    toEmail: user.email,
+    toName: user.fullName,
+    subject: `${labels[type]} - Pulso M&E`,
+    previewCode: code,
+    body: `Hola ${user.fullName}, tu codigo es ${code}. Expira el ${expiresAt}.`,
+    status: "queued",
+    createdAt: nowIso(),
+    expiresAt,
+  };
+}
+
+function normalizeUser(user = {}) {
+  const systemRole = normalizeRoleLabel(user.systemRole || user.requestedRole || "Facilitador");
+  const allowedRoles = normalizeRoleList(user.allowedRoles?.length ? user.allowedRoles : [systemRole]);
+  const viewPermissions = normalizeViewPermissions(
+    user.viewPermissions?.length ? user.viewPermissions : defaultPermissionsForRole(systemRole),
+  );
+
+  return {
+    id: user.id || `usr-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+    fullName: String(user.fullName || "Usuario").trim(),
+    email: normalizeEmail(user.email),
+    passwordHash: user.passwordHash || "",
+    status: user.status || "pending_verification",
+    systemRole,
+    requestedRole: normalizeRoleLabel(user.requestedRole || systemRole),
+    allowedRoles: allowedRoles.includes(systemRole) ? allowedRoles : [systemRole, ...allowedRoles],
+    viewPermissions,
+    verifiedAt: user.verifiedAt || null,
+    verificationCodeHash: user.verificationCodeHash || null,
+    verificationExpiresAt: user.verificationExpiresAt || null,
+    resetCodeHash: user.resetCodeHash || null,
+    resetExpiresAt: user.resetExpiresAt || null,
+    lastLoginAt: user.lastLoginAt || null,
+    accessNote: user.accessNote || "",
+    createdAt: user.createdAt || nowIso(),
+    updatedAt: user.updatedAt || nowIso(),
+  };
+}
+
+function normalizeAuthState(rawState = {}) {
+  const state = {
+    users: Array.isArray(rawState.users) ? rawState.users.map(normalizeUser) : [],
+    emailOutbox: Array.isArray(rawState.emailOutbox) ? rawState.emailOutbox.slice() : [],
+    session: rawState.session || null,
+  };
+
+  if (state.session?.userId) {
+    const sessionUser = state.users.find((user) => user.id === state.session.userId);
+    if (!sessionUser || sessionUser.status !== "active") {
+      state.session = null;
+    } else {
+      const allowedRoles = normalizeRoleList(sessionUser.allowedRoles);
+      const activeRole = normalizeRoleLabel(state.session.activeRole || sessionUser.systemRole);
+      state.session = {
+        ...state.session,
+        activeRole: allowedRoles.includes(activeRole) ? activeRole : sessionUser.systemRole,
+      };
+    }
+  }
+
+  return state;
+}
+
+function readStoredAuthState() {
+  try {
+    const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
+    return raw ? normalizeAuthState(JSON.parse(raw)) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredAuthState(state, eventType = "updated") {
+  const normalized = normalizeAuthState(state);
+  window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(normalized));
+  dispatchAuthChange(eventType, { session: normalized.session });
+  return normalized;
+}
+
+async function buildSeedAuthState() {
+  const timestamp = nowIso();
+  const passwordHash = await sha256(DEMO_SUPERVISOR.password);
+  return normalizeAuthState({
+    users: [
+      {
+        id: "usr-supervision-root",
+        fullName: DEMO_SUPERVISOR.fullName,
+        email: DEMO_SUPERVISOR.email,
+        passwordHash,
+        status: "active",
+        systemRole: "Supervision M&E",
+        requestedRole: "Supervision M&E",
+        allowedRoles: ["Supervision M&E"],
+        viewPermissions: VIEW_DEFINITIONS.map((view) => view.id),
+        verifiedAt: timestamp,
+        lastLoginAt: null,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        accessNote: "Cuenta inicial para gestionar accesos del sistema.",
+      },
+    ],
+    emailOutbox: [],
+    session: null,
+  });
+}
+
+export async function ensureAuthState() {
+  const existing = readStoredAuthState();
+  if (existing) {
+    return existing;
+  }
+
+  const seeded = await buildSeedAuthState();
+  return writeStoredAuthState(seeded, "seeded");
+}
+
+export async function getAuthState() {
+  return ensureAuthState();
+}
+
+export async function getCurrentUser() {
+  const state = await ensureAuthState();
+  if (!state.session?.userId) return null;
+  return clone(state.users.find((user) => user.id === state.session.userId) || null);
+}
+
+export async function getSessionRole() {
+  const state = await ensureAuthState();
+  if (!state.session?.userId) return null;
+  const user = state.users.find((item) => item.id === state.session.userId);
+  if (!user) return null;
+  return normalizeRoleLabel(state.session.activeRole || user.systemRole);
+}
+
+export async function isAuthenticated() {
+  return Boolean(await getCurrentUser());
+}
+
+export async function getAllowedRoles() {
+  const user = await getCurrentUser();
+  return user ? normalizeRoleList(user.allowedRoles) : [];
+}
+
+export async function hasViewAccess(viewId) {
+  const user = await getCurrentUser();
+  return Boolean(user && user.viewPermissions.includes(viewId));
+}
+
+export async function listVisibleViews() {
+  const user = await getCurrentUser();
+  return user ? user.viewPermissions.slice() : [];
+}
+
+export async function listManagedUsers() {
+  const state = await ensureAuthState();
+  return state.users
+    .slice()
+    .sort((left, right) => String(left.fullName || "").localeCompare(String(right.fullName || "")))
+    .map((user) => ({
+      ...clone(user),
+      passwordHash: undefined,
+      verificationCodeHash: undefined,
+      resetCodeHash: undefined,
+    }));
+}
+
+export async function listAuthEmails(filters = {}) {
+  const state = await ensureAuthState();
+  return state.emailOutbox
+    .filter((email) => {
+      if (filters.toEmail && normalizeEmail(filters.toEmail) !== email.toEmail) return false;
+      if (filters.type && filters.type !== email.type) return false;
+      return true;
+    })
+    .slice()
+    .sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || "")));
+}
+
+export async function signUpUser(payload = {}) {
+  const state = await ensureAuthState();
+  const email = normalizeEmail(payload.email);
+  if (!email) {
+    throw new Error("Debes indicar un correo electronico.");
+  }
+  if (!String(payload.fullName || "").trim()) {
+    throw new Error("Debes indicar el nombre del usuario.");
+  }
+  if (!String(payload.password || "").trim() || String(payload.password || "").trim().length < 8) {
+    throw new Error("La contrasena debe tener al menos 8 caracteres.");
+  }
+  if (state.users.some((user) => user.email === email)) {
+    throw new Error("Ya existe una cuenta registrada con ese correo.");
+  }
+
+  const code = createCode();
+  const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+  const passwordHash = await sha256(payload.password);
+  const verificationCodeHash = await sha256(code);
+  const requestedRole = normalizeRoleLabel(payload.requestedRole || "Facilitador");
+  const nextUser = normalizeUser({
+    id: `usr-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+    fullName: payload.fullName,
+    email,
+    passwordHash,
+    requestedRole,
+    systemRole: requestedRole,
+    allowedRoles: [requestedRole],
+    viewPermissions: defaultPermissionsForRole(requestedRole),
+    verificationCodeHash,
+    verificationExpiresAt: expiresAt,
+    status: "pending_verification",
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+    accessNote: "Pendiente de verificacion de correo y aprobacion por supervision.",
+  });
+
+  state.users.unshift(nextUser);
+  state.emailOutbox.unshift(createEmailRecord({ user: nextUser, type: "verification", code, expiresAt }));
+  writeStoredAuthState(state, "signed-up");
+  return {
+    email,
+    requestedRole,
+    delivery: "demo-email-outbox",
+  };
+}
+
+export async function verifyRegisteredUser(payload = {}) {
+  const state = await ensureAuthState();
+  const email = normalizeEmail(payload.email);
+  const code = String(payload.code || "").trim();
+  const user = state.users.find((item) => item.email === email);
+  if (!user) {
+    throw new Error("No encontre una cuenta con ese correo.");
+  }
+  if (!user.verificationCodeHash || !code) {
+    throw new Error("Debes ingresar el codigo de verificacion.");
+  }
+  if (user.verificationExpiresAt && Date.parse(user.verificationExpiresAt) < Date.now()) {
+    throw new Error("El codigo de verificacion ya expiro.");
+  }
+
+  const incomingHash = await sha256(code);
+  if (incomingHash !== user.verificationCodeHash) {
+    throw new Error("El codigo de verificacion no coincide.");
+  }
+
+  user.verificationCodeHash = null;
+  user.verificationExpiresAt = null;
+  user.verifiedAt = nowIso();
+  user.status = "pending_approval";
+  user.updatedAt = nowIso();
+  writeStoredAuthState(state, "verified");
+  return {
+    email,
+    status: user.status,
+  };
+}
+
+export async function signInUser(payload = {}) {
+  const state = await ensureAuthState();
+  const email = normalizeEmail(payload.email);
+  const password = String(payload.password || "");
+  const user = state.users.find((item) => item.email === email);
+  if (!user) {
+    throw new Error("No encontre una cuenta con ese correo.");
+  }
+
+  const passwordHash = await sha256(password);
+  if (passwordHash !== user.passwordHash) {
+    throw new Error("La contrasena no coincide.");
+  }
+  if (!user.verifiedAt) {
+    throw new Error("Debes verificar tu correo antes de entrar.");
+  }
+  if (user.status === "pending_approval") {
+    throw new Error("Tu cuenta ya fue verificada, pero sigue pendiente de aprobacion por supervision.");
+  }
+  if (user.status === "suspended") {
+    throw new Error("Tu acceso al sistema esta suspendido.");
+  }
+  if (user.status !== "active") {
+    throw new Error("Tu cuenta no tiene acceso activo todavia.");
+  }
+
+  user.lastLoginAt = nowIso();
+  user.updatedAt = nowIso();
+  state.session = {
+    userId: user.id,
+    activeRole: normalizeRoleLabel(user.allowedRoles[0] || user.systemRole),
+    createdAt: nowIso(),
+  };
+  writeStoredAuthState(state, "signed-in");
+  return clone({
+    user: {
+      id: user.id,
+      fullName: user.fullName,
+      email: user.email,
+      systemRole: user.systemRole,
+      allowedRoles: user.allowedRoles,
+      viewPermissions: user.viewPermissions,
+    },
+  });
+}
+
+export async function signOutUser() {
+  const state = await ensureAuthState();
+  state.session = null;
+  writeStoredAuthState(state, "signed-out");
+}
+
+export async function requestPasswordReset(payload = {}) {
+  const state = await ensureAuthState();
+  const email = normalizeEmail(payload.email);
+  const user = state.users.find((item) => item.email === email);
+  if (!user) {
+    throw new Error("No encontre una cuenta con ese correo.");
+  }
+
+  const code = createCode();
+  const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+  user.resetCodeHash = await sha256(code);
+  user.resetExpiresAt = expiresAt;
+  user.updatedAt = nowIso();
+  state.emailOutbox.unshift(createEmailRecord({ user, type: "reset", code, expiresAt }));
+  writeStoredAuthState(state, "reset-requested");
+  return {
+    email,
+    delivery: "demo-email-outbox",
+  };
+}
+
+export async function resetPassword(payload = {}) {
+  const state = await ensureAuthState();
+  const email = normalizeEmail(payload.email);
+  const code = String(payload.code || "").trim();
+  const nextPassword = String(payload.password || "").trim();
+  const user = state.users.find((item) => item.email === email);
+  if (!user) {
+    throw new Error("No encontre una cuenta con ese correo.");
+  }
+  if (!user.resetCodeHash || !code) {
+    throw new Error("Debes ingresar el codigo de recuperacion.");
+  }
+  if (!nextPassword || nextPassword.length < 8) {
+    throw new Error("La nueva contrasena debe tener al menos 8 caracteres.");
+  }
+  if (user.resetExpiresAt && Date.parse(user.resetExpiresAt) < Date.now()) {
+    throw new Error("El codigo de recuperacion ya expiro.");
+  }
+
+  const incomingHash = await sha256(code);
+  if (incomingHash !== user.resetCodeHash) {
+    throw new Error("El codigo de recuperacion no coincide.");
+  }
+
+  user.passwordHash = await sha256(nextPassword);
+  user.resetCodeHash = null;
+  user.resetExpiresAt = null;
+  user.updatedAt = nowIso();
+  writeStoredAuthState(state, "password-reset");
+  return { email };
+}
+
+export async function updateManagedUserAccess(userId, updates = {}) {
+  const state = await ensureAuthState();
+  const actor = state.users.find((item) => item.id === state.session?.userId);
+  if (!actor || actor.systemRole !== "Supervision M&E") {
+    throw new Error("Solo supervision M&E puede administrar accesos.");
+  }
+
+  const user = state.users.find((item) => item.id === userId);
+  if (!user) {
+    throw new Error("No encontre el usuario solicitado.");
+  }
+
+  const nextSystemRole = normalizeRoleLabel(updates.systemRole || user.systemRole);
+  const nextAllowedRoles = normalizeRoleList(updates.allowedRoles?.length ? updates.allowedRoles : user.allowedRoles);
+  const nextViewPermissions = normalizeViewPermissions(
+    updates.viewPermissions?.length ? updates.viewPermissions : user.viewPermissions,
+  );
+
+  user.systemRole = nextSystemRole;
+  user.allowedRoles = nextAllowedRoles.includes(nextSystemRole)
+    ? nextAllowedRoles
+    : [nextSystemRole, ...nextAllowedRoles];
+  user.viewPermissions = nextViewPermissions.length ? nextViewPermissions : defaultPermissionsForRole(nextSystemRole);
+  user.status = updates.status || user.status;
+  user.accessNote = String(updates.accessNote || user.accessNote || "").trim();
+  user.updatedAt = nowIso();
+
+  if (user.status === "active" && !user.verifiedAt) {
+    throw new Error("No puedes activar una cuenta que todavia no verifico su correo.");
+  }
+
+  if (state.session?.userId === user.id) {
+    state.session.activeRole = user.allowedRoles.includes(state.session.activeRole)
+      ? state.session.activeRole
+      : user.systemRole;
+  }
+
+  writeStoredAuthState(state, "access-updated");
+  return clone(user);
+}
+
+export async function setSessionRole(nextRole) {
+  const state = await ensureAuthState();
+  const user = state.users.find((item) => item.id === state.session?.userId);
+  if (!user) {
+    throw new Error("No hay una sesion activa.");
+  }
+  const normalizedRole = normalizeRoleLabel(nextRole);
+  if (!user.allowedRoles.includes(normalizedRole)) {
+    throw new Error("Ese perfil no esta habilitado para tu usuario.");
+  }
+  state.session.activeRole = normalizedRole;
+  writeStoredAuthState(state, "role-updated");
+  return normalizedRole;
+}
+
+export function onAuthStateChange(listener) {
+  const handler = (event) => listener(event.detail || {});
+  window.addEventListener(AUTH_EVENT_NAME, handler);
+  return () => window.removeEventListener(AUTH_EVENT_NAME, handler);
+}
+
+export function getDemoSupervisorCredentials() {
+  return clone(DEMO_SUPERVISOR);
+}

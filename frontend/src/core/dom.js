@@ -5,6 +5,8 @@ export const elements = {
   pageTitle: $("#pageTitle"),
   roleSelect: $("#roleSelect"),
   roleBadge: $("#roleBadge"),
+  currentUserName: $("#currentUserName"),
+  currentUserEmail: $("#currentUserEmail"),
   programFilter: $("#programFilter"),
   provinceFilter: $("#provinceFilter"),
   periodFilter: $("#periodFilter"),
@@ -77,5 +79,8 @@ export const elements = {
   programPopulationInput: $("#programPopulationInput"),
   clearProgramFormButton: $("#clearProgramFormButton"),
   programGrid: $("#programGrid"),
+  accessRequestCount: $("#accessRequestCount"),
+  accessUserGrid: $("#accessUserGrid"),
+  accessEmailLog: $("#accessEmailLog"),
   toast: $("#toast"),
 };

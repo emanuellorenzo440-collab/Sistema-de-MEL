@@ -27,6 +27,10 @@ body {
   letter-spacing: 0;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 button,
 input,
 select,
@@ -47,6 +51,143 @@ button:disabled {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
   min-height: 100vh;
+}
+
+.auth-shell {
+  display: grid;
+  gap: 24px;
+  min-height: 100vh;
+  padding: 32px;
+  grid-template-columns: minmax(320px, 1fr) minmax(420px, 1.1fr);
+}
+
+.auth-hero {
+  background: #112321;
+  border-radius: 8px;
+  color: #f8fbfa;
+  display: grid;
+  gap: 24px;
+  padding: 32px;
+}
+
+.brand-large .brand-mark {
+  height: 52px;
+  width: 52px;
+  font-size: 1.25rem;
+}
+
+.auth-copy h1 {
+  color: #ffffff;
+  margin-bottom: 12px;
+}
+
+.auth-copy p:not(.eyebrow) {
+  color: #d2dfdc;
+  line-height: 1.6;
+  max-width: 52ch;
+}
+
+.auth-summary {
+  align-items: end;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 18px;
+}
+
+.auth-panels {
+  display: grid;
+  gap: 18px;
+}
+
+.auth-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 18px;
+  padding: 24px;
+}
+
+.auth-tabs {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.auth-tab {
+  background: var(--surface-strong);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--muted);
+  font-weight: 800;
+  min-height: 40px;
+}
+
+.auth-tab.active {
+  background: #e8f0fa;
+  border-color: #bfd1ea;
+  color: #244d76;
+}
+
+.auth-form,
+.auth-section {
+  display: grid;
+  gap: 14px;
+}
+
+.auth-inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.auth-inline-actions button {
+  flex: 1;
+}
+
+.auth-reset-box {
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.delivery-list,
+.user-access-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.delivery-item,
+.user-access-card {
+  background: #f8faf9;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.delivery-top,
+.user-access-top,
+.session-meta {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.delivery-code {
+  background: #112321;
+  border-radius: 8px;
+  color: #ffffff;
+  font-size: 1.3rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  padding: 12px 14px;
+  text-align: center;
 }
 
 .sidebar {
@@ -107,6 +248,10 @@ button:disabled {
   padding: 10px 12px;
   text-align: left;
   width: 100%;
+}
+
+.nav-item[hidden] {
+  display: none;
 }
 
 .nav-item span {
@@ -215,6 +360,20 @@ h3 {
   display: flex;
   gap: 10px;
   justify-content: flex-end;
+}
+
+.session-meta {
+  align-items: flex-end;
+  color: var(--muted);
+  flex-direction: column;
+}
+
+.session-meta strong {
+  color: var(--ink);
+}
+
+.session-meta span {
+  font-size: 0.84rem;
 }
 
 .primary-action,
@@ -782,6 +941,38 @@ textarea {
   min-height: 38px;
 }
 
+.access-card-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+}
+
+.access-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.access-chip {
+  align-items: center;
+  background: #f3f6f5;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  display: inline-flex;
+  gap: 6px;
+  padding: 7px 10px;
+}
+
+.access-chip input {
+  min-height: auto;
+  width: auto;
+}
+
+.user-access-card select,
+.user-access-card textarea {
+  width: 100%;
+}
+
 .approve-button {
   background: #e6f4ea;
   border: 1px solid #b9dfc6;
@@ -834,6 +1025,10 @@ textarea {
 }
 
 @media (max-width: 1080px) {
+  .auth-shell {
+    grid-template-columns: 1fr;
+  }
+
   .app-shell {
     grid-template-columns: 1fr;
   }
@@ -870,6 +1065,10 @@ textarea {
     padding: 18px;
   }
 
+  .auth-shell {
+    padding: 18px;
+  }
+
   .topbar,
   .panel-header,
   .indicator-top,
@@ -897,6 +1096,7 @@ textarea {
 
   .filters,
   .metric-grid,
+  .auth-tabs,
   .dashboard-grid,
   .supervision-grid,
   .design-grid,
@@ -912,6 +1112,13 @@ textarea {
   .circular-chart-layout,
   .stats-grid {
     grid-template-columns: 1fr;
+  }
+
+  .auth-summary,
+  .delivery-top,
+  .user-access-top,
+  .session-meta {
+    flex-direction: column;
   }
 
   .chart-column-frame {

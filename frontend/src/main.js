@@ -1,6 +1,18 @@
-import { createMonitoringApp } from "./features/monitoring-app.js?v=20260507j";
-import { bootstrapApiBridge, startRuntimeBridge } from "./services/mel-runtime-bridge.js?v=20260507j";
+import { initializeAccessLobby } from "./features/access-lobby.js?v=20260508a";
+import { createMonitoringApp } from "./features/monitoring-app.js?v=20260508a";
+import { bootstrapApiBridge, startRuntimeBridge } from "./services/mel-runtime-bridge.js?v=20260508a";
 
 await bootstrapApiBridge();
-createMonitoringApp().start();
+
+const app = createMonitoringApp();
+await app.start();
 startRuntimeBridge();
+
+await initializeAccessLobby({
+  onAuthenticated: () => {
+    void app.syncAccess();
+  },
+  onSignedOut: () => {
+    app.lock();
+  },
+});

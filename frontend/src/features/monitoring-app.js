@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260507i";
-import { $, $$, elements } from "../core/dom.js?v=20260507i";
+import { $, $$, elements } from "../core/dom.js?v=20260508a";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260507i";
 import { seedState } from "../data/seed-state.js?v=20260507i";
 import {
@@ -9,6 +9,18 @@ import {
   isPendingApprovalStatus,
   reviewRoleForStatus,
 } from "../../../shared/contracts/reporting.js?v=20260507i";
+import {
+  SYSTEM_ROLES,
+  VIEW_DEFINITIONS,
+  getAllowedRoles,
+  getCurrentUser,
+  getSessionRole,
+  listAuthEmails,
+  listManagedUsers,
+  listVisibleViews,
+  setSessionRole,
+  updateManagedUserAccess,
+} from "../services/auth-service.js?v=20260508a";
 import {
   createApiIndicator,
   createApiProgram,
@@ -34,6 +46,9 @@ import {
 
 let state = null;
 const ROLE_STORAGE_KEY = "pulso-me-active-role";
+let currentUser = null;
+let currentUserRoles = SYSTEM_ROLES.slice();
+let currentUserViews = VIEW_DEFINITIONS.map((view) => view.id);
 
 function loadState() {
   return loadStoredState(STORAGE_KEY, seedState, normalizeState);
@@ -41,7 +56,7 @@ function loadState() {
 
 function hydrateState() {
   state = loadState();
-  state.role = loadRolePreference(state.role);
+  state.role = normalizeRoleLabel(state.role || seedState.role);
   return state;
 }
 
@@ -66,7 +81,7 @@ function normalizeRoleLabel(value) {
 }
 
 function activeRole() {
-  return normalizeRoleLabel(loadRolePreference(elements.roleSelect?.value || state?.role || "Facilitador"));
+  return normalizeRoleLabel(state?.role || "Facilitador");
 }
 
 function loadRolePreference(fallback = "Facilitador") {
@@ -83,6 +98,16 @@ function saveRolePreference(role) {
     window.localStorage.setItem(ROLE_STORAGE_KEY, normalizeRoleLabel(role));
   } catch {
     // ignore storage issues for the profile selector
+  }
+}
+
+async function syncAuthenticatedAccess() {
+  currentUser = await getCurrentUser();
+  currentUserRoles = currentUser ? await getAllowedRoles() : SYSTEM_ROLES.slice();
+  currentUserViews = currentUser ? await listVisibleViews() : VIEW_DEFINITIONS.map((view) => view.id);
+  const nextRole = currentUser ? await getSessionRole() : loadRolePreference(state?.role || seedState.role);
+  if (state) {
+    state.role = normalizeRoleLabel(nextRole || state.role || seedState.role);
   }
 }
 
@@ -245,7 +270,19 @@ function renderFilters() {
   setOptions(elements.designProgramSelect, programNames, state.designProgram || selectedProgram);
   setOptions(elements.formsProgramSelect, programNames, state.formsProgram || state.designProgram || selectedProgram);
   elements.reportPeriod.value = state.filters.period === "Todos" ? currentMonth() : state.filters.period;
+  setOptions(elements.roleSelect, currentUserRoles, normalizeRoleLabel(state.role || "Facilitador"));
+  elements.roleSelect.disabled = currentUserRoles.length <= 1;
   elements.roleSelect.value = normalizeRoleLabel(state.role || "Facilitador");
+  if (elements.currentUserName) {
+    elements.currentUserName.textContent = currentUser?.fullName || "Sin sesion";
+  }
+  if (elements.currentUserEmail) {
+    elements.currentUserEmail.textContent = currentUser?.email || "-";
+  }
+  const reportOwnerInput = $("#reportOwner");
+  if (reportOwnerInput && currentUser?.fullName && !String(reportOwnerInput.value || "").trim()) {
+    reportOwnerInput.value = currentUser.fullName;
+  }
   if (elements.indicatorChartTypeSelect) {
     elements.indicatorChartTypeSelect.value = state.chartPreferences?.indicatorType || "bars";
   }
@@ -259,6 +296,10 @@ function renderFilters() {
 
 function canValidate() {
   return canReviewReports(activeRole());
+}
+
+function viewIsEnabled(viewId) {
+  return currentUserViews.includes(viewId);
 }
 
 function renderMetrics() {
@@ -848,6 +889,114 @@ function renderPrograms() {
     .join("");
 }
 
+function renderAccessWorkspace() {
+  if (!elements.accessUserGrid || !elements.accessEmailLog || !elements.accessRequestCount) return;
+
+  if (!viewIsEnabled("access")) {
+    elements.accessRequestCount.textContent = "Sin acceso";
+    elements.accessRequestCount.className = "status-pill neutral";
+    elements.accessUserGrid.innerHTML = `<p class="item-meta">Solo supervision M&E puede administrar accesos.</p>`;
+    elements.accessEmailLog.innerHTML = `<p class="item-meta">No tienes permiso para ver la bandeja de verificacion.</p>`;
+    return;
+  }
+
+  void (async () => {
+    const [users, emails] = await Promise.all([listManagedUsers(), listAuthEmails()]);
+    const pendingCount = users.filter((user) => user.status === "pending_approval").length;
+    elements.accessRequestCount.textContent = `${pendingCount} pendiente${pendingCount === 1 ? "" : "s"}`;
+    elements.accessRequestCount.className = `status-pill ${pendingCount ? "warning" : "good"}`;
+
+    elements.accessUserGrid.innerHTML = users.length
+      ? users
+          .map((user) => {
+            const allowedRoleMarkup = SYSTEM_ROLES.map(
+              (role) => `
+                <label class="access-chip">
+                  <input type="checkbox" name="allowedRoles" value="${role}" ${user.allowedRoles.includes(role) ? "checked" : ""} />
+                  <span>${role}</span>
+                </label>
+              `,
+            ).join("");
+            const permissionMarkup = VIEW_DEFINITIONS.map(
+              (view) => `
+                <label class="access-chip">
+                  <input type="checkbox" name="viewPermissions" value="${view.id}" ${user.viewPermissions.includes(view.id) ? "checked" : ""} />
+                  <span>${view.label}</span>
+                </label>
+              `,
+            ).join("");
+
+            return `
+              <form class="user-access-card" data-user-access-form="${user.id}">
+                <div class="user-access-top">
+                  <div>
+                    <h3>${user.fullName}</h3>
+                    <p class="item-meta">${user.email}</p>
+                  </div>
+                  <span class="status-pill ${user.status === "active" ? "good" : user.status === "suspended" ? "danger" : "warning"}">${user.status}</span>
+                </div>
+                <div class="access-card-grid">
+                  <label>
+                    Rol principal
+                    <select name="systemRole">
+                      ${SYSTEM_ROLES.map((role) => `<option value="${role}" ${role === user.systemRole ? "selected" : ""}>${role}</option>`).join("")}
+                    </select>
+                  </label>
+                  <label>
+                    Estado
+                    <select name="status">
+                      <option value="pending_verification" ${user.status === "pending_verification" ? "selected" : ""}>Pendiente verificacion</option>
+                      <option value="pending_approval" ${user.status === "pending_approval" ? "selected" : ""}>Pendiente aprobacion</option>
+                      <option value="active" ${user.status === "active" ? "selected" : ""}>Activo</option>
+                      <option value="suspended" ${user.status === "suspended" ? "selected" : ""}>Suspendido</option>
+                    </select>
+                  </label>
+                </div>
+                <div>
+                  <p class="eyebrow">Perfiles habilitados</p>
+                  <div class="access-chip-list">${allowedRoleMarkup}</div>
+                </div>
+                <div>
+                  <p class="eyebrow">Modulos permitidos</p>
+                  <div class="access-chip-list">${permissionMarkup}</div>
+                </div>
+                <label>
+                  Nota de acceso
+                  <textarea name="accessNote" rows="3">${escapeHtml(user.accessNote || "")}</textarea>
+                </label>
+                <div class="item-actions">
+                  <button class="primary-action" data-save-access="${user.id}" type="submit">Guardar acceso</button>
+                </div>
+              </form>
+            `;
+          })
+          .join("")
+      : `<p class="item-meta">Todavia no hay usuarios registrados.</p>`;
+
+    elements.accessEmailLog.innerHTML = emails.length
+      ? emails
+          .slice(0, 8)
+          .map(
+            (email) => `
+              <article class="delivery-item">
+                <div class="delivery-top">
+                  <strong>${email.toEmail}</strong>
+                  <span class="status-pill info">${email.type === "verification" ? "Verificacion" : "Recuperacion"}</span>
+                </div>
+                <p class="item-meta">${email.subject}</p>
+                <div class="delivery-code">${email.previewCode}</div>
+                <p class="item-meta">Expira: ${new Date(email.expiresAt).toLocaleString("es-DO")}</p>
+              </article>
+            `,
+          )
+          .join("")
+      : `<p class="item-meta">Todavia no se han emitido correos de verificacion o recuperacion.</p>`;
+  })().catch((error) => {
+    console.error(error);
+    elements.accessUserGrid.innerHTML = `<p class="item-meta">No pude cargar los accesos.</p>`;
+  });
+}
+
 function reportsByPeriod(reports = state.reports) {
   return reports.reduce((groups, report) => {
     groups[report.period] = (groups[report.period] || 0) + Number(report.value || 0);
@@ -1348,10 +1497,35 @@ function updateRoleUi() {
   elements.roleBadge.className = `status-pill ${canValidate() ? "info" : "neutral"}`;
 }
 
+function firstAllowedView() {
+  return currentUserViews[0] || "dashboard";
+}
+
+function activeViewName() {
+  return $(".nav-item.active")?.dataset.view || "dashboard";
+}
+
+function applyAccessControl() {
+  $$(".nav-item").forEach((button) => {
+    button.hidden = !currentUserViews.includes(button.dataset.view);
+  });
+
+  const quickReportButton = $("#quickReportButton");
+  if (quickReportButton) {
+    quickReportButton.hidden = !viewIsEnabled("report");
+  }
+
+  const currentView = activeViewName();
+  if (!currentUserViews.includes(currentView)) {
+    switchView(firstAllowedView());
+  }
+}
+
 function renderAll() {
   recomputeIndicatorValues();
   renderFilters();
   updateRoleUi();
+  applyAccessControl();
   renderMetrics();
   renderProgramChart();
   renderRisks();
@@ -1366,6 +1540,7 @@ function renderAll() {
   renderReviewQueue();
   renderActions();
   renderPrograms();
+  renderAccessWorkspace();
 }
 
 function switchView(viewName) {
@@ -1379,7 +1554,11 @@ function switchView(viewName) {
     concepts: "Concept papers",
     supervision: "Supervision y validacion",
     programs: "Programas",
+    access: "Usuarios y accesos",
   };
+  if (!currentUserViews.includes(viewName)) {
+    viewName = firstAllowedView();
+  }
   $$(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.view === viewName));
   $$(".view").forEach((panel) => panel.classList.toggle("active", panel.dataset.viewPanel === viewName));
   elements.pageTitle.textContent = titles[viewName];
@@ -2137,7 +2316,7 @@ async function saveIndicatorFromForm(formData) {
     target: Number(formData.get("target")),
     value: indicatorId ? indicatorById(indicatorId)?.value || 0 : 0,
     unit: formData.get("unit"),
-    owner: formData.get("owner"),
+    owner: formData.get("owner") || currentUser?.fullName || "Usuario del sistema",
     due: formData.get("due"),
     type: "Logro",
   };
@@ -2289,12 +2468,23 @@ function bindEvents() {
 
   elements.roleSelect.addEventListener("change", () => {
     const nextRole = normalizeRoleLabel(elements.roleSelect.value);
-    saveRolePreference(nextRole);
-    hydrateState();
-    state.role = nextRole;
-    elements.roleSelect.value = state.role;
-    renderAll();
-    showToast(`Perfil activo: ${state.role}.`);
+    void (async () => {
+      try {
+        if (currentUser) {
+          await setSessionRole(nextRole);
+        } else {
+          saveRolePreference(nextRole);
+        }
+        hydrateState();
+        await syncAuthenticatedAccess();
+        elements.roleSelect.value = state.role;
+        renderAll();
+        showToast(`Perfil activo: ${state.role}.`);
+      } catch (error) {
+        console.error(error);
+        showToast(error.message || "No pude cambiar el perfil activo.");
+      }
+    })();
   });
 
   [elements.notificationList, elements.supervisionNotificationList].forEach((list) => {
@@ -2543,18 +2733,60 @@ function bindEvents() {
     elements.indicatorTargetInput.value = 100;
     elements.indicatorNameInput.focus();
   });
+
+  elements.accessUserGrid?.addEventListener("submit", (event) => {
+    const form = event.target.closest("[data-user-access-form]");
+    if (!form) return;
+    event.preventDefault();
+
+    const userId = form.dataset.userAccessForm;
+    const formData = new FormData(form);
+    const allowedRoles = formData.getAll("allowedRoles").map((item) => String(item));
+    const viewPermissions = formData.getAll("viewPermissions").map((item) => String(item));
+
+    void (async () => {
+      try {
+        await updateManagedUserAccess(userId, {
+          systemRole: formData.get("systemRole"),
+          status: formData.get("status"),
+          allowedRoles,
+          viewPermissions,
+          accessNote: formData.get("accessNote"),
+        });
+        await syncAuthenticatedAccess();
+        renderAll();
+        showToast("Acceso actualizado.");
+      } catch (error) {
+        console.error(error);
+        showToast(error.message || "No pude actualizar el acceso.");
+      }
+    })();
+  });
 }
 
 export function createMonitoringApp() {
   return {
-    start() {
+    async start() {
       hydrateState();
+      await syncAuthenticatedAccess();
       renderAll();
       bindEvents();
       window.addEventListener("mel:state-synced", () => {
         hydrateState();
-        renderAll();
+        void syncAuthenticatedAccess().then(renderAll);
       });
+    },
+    async syncAccess() {
+      hydrateState();
+      await syncAuthenticatedAccess();
+      renderAll();
+    },
+    lock() {
+      currentUser = null;
+      currentUserRoles = SYSTEM_ROLES.slice();
+      currentUserViews = VIEW_DEFINITIONS.map((view) => view.id);
+      if (elements.currentUserName) elements.currentUserName.textContent = "Sin sesion";
+      if (elements.currentUserEmail) elements.currentUserEmail.textContent = "-";
     },
   };
 }

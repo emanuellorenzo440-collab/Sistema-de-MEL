@@ -7,7 +7,169 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <div class="app-shell">
+    <section class="auth-shell" id="authShell">
+      <div class="auth-hero">
+        <div class="brand brand-large">
+          <span class="brand-mark">P</span>
+          <div>
+            <strong>Pulso M&amp;E</strong>
+            <span>Lobby de acceso, verificacion y permisos</span>
+          </div>
+        </div>
+        <div class="auth-copy">
+          <p class="eyebrow">Acceso al sistema</p>
+          <h1>Entrar, registrar usuarios y controlar permisos</h1>
+          <p>
+            Cada usuario entra con correo y contrasena, verifica su cuenta y luego recibe los accesos que supervision
+            M&amp;E decida habilitar.
+          </p>
+        </div>
+        <div class="auth-summary">
+          <div>
+            <p class="eyebrow">Cuenta inicial</p>
+            <strong>Supervision M&amp;E</strong>
+            <p class="item-meta">Usa la cuenta demo para aprobar registros y asignar permisos.</p>
+          </div>
+          <button class="ghost-action" id="fillSupervisorButton" type="button">Cargar cuenta de supervision</button>
+        </div>
+      </div>
+
+      <div class="auth-panels">
+        <section class="auth-card">
+          <div class="auth-tabs">
+            <button class="auth-tab active" data-open-auth="signin" type="button">Sign in</button>
+            <button class="auth-tab" data-open-auth="signup" type="button">Sign up</button>
+            <button class="auth-tab" data-open-auth="verify" type="button">Verificar</button>
+            <button class="auth-tab" data-open-auth="forgot" type="button">Forgot password</button>
+          </div>
+
+          <div class="auth-section" data-auth-section="signin">
+            <p class="eyebrow">Ingreso</p>
+            <h2>Entrar al sistema</h2>
+            <form class="auth-form" id="signinForm">
+              <label>
+                Correo electronico
+                <input id="signinEmail" name="email" type="email" autocomplete="email" required />
+              </label>
+              <label>
+                Contrasena
+                <input id="signinPassword" name="password" type="password" autocomplete="current-password" required />
+              </label>
+              <button class="primary-action" type="submit">Entrar</button>
+            </form>
+          </div>
+
+          <div class="auth-section" data-auth-section="signup" hidden>
+            <p class="eyebrow">Registro</p>
+            <h2>Crear nuevo usuario</h2>
+            <form class="auth-form" id="signupForm">
+              <label>
+                Nombre completo
+                <input id="signupFullName" name="fullName" autocomplete="name" required />
+              </label>
+              <label>
+                Correo electronico
+                <input id="signupEmail" name="email" type="email" autocomplete="email" required />
+              </label>
+              <label>
+                Perfil solicitado
+                <select id="signupRequestedRole" name="requestedRole"></select>
+              </label>
+              <label>
+                Contrasena
+                <input id="signupPassword" name="password" type="password" autocomplete="new-password" required />
+              </label>
+              <label>
+                Confirmar contrasena
+                <input
+                  id="signupConfirmPassword"
+                  name="confirmPassword"
+                  type="password"
+                  autocomplete="new-password"
+                  required
+                />
+              </label>
+              <button class="primary-action" type="submit">Registrarme</button>
+            </form>
+          </div>
+
+          <div class="auth-section" data-auth-section="verify" hidden>
+            <p class="eyebrow">Verificacion</p>
+            <h2>Confirmar codigo</h2>
+            <form class="auth-form" id="verifyForm">
+              <label>
+                Correo electronico
+                <input id="verifyEmail" name="email" type="email" autocomplete="email" required />
+              </label>
+              <label>
+                Codigo
+                <input id="verifyCode" name="code" inputmode="numeric" autocomplete="one-time-code" required />
+              </label>
+              <div class="auth-inline-actions">
+                <button class="primary-action" type="submit">Verificar correo</button>
+                <button class="ghost-action" id="previewVerifyButton" type="button">Ver ultimo codigo</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="auth-section" data-auth-section="forgot" hidden>
+            <p class="eyebrow">Recuperacion</p>
+            <h2>Restablecer contrasena</h2>
+            <form class="auth-form" id="forgotRequestForm">
+              <label>
+                Correo electronico
+                <input id="forgotEmail" name="email" type="email" autocomplete="email" required />
+              </label>
+              <div class="auth-inline-actions">
+                <button class="primary-action" type="submit">Enviar codigo</button>
+                <button class="ghost-action" id="previewResetButton" type="button">Ver ultimo codigo</button>
+              </div>
+            </form>
+
+            <div class="auth-reset-box" id="forgotResetBox" hidden>
+              <form class="auth-form" id="forgotResetForm">
+                <label>
+                  Correo electronico
+                  <input id="resetEmail" name="email" type="email" autocomplete="email" required />
+                </label>
+                <label>
+                  Codigo
+                  <input id="resetCode" name="code" inputmode="numeric" autocomplete="one-time-code" required />
+                </label>
+                <label>
+                  Nueva contrasena
+                  <input id="resetPassword" name="password" type="password" autocomplete="new-password" required />
+                </label>
+                <label>
+                  Confirmar contrasena
+                  <input
+                    id="resetConfirmPassword"
+                    name="confirmPassword"
+                    type="password"
+                    autocomplete="new-password"
+                    required
+                  />
+                </label>
+                <button class="primary-action" type="submit">Actualizar contrasena</button>
+              </form>
+            </div>
+          </div>
+        </section>
+
+        <section class="auth-card">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Entrega de correo demo</p>
+              <h2>Ultimos codigos emitidos</h2>
+            </div>
+            <span class="status-pill info">Demo</span>
+          </div>
+          <div class="delivery-list" id="authDeliveryList"></div>
+        </section>
+      </div>
+    </section>
+
+    <div class="app-shell" hidden>
       <aside class="sidebar" aria-label="Navegacion principal">
         <div class="brand">
           <span class="brand-mark">P</span>
@@ -19,7 +181,7 @@
 
         <nav class="nav-list" aria-label="Secciones">
           <button class="nav-item active" data-view="dashboard" type="button">
-            <span aria-hidden="true">▦</span>
+            <span aria-hidden="true">◦</span>
             Resumen
           </button>
           <button class="nav-item" data-view="report" type="button">
@@ -54,6 +216,10 @@
             <span aria-hidden="true">☷</span>
             Programas
           </button>
+          <button class="nav-item" data-view="access" type="button">
+            <span aria-hidden="true">◧</span>
+            Accesos
+          </button>
         </nav>
 
         <div class="role-box">
@@ -75,10 +241,15 @@
             <h1 id="pageTitle">Resumen ejecutivo</h1>
           </div>
           <div class="top-actions">
+            <div class="session-meta">
+              <strong id="currentUserName">Sin sesion</strong>
+              <span id="currentUserEmail">-</span>
+            </div>
             <span class="status-pill neutral" id="roleBadge">Facilitador</span>
             <button class="icon-button" id="seedButton" type="button" title="Actualizar datos" aria-label="Actualizar datos">
               ↻
             </button>
+            <button class="ghost-action" id="signOutButton" type="button">Salir</button>
             <button class="primary-action" id="quickReportButton" type="button">
               <span aria-hidden="true">＋</span>
               Nuevo reporte
@@ -246,7 +417,7 @@
                   <input id="reportFormUploadInput" type="file" accept=".csv,text/csv,.xlsx,.xls,.doc,.docx,.pdf,.txt" />
                 </label>
                 <button class="primary-action" id="analyzeReportFormButton" type="button">
-                  <span aria-hidden="true">â—Ž</span>
+                  <span aria-hidden="true">⎎</span>
                   Leer formulario
                 </button>
               </div>
@@ -339,7 +510,6 @@
               <div class="suggestion-list" id="indicatorSuggestions"></div>
             </section>
           </div>
-
         </section>
 
         <section class="view" id="formsView" data-view-panel="forms">
@@ -376,14 +546,21 @@
             <div class="upload-grid">
               <label class="span-2">
                 Archivo de datos o soporte
-                <input id="formUploadInput" type="file" accept=".csv,text/csv,.xlsx,.xls,.doc,.docx,.pdf,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+                <input
+                  id="formUploadInput"
+                  type="file"
+                  accept=".csv,text/csv,.xlsx,.xls,.doc,.docx,.pdf,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                />
               </label>
               <button class="primary-action" id="uploadFormButton" type="button">
                 <span aria-hidden="true">↑</span>
                 Subir al sistema
               </button>
             </div>
-            <p class="item-meta">CSV alimenta indicadores y graficas automaticamente. Excel, Word y PDF se pueden subir como soporte dentro del sistema.</p>
+            <p class="item-meta">
+              CSV alimenta indicadores y graficas automaticamente. Excel, Word y PDF se pueden subir como soporte dentro
+              del sistema.
+            </p>
             <div class="upload-preview" id="uploadPreview"></div>
           </section>
         </section>
@@ -618,10 +795,35 @@
             <div class="program-grid" id="programGrid"></div>
           </section>
         </section>
+
+        <section class="view" id="accessView" data-view-panel="access">
+          <div class="supervision-grid">
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <p class="eyebrow">Control de acceso</p>
+                  <h2>Usuarios, perfiles y permisos</h2>
+                </div>
+                <span class="status-pill warning" id="accessRequestCount">0 pendientes</span>
+              </div>
+              <div class="user-access-grid" id="accessUserGrid"></div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <p class="eyebrow">Correos del sistema</p>
+                  <h2>Verificacion y recuperacion</h2>
+                </div>
+              </div>
+              <div class="delivery-list" id="accessEmailLog"></div>
+            </section>
+          </div>
+        </section>
       </main>
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="src/main.js?v=20260507j"></script>
+    <script type="module" src="src/main.js?v=20260508a"></script>
   </body>
 </html>
