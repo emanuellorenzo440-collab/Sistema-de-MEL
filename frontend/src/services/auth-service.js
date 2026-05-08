@@ -510,6 +510,61 @@ export async function signUpUser(payload = {}) {
   };
 }
 
+export async function createManagedUser(payload = {}) {
+  const state = await ensureAuthState();
+  const actor = state.users.find((item) => item.id === state.session?.userId);
+  if (!actor || actor.status !== "active") {
+    throw new Error("Necesitas una sesion activa para crear usuarios.");
+  }
+
+  const email = normalizeEmail(payload.email);
+  const fullName = String(payload.fullName || "").trim();
+  const password = String(payload.password || "").trim();
+  const systemRole = normalizeRoleLabel(payload.systemRole || payload.requestedRole || "Facilitador");
+  const status = payload.status || "active";
+
+  if (!fullName) {
+    throw new Error("Debes indicar el nombre del usuario.");
+  }
+  if (!email) {
+    throw new Error("Debes indicar un correo electronico.");
+  }
+  if (!password || password.length < 8) {
+    throw new Error("La contrasena debe tener al menos 8 caracteres.");
+  }
+  if (state.users.some((user) => user.email === email)) {
+    throw new Error("Ya existe una cuenta registrada con ese correo.");
+  }
+
+  const allowedRoles = normalizeRoleList(payload.allowedRoles?.length ? payload.allowedRoles : [systemRole]);
+  const viewPermissions = normalizeViewPermissions(
+    payload.viewPermissions?.length ? payload.viewPermissions : defaultPermissionsForRole(systemRole),
+  );
+
+  const nextUser = normalizeUser({
+    id: `usr-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+    fullName,
+    email,
+    passwordHash: await sha256(password),
+    requestedRole: systemRole,
+    systemRole,
+    allowedRoles,
+    viewPermissions: viewPermissions.length ? viewPermissions : defaultPermissionsForRole(systemRole),
+    verifiedAt: nowIso(),
+    status,
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+    accessNote: String(payload.accessNote || "Usuario creado desde Accesos.").trim(),
+  });
+
+  state.users.unshift(nextUser);
+  writeStoredAuthState(state, "managed-user-created");
+  return clone({
+    ...nextUser,
+    passwordHash: undefined,
+  });
+}
+
 function completeVerification(user) {
   user.verificationTokenHash = null;
   user.verificationCodeHash = null;

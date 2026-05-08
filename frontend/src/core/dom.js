@@ -7,6 +7,7 @@ export const elements = {
   roleBadge: $("#roleBadge"),
   currentUserName: $("#currentUserName"),
   currentUserEmail: $("#currentUserEmail"),
+  globalFilters: $("#globalFilters"),
   programFilter: $("#programFilter"),
   provinceFilter: $("#provinceFilter"),
   periodFilter: $("#periodFilter"),

@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260507i";
-import { $, $$, elements } from "../core/dom.js?v=20260508a";
+import { $, $$, elements } from "../core/dom.js?v=20260508s";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260507i";
 import { seedState } from "../data/seed-state.js?v=20260507i";
 import {
@@ -12,13 +12,14 @@ import {
 import {
   SYSTEM_ROLES,
   VIEW_DEFINITIONS,
+  createManagedUser,
   getAllowedRoles,
   getCurrentUser,
   getSessionRole,
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260508r";
+} from "../services/auth-service.js?v=20260508s";
 import {
   createApiIndicator,
   createApiProgram,
@@ -884,7 +885,51 @@ function renderAccessWorkspace() {
     elements.accessRequestCount.textContent = `${pendingCount} pendiente${pendingCount === 1 ? "" : "s"}`;
     elements.accessRequestCount.className = `status-pill ${pendingCount ? "warning" : "good"}`;
 
-    const summaryMarkup = `
+  const summaryMarkup = `
+      <form class="user-access-card create-user-card" id="createManagedUserForm">
+        <div class="user-access-top">
+          <div>
+            <p class="eyebrow">Nuevo usuario</p>
+            <h3>Crear acceso directo</h3>
+          </div>
+          <span class="status-pill info">Activo al guardar</span>
+        </div>
+        <div class="access-card-grid">
+          <label>
+            Nombre completo
+            <input name="fullName" type="text" required />
+          </label>
+          <label>
+            Correo electronico
+            <input name="email" type="email" required />
+          </label>
+          <label>
+            Contrasena temporal
+            <input name="password" type="password" minlength="8" required />
+          </label>
+          <label>
+            Rol principal
+            <select name="systemRole">
+              ${SYSTEM_ROLES.map((role) => `<option value="${role}" ${role === "Facilitador" ? "selected" : ""}>${role}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            Estado
+            <select name="status">
+              <option value="active" selected>Activo</option>
+              <option value="pending_approval">Pendiente aprobacion</option>
+              <option value="suspended">Suspendido</option>
+            </select>
+          </label>
+        </div>
+        <label>
+          Nota de acceso
+          <textarea name="accessNote" rows="2" placeholder="Ej. Creado por supervision para equipo de campo."></textarea>
+        </label>
+        <div class="item-actions">
+          <button class="primary-action" type="submit">Crear usuario</button>
+        </div>
+      </form>
       <div class="access-summary-grid">
         ${groups
           .map((group) => {
@@ -1554,6 +1599,9 @@ function switchView(viewName) {
   };
   $$(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.view === viewName));
   $$(".view").forEach((panel) => panel.classList.toggle("active", panel.dataset.viewPanel === viewName));
+  if (elements.globalFilters) {
+    elements.globalFilters.hidden = viewName === "access";
+  }
   elements.pageTitle.textContent = titles[viewName];
 }
 
@@ -2715,6 +2763,33 @@ function bindEvents() {
   });
 
   elements.accessUserGrid?.addEventListener("submit", (event) => {
+    if (event.target.id === "createManagedUserForm") {
+      event.preventDefault();
+      const formData = new FormData(event.target);
+      void (async () => {
+        try {
+          const systemRole = String(formData.get("systemRole") || "Facilitador");
+          await createManagedUser({
+            fullName: formData.get("fullName"),
+            email: formData.get("email"),
+            password: formData.get("password"),
+            systemRole,
+            status: formData.get("status"),
+            allowedRoles: [systemRole],
+            viewPermissions: VIEW_DEFINITIONS.map((view) => view.id),
+            accessNote: formData.get("accessNote"),
+          });
+          event.target.reset();
+          renderAccessWorkspace();
+          showToast("Usuario creado.");
+        } catch (error) {
+          console.error(error);
+          showToast(error.message || "No pude crear el usuario.");
+        }
+      })();
+      return;
+    }
+
     const form = event.target.closest("[data-user-access-form]");
     if (!form) return;
     event.preventDefault();
