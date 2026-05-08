@@ -1,18 +1,44 @@
-import { initializeAccessLobby } from "./features/access-lobby.js?v=20260508g";
-import { createMonitoringApp } from "./features/monitoring-app.js?v=20260508g";
-import { bootstrapApiBridge, startRuntimeBridge } from "./services/mel-runtime-bridge.js?v=20260508a";
+import { initializeAccessLobby } from "./features/access-lobby.js?v=20260508r";
 
-await bootstrapApiBridge();
+let monitoringApp = null;
+let monitoringAppPromise = null;
+let runtimeBridgeStarted = false;
 
-const app = createMonitoringApp();
-await app.start();
-startRuntimeBridge();
+async function loadMonitoringApp(authenticatedUser = null) {
+  if (monitoringApp) return monitoringApp;
+  if (monitoringAppPromise) return monitoringAppPromise;
+
+  monitoringAppPromise = (async () => {
+    const [{ createMonitoringApp }, { bootstrapApiBridge, startRuntimeBridge }] = await Promise.all([
+      import("./features/monitoring-app.js?v=20260508r"),
+      import("./services/mel-runtime-bridge.js?v=20260508h"),
+    ]);
+
+    const app = createMonitoringApp();
+    await bootstrapApiBridge();
+    await app.start(authenticatedUser);
+
+    if (!runtimeBridgeStarted) {
+      startRuntimeBridge();
+      runtimeBridgeStarted = true;
+    }
+
+    monitoringApp = app;
+    return app;
+  })().catch((error) => {
+    monitoringAppPromise = null;
+    throw error;
+  });
+
+  return monitoringAppPromise;
+}
 
 await initializeAccessLobby({
-  onAuthenticated: () => {
-    void app.syncAccess();
+  onAuthenticated: async (currentUser) => {
+    const app = await loadMonitoringApp(currentUser);
+    await app.syncAccess(currentUser);
   },
   onSignedOut: () => {
-    app.lock();
+    monitoringApp?.lock();
   },
 });

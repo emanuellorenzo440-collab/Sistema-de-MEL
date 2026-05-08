@@ -1,4 +1,5 @@
 const AUTH_STORAGE_KEY = "pulso-me-auth-v1";
+const AUTH_SESSION_KEY = "pulso-me-session-v1";
 const AUTH_EVENT_NAME = "mel:auth-changed";
 
 export const SYSTEM_ROLES = [
@@ -177,7 +178,7 @@ async function getPresetAccountTemplates() {
         status: "active",
         systemRole: "Supervision M&E",
         requestedRole: "Supervision M&E",
-        allowedRoles: ["Supervision M&E"],
+        allowedRoles: SYSTEM_ROLES.slice(),
         viewPermissions: VIEW_DEFINITIONS.map((view) => view.id),
         verifiedAt: SEEDED_ACCOUNTS_CREATED_AT,
         accessNote: "Cuenta inicial para gestionar accesos del sistema.",
@@ -190,7 +191,7 @@ async function getPresetAccountTemplates() {
         status: "active",
         systemRole: "Supervision M&E",
         requestedRole: "Supervision M&E",
-        allowedRoles: ["Supervision M&E"],
+        allowedRoles: SYSTEM_ROLES.slice(),
         viewPermissions: VIEW_DEFINITIONS.map((view) => view.id),
         verifiedAt: SEEDED_ACCOUNTS_CREATED_AT,
         accessNote: "Cuenta habilitada para revisar solicitudes y administrar accesos.",
@@ -255,10 +256,57 @@ function normalizeAuthState(rawState = {}) {
   return state;
 }
 
+function readStoredSession() {
+  try {
+    const raw = window.localStorage.getItem(AUTH_SESSION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredSession(session) {
+  try {
+    if (session?.userId) {
+      window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
+    } else {
+      window.localStorage.removeItem(AUTH_SESSION_KEY);
+    }
+  } catch {
+    // Keep auth usable even if persistent storage is unavailable.
+  }
+}
+
+function restorePersistedSession(state) {
+  const normalized = normalizeAuthState(state);
+  if (normalized.session?.userId) {
+    writeStoredSession(normalized.session);
+    return normalized;
+  }
+
+  const persistedSession = readStoredSession();
+  if (!persistedSession?.userId) return normalized;
+
+  const sessionUser = normalized.users.find((user) => user.id === persistedSession.userId);
+  if (!sessionUser || sessionUser.status !== "active") {
+    writeStoredSession(null);
+    return normalized;
+  }
+
+  return normalizeAuthState({
+    ...normalized,
+    session: {
+      userId: sessionUser.id,
+      activeRole: normalizeRoleLabel(persistedSession.activeRole || sessionUser.systemRole),
+      createdAt: persistedSession.createdAt || nowIso(),
+    },
+  });
+}
+
 function readStoredAuthState() {
   try {
     const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
-    return raw ? normalizeAuthState(JSON.parse(raw)) : null;
+    return raw ? restorePersistedSession(JSON.parse(raw)) : null;
   } catch {
     return null;
   }
@@ -267,6 +315,7 @@ function readStoredAuthState() {
 function writeStoredAuthState(state, eventType = "updated") {
   const normalized = normalizeAuthState(state);
   window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(normalized));
+  writeStoredSession(normalized.session);
   dispatchAuthChange(eventType, { session: normalized.session });
   return normalized;
 }
@@ -552,7 +601,7 @@ export async function signInUser(payload = {}) {
   user.updatedAt = nowIso();
   state.session = {
     userId: user.id,
-    activeRole: normalizeRoleLabel(user.allowedRoles[0] || user.systemRole),
+    activeRole: normalizeRoleLabel(user.systemRole),
     createdAt: nowIso(),
   };
   writeStoredAuthState(state, "signed-in");
@@ -630,8 +679,8 @@ export async function resetPassword(payload = {}) {
 export async function updateManagedUserAccess(userId, updates = {}) {
   const state = await ensureAuthState();
   const actor = state.users.find((item) => item.id === state.session?.userId);
-  if (!actor || actor.systemRole !== "Supervision M&E") {
-    throw new Error("Solo supervision M&E puede administrar accesos.");
+  if (!actor || actor.status !== "active") {
+    throw new Error("Necesitas una sesion activa para administrar accesos.");
   }
 
   const user = state.users.find((item) => item.id === userId);

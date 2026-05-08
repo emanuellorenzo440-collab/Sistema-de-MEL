@@ -9,13 +9,14 @@ import {
   signOutUser,
   signUpUser,
   verifyRegisteredUserByLink,
-} from "../services/auth-service.js?v=20260508g";
+} from "../services/auth-service.js?v=20260508r";
 
 const sections = ["signin", "signup", "forgot"];
 let wired = false;
 let onAuthenticatedCallback = () => {};
 let onSignedOutCallback = () => {};
 let lastSessionUserId = null;
+let sessionReadyPromise = null;
 
 function $(selector) {
   return document.querySelector(selector);
@@ -36,6 +37,34 @@ function showSection(sectionId) {
     if (panel) panel.hidden = section !== sectionId;
     if (tab) tab.classList.toggle("active", section === sectionId);
   });
+}
+
+function normalizeSessionRole(user) {
+  return user?.systemRole || user?.allowedRoles?.[0] || "Facilitador";
+}
+
+function paintSessionUser(currentUser) {
+  const role = normalizeSessionRole(currentUser);
+  const userName = $("#currentUserName");
+  const userEmail = $("#currentUserEmail");
+  const roleBadge = $("#roleBadge");
+  const roleSelect = $("#roleSelect");
+
+  if (userName) userName.textContent = currentUser?.fullName || "Sin sesion";
+  if (userEmail) userEmail.textContent = currentUser?.email || "-";
+  if (roleBadge) {
+    roleBadge.textContent = role;
+    roleBadge.className = `status-pill ${role === "Supervision M&E" ? "info" : "neutral"}`;
+  }
+  if (roleSelect) {
+    roleSelect.innerHTML = `<option>${role}</option>`;
+    roleSelect.value = role;
+    roleSelect.disabled = true;
+  }
+}
+
+function clearSessionUser() {
+  paintSessionUser(null);
 }
 
 async function consumeVerificationLink() {
@@ -63,15 +92,29 @@ async function updateLobbyVisibility() {
   const currentUser = await getCurrentUser();
   const isLoggedIn = Boolean(currentUser);
 
-  if (appShell) appShell.hidden = !isLoggedIn;
-  if (authShell) authShell.hidden = isLoggedIn;
+  if (isLoggedIn) {
+    paintSessionUser(currentUser);
+    if (currentUser.id !== lastSessionUserId) {
+      lastSessionUserId = currentUser.id;
+      sessionReadyPromise = Promise.resolve(onAuthenticatedCallback(currentUser)).finally(() => {
+        sessionReadyPromise = null;
+      });
+    }
+    if (sessionReadyPromise) {
+      await sessionReadyPromise;
+    }
+    if (appShell) appShell.hidden = false;
+    if (authShell) authShell.hidden = true;
+  } else {
+    if (appShell) appShell.hidden = true;
+    if (authShell) authShell.hidden = false;
+  }
 
-  if (isLoggedIn && currentUser.id !== lastSessionUserId) {
-    lastSessionUserId = currentUser.id;
-    onAuthenticatedCallback(currentUser);
-  } else if (!isLoggedIn && lastSessionUserId !== null) {
+  if (!isLoggedIn && lastSessionUserId !== null) {
     lastSessionUserId = null;
-    onSignedOutCallback();
+    sessionReadyPromise = null;
+    clearSessionUser();
+    await onSignedOutCallback();
   }
 }
 

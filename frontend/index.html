@@ -4,7 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Pulso M&amp;E</title>
-    <link rel="stylesheet" href="styles.css" />
+    <style>
+      [hidden] {
+        display: none !important;
+      }
+    </style>
+    <link rel="stylesheet" href="styles.css?v=20260508r" />
   </head>
   <body>
     <section class="auth-shell" id="authShell">
@@ -161,7 +166,7 @@
         </nav>
 
         <div class="role-box">
-          <label for="roleSelect">Perfil activo</label>
+          <label for="roleSelect">Perfil de usuario</label>
           <select id="roleSelect">
             <option>Facilitador</option>
             <option>Coordinador de programa</option>
@@ -750,6 +755,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="src/main.js?v=20260508g"></script>
+    <script type="module" src="src/main.js?v=20260508r"></script>
   </body>
 </html>

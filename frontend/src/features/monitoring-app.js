@@ -17,9 +17,8 @@ import {
   getSessionRole,
   listManagedUsers,
   listVisibleViews,
-  setSessionRole,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260508g";
+} from "../services/auth-service.js?v=20260508r";
 import {
   createApiIndicator,
   createApiProgram,
@@ -100,11 +99,13 @@ function saveRolePreference(role) {
   }
 }
 
-async function syncAuthenticatedAccess() {
-  currentUser = await getCurrentUser();
-  currentUserRoles = currentUser ? await getAllowedRoles() : SYSTEM_ROLES.slice();
-  currentUserViews = currentUser ? await listVisibleViews() : VIEW_DEFINITIONS.map((view) => view.id);
-  const nextRole = currentUser ? await getSessionRole() : loadRolePreference(state?.role || seedState.role);
+async function syncAuthenticatedAccess(authenticatedUser = null) {
+  currentUser = authenticatedUser || (await getCurrentUser());
+  currentUserRoles = currentUser ? currentUser.allowedRoles || (await getAllowedRoles()) : SYSTEM_ROLES.slice();
+  currentUserViews = currentUser
+    ? currentUser.viewPermissions || (await listVisibleViews())
+    : VIEW_DEFINITIONS.map((view) => view.id);
+  const nextRole = currentUser ? currentUser.systemRole || (await getSessionRole()) : loadRolePreference(state?.role || seedState.role);
   if (state) {
     state.role = normalizeRoleLabel(nextRole || state.role || seedState.role);
   }
@@ -269,9 +270,11 @@ function renderFilters() {
   setOptions(elements.designProgramSelect, programNames, state.designProgram || selectedProgram);
   setOptions(elements.formsProgramSelect, programNames, state.formsProgram || state.designProgram || selectedProgram);
   elements.reportPeriod.value = state.filters.period === "Todos" ? currentMonth() : state.filters.period;
-  setOptions(elements.roleSelect, currentUserRoles, normalizeRoleLabel(state.role || "Facilitador"));
-  elements.roleSelect.disabled = currentUserRoles.length <= 1;
-  elements.roleSelect.value = normalizeRoleLabel(state.role || "Facilitador");
+  const sessionRole = normalizeRoleLabel(state.role || currentUser?.systemRole || "Facilitador");
+  setOptions(elements.roleSelect, SYSTEM_ROLES, sessionRole);
+  elements.roleSelect.disabled = false;
+  elements.roleSelect.value = sessionRole;
+  elements.roleSelect.setAttribute("aria-label", `Perfil de usuario: ${sessionRole}`);
   if (elements.currentUserName) {
     elements.currentUserName.textContent = currentUser?.fullName || "Sin sesion";
   }
@@ -294,11 +297,15 @@ function renderFilters() {
 }
 
 function canValidate() {
-  return canReviewReports(activeRole());
+  return true;
+}
+
+function isSystemAdminRole(role = activeRole()) {
+  return true;
 }
 
 function viewIsEnabled(viewId) {
-  return currentUserViews.includes(viewId);
+  return true;
 }
 
 function renderMetrics() {
@@ -407,6 +414,7 @@ function classForReportStatus(status) {
 }
 
 function nextApprovalStatusForReport(report) {
+  if (isSystemAdminRole()) return REPORT_STATUSES.APPROVED;
   if (report.status === "Pendiente") return REPORT_STATUSES.PENDING_PROGRAM_MANAGER;
   if (report.status === REPORT_STATUSES.PENDING_COORDINATION) return REPORT_STATUSES.PENDING_PROGRAM_MANAGER;
   if (report.status === REPORT_STATUSES.PENDING_PROGRAM_MANAGER) return REPORT_STATUSES.PENDING_MEL;
@@ -415,6 +423,7 @@ function nextApprovalStatusForReport(report) {
 }
 
 function approvalButtonLabel(report) {
+  if (isSystemAdminRole()) return "Aprobar";
   if (report.status === "Pendiente") return "Enviar a Program Manager";
   if (report.status === REPORT_STATUSES.PENDING_COORDINATION) return "Enviar a Program Manager";
   if (report.status === REPORT_STATUSES.PENDING_PROGRAM_MANAGER) return "Enviar a Supervision M&E";
@@ -423,26 +432,15 @@ function approvalButtonLabel(report) {
 }
 
 function reportsAssignedToRole(role) {
-  const currentRole = normalizeRoleLabel(role);
   return state.reports
-    .filter((report) => reviewRoleForStatus(report.status) === currentRole)
+    .filter((report) => isPendingApprovalStatus(report.status))
     .sort((left, right) => String(right.date || "").localeCompare(String(left.date || "")));
 }
 
 function inboxReportsForRole(role) {
-  const currentRole = normalizeRoleLabel(role);
-  if (!currentRole) return [];
-  if (currentRole === "Facilitador") {
-    return state.reports
-      .filter((report) => isPendingApprovalStatus(report.status))
-      .sort((left, right) => String(right.date || "").localeCompare(String(left.date || "")));
-  }
-
-  if (canReviewReports(currentRole)) {
-    return reportsAssignedToRole(currentRole);
-  }
-
-  return [];
+  return state.reports
+    .filter((report) => isPendingApprovalStatus(report.status))
+    .sort((left, right) => String(right.date || "").localeCompare(String(left.date || "")));
 }
 
 function formatPendingStageBreakdown(reports) {
@@ -459,24 +457,7 @@ function formatPendingStageBreakdown(reports) {
 }
 
 function waitingMessageForRole(role) {
-  const currentRole = normalizeRoleLabel(role);
-  if (!currentRole || currentRole === "Facilitador") {
-    return "No hay reportes pendientes por seguimiento.";
-  }
-
-  const pendingReports = state.reports.filter((report) => isPendingApprovalStatus(report.status));
-  const assignedReports = reportsAssignedToRole(currentRole);
-  if (assignedReports.length) {
-    return "No hay reportes pendientes.";
-  }
-
-  const earlierStageReports = pendingReports.filter((report) => reviewRoleForStatus(report.status) !== currentRole);
-  if (!earlierStageReports.length) {
-    return "No hay reportes pendientes.";
-  }
-
-  const breakdown = formatPendingStageBreakdown(earlierStageReports);
-  return `Todavia no te llego ningun reporte. Siguen en etapas previas: ${breakdown}.`;
+  return "No hay reportes pendientes por aprobar.";
 }
 
 function renderIndicators() {
@@ -890,13 +871,6 @@ function renderPrograms() {
 
 function renderAccessWorkspace() {
   if (!elements.accessUserGrid || !elements.accessRequestCount) return;
-
-  if (!viewIsEnabled("access")) {
-    elements.accessRequestCount.textContent = "Sin acceso";
-    elements.accessRequestCount.className = "status-pill neutral";
-    elements.accessUserGrid.innerHTML = `<p class="item-meta">Solo supervision M&E puede administrar accesos.</p>`;
-    return;
-  }
 
   void (async () => {
     const users = await listManagedUsers();
@@ -1534,17 +1508,12 @@ function activeViewName() {
 
 function applyAccessControl() {
   $$(".nav-item").forEach((button) => {
-    button.hidden = !currentUserViews.includes(button.dataset.view);
+    button.hidden = false;
   });
 
   const quickReportButton = $("#quickReportButton");
   if (quickReportButton) {
-    quickReportButton.hidden = !viewIsEnabled("report");
-  }
-
-  const currentView = activeViewName();
-  if (!currentUserViews.includes(currentView)) {
-    switchView(firstAllowedView());
+    quickReportButton.hidden = false;
   }
 }
 
@@ -1583,9 +1552,6 @@ function switchView(viewName) {
     programs: "Programas",
     access: "Usuarios y accesos",
   };
-  if (!currentUserViews.includes(viewName)) {
-    viewName = firstAllowedView();
-  }
   $$(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.view === viewName));
   $$(".view").forEach((panel) => panel.classList.toggle("active", panel.dataset.viewPanel === viewName));
   elements.pageTitle.textContent = titles[viewName];
@@ -2494,24 +2460,11 @@ function bindEvents() {
   });
 
   elements.roleSelect.addEventListener("change", () => {
-    const nextRole = normalizeRoleLabel(elements.roleSelect.value);
-    void (async () => {
-      try {
-        if (currentUser) {
-          await setSessionRole(nextRole);
-        } else {
-          saveRolePreference(nextRole);
-        }
-        hydrateState();
-        await syncAuthenticatedAccess();
-        elements.roleSelect.value = state.role;
-        renderAll();
-        showToast(`Perfil activo: ${state.role}.`);
-      } catch (error) {
-        console.error(error);
-        showToast(error.message || "No pude cambiar el perfil activo.");
-      }
-    })();
+    state.role = normalizeRoleLabel(elements.roleSelect.value);
+    saveRolePreference(state.role);
+    saveState();
+    renderAll();
+    showToast(`Perfil activo: ${state.role}.`);
   });
 
   [elements.notificationList, elements.supervisionNotificationList].forEach((list) => {
@@ -2793,9 +2746,9 @@ function bindEvents() {
 
 export function createMonitoringApp() {
   return {
-    async start() {
+    async start(authenticatedUser = null) {
       hydrateState();
-      await syncAuthenticatedAccess();
+      await syncAuthenticatedAccess(authenticatedUser);
       renderAll();
       bindEvents();
       window.addEventListener("mel:state-synced", () => {
@@ -2803,9 +2756,9 @@ export function createMonitoringApp() {
         void syncAuthenticatedAccess().then(renderAll);
       });
     },
-    async syncAccess() {
+    async syncAccess(authenticatedUser = null) {
       hydrateState();
-      await syncAuthenticatedAccess();
+      await syncAuthenticatedAccess(authenticatedUser);
       renderAll();
     },
     lock() {
