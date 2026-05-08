@@ -996,6 +996,7 @@ textarea {
   width: auto;
 }
 
+.user-access-card input,
 .user-access-card select,
 .user-access-card textarea {
   width: 100%;

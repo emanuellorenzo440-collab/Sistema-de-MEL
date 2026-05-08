@@ -743,12 +743,33 @@ export async function updateManagedUserAccess(userId, updates = {}) {
     throw new Error("No encontre el usuario solicitado.");
   }
 
+  const nextFullName = String(updates.fullName || user.fullName || "").trim();
+  const nextEmail = normalizeEmail(updates.email || user.email);
+  const nextPassword = String(updates.password || "").trim();
   const nextSystemRole = normalizeRoleLabel(updates.systemRole || user.systemRole);
   const nextAllowedRoles = normalizeRoleList(updates.allowedRoles?.length ? updates.allowedRoles : user.allowedRoles);
   const nextViewPermissions = normalizeViewPermissions(
     updates.viewPermissions?.length ? updates.viewPermissions : user.viewPermissions,
   );
 
+  if (!nextFullName) {
+    throw new Error("Debes indicar el nombre del usuario.");
+  }
+  if (!nextEmail) {
+    throw new Error("Debes indicar un correo electronico.");
+  }
+  if (nextEmail !== user.email && state.users.some((item) => item.email === nextEmail)) {
+    throw new Error("Ya existe una cuenta registrada con ese correo.");
+  }
+  if (nextPassword && nextPassword.length < 8) {
+    throw new Error("La nueva contrasena debe tener al menos 8 caracteres.");
+  }
+
+  user.fullName = nextFullName;
+  user.email = nextEmail;
+  if (nextPassword) {
+    user.passwordHash = await sha256(nextPassword);
+  }
   user.systemRole = nextSystemRole;
   user.allowedRoles = nextAllowedRoles.includes(nextSystemRole)
     ? nextAllowedRoles
@@ -759,7 +780,10 @@ export async function updateManagedUserAccess(userId, updates = {}) {
   user.updatedAt = nowIso();
 
   if (user.status === "active" && !user.verifiedAt) {
-    throw new Error("No puedes activar una cuenta que todavia no verifico su correo.");
+    user.verifiedAt = nowIso();
+    user.verificationTokenHash = null;
+    user.verificationCodeHash = null;
+    user.verificationExpiresAt = null;
   }
 
   if (state.session?.userId === user.id) {
