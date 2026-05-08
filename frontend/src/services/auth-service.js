@@ -53,6 +53,8 @@ const SEEDED_ACCESS_MANAGER = {
   fullName: "L Lorenzo",
 };
 
+const SEEDED_ACCOUNTS_CREATED_AT = "2026-05-08T00:00:00.000Z";
+
 function clone(value) {
   return structuredClone(value);
 }
@@ -231,7 +233,7 @@ function writeStoredAuthState(state, eventType = "updated") {
 }
 
 async function buildSeedAuthState() {
-  const timestamp = nowIso();
+  const timestamp = SEEDED_ACCOUNTS_CREATED_AT;
   const passwordHash = await sha256(DEMO_SUPERVISOR.password);
   const accessManagerPasswordHash = await sha256(SEEDED_ACCESS_MANAGER.password);
   return normalizeAuthState({
@@ -275,7 +277,7 @@ async function buildSeedAuthState() {
 }
 
 async function ensurePresetUsers(state) {
-  const timestamp = nowIso();
+  const timestamp = SEEDED_ACCOUNTS_CREATED_AT;
   const presets = [
     {
       id: "usr-supervision-root",
