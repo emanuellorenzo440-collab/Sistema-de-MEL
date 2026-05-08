@@ -13,7 +13,7 @@ import {
   verifyRegisteredUserByLink,
 } from "../services/auth-service.js?v=20260508b";
 
-const sections = ["signin", "signup", "verify", "forgot"];
+const sections = ["signin", "signup", "forgot"];
 let wired = false;
 let onAuthenticatedCallback = () => {};
 let onSignedOutCallback = () => {};
@@ -124,9 +124,6 @@ function bindLobbyEvents() {
       showSection(button.dataset.openAuth);
     });
   });
-
-  $("#fillSupervisorButton")?.addEventListener("click", fillDemoCredentials);
-
   $("#signinForm")?.addEventListener("submit", (event) => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
@@ -163,7 +160,7 @@ function bindLobbyEvents() {
           requestedRole: formData.get("requestedRole"),
         });
         await renderDeliveryPreview(result.email);
-        showSection("verify");
+        showSection("signin");
         showToastMessage("Registro creado. Te envie un enlace de verificacion.");
       } catch (error) {
         showToastMessage(error.message || "No pude registrar el usuario.");
@@ -224,13 +221,6 @@ function bindLobbyEvents() {
     })();
   });
 
-  $("#previewVerifyButton")?.addEventListener("click", () => {
-    void renderDeliveryPreview($("#signupEmail")?.value || "");
-  });
-
-  $("#previewResetButton")?.addEventListener("click", () => {
-    void renderDeliveryPreview($("#resetEmail")?.value || $("#forgotEmail")?.value || "");
-  });
 }
 
 function fillRequestedRoleOptions() {

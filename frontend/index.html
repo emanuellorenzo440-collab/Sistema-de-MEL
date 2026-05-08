@@ -8,160 +8,103 @@
   </head>
   <body>
     <section class="auth-shell" id="authShell">
-      <div class="auth-hero">
-        <div class="brand brand-large">
+      <section class="auth-card auth-card-centered">
+        <div class="brand brand-large auth-brand">
           <span class="brand-mark">P</span>
           <div>
             <strong>Pulso M&amp;E</strong>
-            <span>Lobby de acceso, verificacion y permisos</span>
+            <span>Monitoreo, evaluacion y aprendizaje</span>
           </div>
         </div>
-        <div class="auth-copy">
-          <p class="eyebrow">Acceso al sistema</p>
-          <h1>Entrar, registrar usuarios y controlar permisos</h1>
-          <p>
-            Cada usuario entra con correo y contrasena, verifica su cuenta y luego recibe los accesos que supervision
-            M&amp;E decida habilitar.
-          </p>
-        </div>
-        <div class="auth-summary">
-          <div>
-            <p class="eyebrow">Cuenta inicial</p>
-            <strong>Supervision M&amp;E</strong>
-            <p class="item-meta">Usa la cuenta demo para aprobar registros y asignar permisos.</p>
-          </div>
-          <button class="ghost-action" id="fillSupervisorButton" type="button">Cargar cuenta de supervision</button>
-        </div>
-      </div>
 
-      <div class="auth-panels">
-        <section class="auth-card">
-          <div class="auth-tabs">
-            <button class="auth-tab active" data-open-auth="signin" type="button">Sign in</button>
-            <button class="auth-tab" data-open-auth="signup" type="button">Sign up</button>
-            <button class="auth-tab" data-open-auth="verify" type="button">Verificar</button>
-            <button class="auth-tab" data-open-auth="forgot" type="button">Forgot password</button>
-          </div>
+        <div class="auth-section" data-auth-section="signin">
+          <form class="auth-form" id="signinForm">
+            <label>
+              Correo electronico
+              <input id="signinEmail" name="email" type="email" autocomplete="email" required />
+            </label>
+            <label>
+              Contrasena
+              <input id="signinPassword" name="password" type="password" autocomplete="current-password" required />
+            </label>
+            <button class="primary-action auth-submit" type="submit">Entrar</button>
+          </form>
 
-          <div class="auth-section" data-auth-section="signin">
-            <p class="eyebrow">Ingreso</p>
-            <h2>Entrar al sistema</h2>
-            <form class="auth-form" id="signinForm">
+          <div class="auth-link-row">
+            <button class="auth-link" data-open-auth="signup" type="button">Create an account</button>
+            <button class="auth-link" data-open-auth="forgot" type="button">Forgot password?</button>
+          </div>
+        </div>
+
+        <div class="auth-section" data-auth-section="signup" hidden>
+          <p class="eyebrow">Crear cuenta</p>
+          <h2>Registrar nuevo usuario</h2>
+          <form class="auth-form" id="signupForm">
+            <label>
+              Nombre completo
+              <input id="signupFullName" name="fullName" autocomplete="name" required />
+            </label>
+            <label>
+              Correo electronico
+              <input id="signupEmail" name="email" type="email" autocomplete="email" required />
+            </label>
+            <label>
+              Perfil solicitado
+              <select id="signupRequestedRole" name="requestedRole"></select>
+            </label>
+            <label>
+              Contrasena
+              <input id="signupPassword" name="password" type="password" autocomplete="new-password" required />
+            </label>
+            <label>
+              Confirmar contrasena
+              <input id="signupConfirmPassword" name="confirmPassword" type="password" autocomplete="new-password" required />
+            </label>
+            <button class="primary-action auth-submit" type="submit">Crear cuenta</button>
+          </form>
+          <div class="auth-link-row auth-link-row-single">
+            <button class="auth-link" data-open-auth="signin" type="button">Back to sign in</button>
+          </div>
+        </div>
+
+        <div class="auth-section" data-auth-section="forgot" hidden>
+          <p class="eyebrow">Recuperacion</p>
+          <h2>Restablecer contrasena</h2>
+          <form class="auth-form" id="forgotRequestForm">
+            <label>
+              Correo electronico
+              <input id="forgotEmail" name="email" type="email" autocomplete="email" required />
+            </label>
+            <button class="primary-action auth-submit" type="submit">Enviar enlace de recuperacion</button>
+          </form>
+
+          <div class="auth-reset-box" id="forgotResetBox" hidden>
+            <form class="auth-form" id="forgotResetForm">
               <label>
                 Correo electronico
-                <input id="signinEmail" name="email" type="email" autocomplete="email" required />
+                <input id="resetEmail" name="email" type="email" autocomplete="email" required />
               </label>
               <label>
-                Contrasena
-                <input id="signinPassword" name="password" type="password" autocomplete="current-password" required />
-              </label>
-              <button class="primary-action" type="submit">Entrar</button>
-            </form>
-          </div>
-
-          <div class="auth-section" data-auth-section="signup" hidden>
-            <p class="eyebrow">Registro</p>
-            <h2>Crear nuevo usuario</h2>
-            <form class="auth-form" id="signupForm">
-              <label>
-                Nombre completo
-                <input id="signupFullName" name="fullName" autocomplete="name" required />
+                Codigo
+                <input id="resetCode" name="code" inputmode="numeric" autocomplete="one-time-code" required />
               </label>
               <label>
-                Correo electronico
-                <input id="signupEmail" name="email" type="email" autocomplete="email" required />
-              </label>
-              <label>
-                Perfil solicitado
-                <select id="signupRequestedRole" name="requestedRole"></select>
-              </label>
-              <label>
-                Contrasena
-                <input id="signupPassword" name="password" type="password" autocomplete="new-password" required />
+                Nueva contrasena
+                <input id="resetPassword" name="password" type="password" autocomplete="new-password" required />
               </label>
               <label>
                 Confirmar contrasena
-                <input
-                  id="signupConfirmPassword"
-                  name="confirmPassword"
-                  type="password"
-                  autocomplete="new-password"
-                  required
-                />
+                <input id="resetConfirmPassword" name="confirmPassword" type="password" autocomplete="new-password" required />
               </label>
-              <button class="primary-action" type="submit">Registrarme</button>
+              <button class="primary-action auth-submit" type="submit">Actualizar contrasena</button>
             </form>
           </div>
 
-          <div class="auth-section" data-auth-section="verify" hidden>
-            <p class="eyebrow">Verificacion</p>
-            <h2>Verificar desde el correo</h2>
-            <div class="auth-form">
-              <p class="item-meta">
-                El sistema ahora envia un enlace de verificacion. Al abrirlo, la cuenta se verifica automaticamente y te
-                devuelve a la portada principal.
-              </p>
-              <div class="auth-inline-actions">
-                <button class="ghost-action" id="previewVerifyButton" type="button">Ver ultimo enlace</button>
-              </div>
-            </div>
+          <div class="auth-link-row auth-link-row-single">
+            <button class="auth-link" data-open-auth="signin" type="button">Back to sign in</button>
           </div>
-
-          <div class="auth-section" data-auth-section="forgot" hidden>
-            <p class="eyebrow">Recuperacion</p>
-            <h2>Restablecer contrasena</h2>
-            <form class="auth-form" id="forgotRequestForm">
-              <label>
-                Correo electronico
-                <input id="forgotEmail" name="email" type="email" autocomplete="email" required />
-              </label>
-              <div class="auth-inline-actions">
-                <button class="primary-action" type="submit">Enviar codigo</button>
-                <button class="ghost-action" id="previewResetButton" type="button">Ver ultimo codigo</button>
-              </div>
-            </form>
-
-            <div class="auth-reset-box" id="forgotResetBox" hidden>
-              <form class="auth-form" id="forgotResetForm">
-                <label>
-                  Correo electronico
-                  <input id="resetEmail" name="email" type="email" autocomplete="email" required />
-                </label>
-                <label>
-                  Codigo
-                  <input id="resetCode" name="code" inputmode="numeric" autocomplete="one-time-code" required />
-                </label>
-                <label>
-                  Nueva contrasena
-                  <input id="resetPassword" name="password" type="password" autocomplete="new-password" required />
-                </label>
-                <label>
-                  Confirmar contrasena
-                  <input
-                    id="resetConfirmPassword"
-                    name="confirmPassword"
-                    type="password"
-                    autocomplete="new-password"
-                    required
-                  />
-                </label>
-                <button class="primary-action" type="submit">Actualizar contrasena</button>
-              </form>
-            </div>
-          </div>
-        </section>
-
-        <section class="auth-card">
-          <div class="panel-header">
-            <div>
-              <p class="eyebrow">Entrega de correo demo</p>
-              <h2>Ultimos codigos emitidos</h2>
-            </div>
-            <span class="status-pill info">Demo</span>
-          </div>
-          <div class="delivery-list" id="authDeliveryList"></div>
-        </section>
-      </div>
+        </div>
+      </section>
     </section>
 
     <div class="app-shell" hidden>
@@ -819,6 +762,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="src/main.js?v=20260508b"></script>
+    <script type="module" src="src/main.js?v=20260508c"></script>
   </body>
 </html>
