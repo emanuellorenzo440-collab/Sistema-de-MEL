@@ -54,6 +54,7 @@ const SEEDED_ACCESS_MANAGER = {
 };
 
 const SEEDED_ACCOUNTS_CREATED_AT = "2026-05-08T00:00:00.000Z";
+let presetAccountTemplatesPromise = null;
 
 function clone(value) {
   return structuredClone(value);
@@ -162,6 +163,44 @@ function createEmailRecord({ user, type, code, link, expiresAt }) {
   };
 }
 
+async function getPresetAccountTemplates() {
+  if (!presetAccountTemplatesPromise) {
+    presetAccountTemplatesPromise = Promise.all([
+      sha256(DEMO_SUPERVISOR.password),
+      sha256(SEEDED_ACCESS_MANAGER.password),
+    ]).then(([supervisorPasswordHash, accessManagerPasswordHash]) => [
+      {
+        id: "usr-supervision-root",
+        fullName: DEMO_SUPERVISOR.fullName,
+        email: DEMO_SUPERVISOR.email,
+        passwordHash: supervisorPasswordHash,
+        status: "active",
+        systemRole: "Supervision M&E",
+        requestedRole: "Supervision M&E",
+        allowedRoles: ["Supervision M&E"],
+        viewPermissions: VIEW_DEFINITIONS.map((view) => view.id),
+        verifiedAt: SEEDED_ACCOUNTS_CREATED_AT,
+        accessNote: "Cuenta inicial para gestionar accesos del sistema.",
+      },
+      {
+        id: "usr-llorenzo-access",
+        fullName: SEEDED_ACCESS_MANAGER.fullName,
+        email: SEEDED_ACCESS_MANAGER.email,
+        passwordHash: accessManagerPasswordHash,
+        status: "active",
+        systemRole: "Supervision M&E",
+        requestedRole: "Supervision M&E",
+        allowedRoles: ["Supervision M&E"],
+        viewPermissions: VIEW_DEFINITIONS.map((view) => view.id),
+        verifiedAt: SEEDED_ACCOUNTS_CREATED_AT,
+        accessNote: "Cuenta habilitada para revisar solicitudes y administrar accesos.",
+      },
+    ]);
+  }
+
+  return presetAccountTemplatesPromise;
+}
+
 function normalizeUser(user = {}) {
   const systemRole = normalizeRoleLabel(user.systemRole || user.requestedRole || "Facilitador");
   const allowedRoles = normalizeRoleList(user.allowedRoles?.length ? user.allowedRoles : [systemRole]);
@@ -234,43 +273,14 @@ function writeStoredAuthState(state, eventType = "updated") {
 
 async function buildSeedAuthState() {
   const timestamp = SEEDED_ACCOUNTS_CREATED_AT;
-  const passwordHash = await sha256(DEMO_SUPERVISOR.password);
-  const accessManagerPasswordHash = await sha256(SEEDED_ACCESS_MANAGER.password);
+  const presets = await getPresetAccountTemplates();
   return normalizeAuthState({
-    users: [
-      {
-        id: "usr-supervision-root",
-        fullName: DEMO_SUPERVISOR.fullName,
-        email: DEMO_SUPERVISOR.email,
-        passwordHash,
-        status: "active",
-        systemRole: "Supervision M&E",
-        requestedRole: "Supervision M&E",
-        allowedRoles: ["Supervision M&E"],
-        viewPermissions: VIEW_DEFINITIONS.map((view) => view.id),
-        verifiedAt: timestamp,
-        lastLoginAt: null,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-        accessNote: "Cuenta inicial para gestionar accesos del sistema.",
-      },
-      {
-        id: "usr-llorenzo-access",
-        fullName: SEEDED_ACCESS_MANAGER.fullName,
-        email: SEEDED_ACCESS_MANAGER.email,
-        passwordHash: accessManagerPasswordHash,
-        status: "active",
-        systemRole: "Supervision M&E",
-        requestedRole: "Supervision M&E",
-        allowedRoles: ["Supervision M&E"],
-        viewPermissions: VIEW_DEFINITIONS.map((view) => view.id),
-        verifiedAt: timestamp,
-        lastLoginAt: null,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-        accessNote: "Cuenta habilitada para revisar solicitudes y administrar accesos.",
-      },
-    ],
+    users: presets.map((preset) => ({
+      ...preset,
+      lastLoginAt: null,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    })),
     emailOutbox: [],
     session: null,
   });
@@ -278,34 +288,7 @@ async function buildSeedAuthState() {
 
 async function ensurePresetUsers(state) {
   const timestamp = SEEDED_ACCOUNTS_CREATED_AT;
-  const presets = [
-    {
-      id: "usr-supervision-root",
-      fullName: DEMO_SUPERVISOR.fullName,
-      email: DEMO_SUPERVISOR.email,
-      passwordHash: await sha256(DEMO_SUPERVISOR.password),
-      status: "active",
-      systemRole: "Supervision M&E",
-      requestedRole: "Supervision M&E",
-      allowedRoles: ["Supervision M&E"],
-      viewPermissions: VIEW_DEFINITIONS.map((view) => view.id),
-      verifiedAt: timestamp,
-      accessNote: "Cuenta inicial para gestionar accesos del sistema.",
-    },
-    {
-      id: "usr-llorenzo-access",
-      fullName: SEEDED_ACCESS_MANAGER.fullName,
-      email: SEEDED_ACCESS_MANAGER.email,
-      passwordHash: await sha256(SEEDED_ACCESS_MANAGER.password),
-      status: "active",
-      systemRole: "Supervision M&E",
-      requestedRole: "Supervision M&E",
-      allowedRoles: ["Supervision M&E"],
-      viewPermissions: VIEW_DEFINITIONS.map((view) => view.id),
-      verifiedAt: timestamp,
-      accessNote: "Cuenta habilitada para revisar solicitudes y administrar accesos.",
-    },
-  ];
+  const presets = await getPresetAccountTemplates();
 
   const nextState = normalizeAuthState(state);
   let changed = false;

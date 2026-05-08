@@ -19,7 +19,7 @@ import {
   listVisibleViews,
   setSessionRole,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260508f";
+} from "../services/auth-service.js?v=20260508g";
 import {
   createApiIndicator,
   createApiProgram,

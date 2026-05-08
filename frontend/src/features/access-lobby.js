@@ -9,12 +9,13 @@ import {
   signOutUser,
   signUpUser,
   verifyRegisteredUserByLink,
-} from "../services/auth-service.js?v=20260508f";
+} from "../services/auth-service.js?v=20260508g";
 
 const sections = ["signin", "signup", "forgot"];
 let wired = false;
 let onAuthenticatedCallback = () => {};
 let onSignedOutCallback = () => {};
+let lastSessionUserId = null;
 
 function $(selector) {
   return document.querySelector(selector);
@@ -65,9 +66,11 @@ async function updateLobbyVisibility() {
   if (appShell) appShell.hidden = !isLoggedIn;
   if (authShell) authShell.hidden = isLoggedIn;
 
-  if (isLoggedIn) {
+  if (isLoggedIn && currentUser.id !== lastSessionUserId) {
+    lastSessionUserId = currentUser.id;
     onAuthenticatedCallback(currentUser);
-  } else {
+  } else if (!isLoggedIn && lastSessionUserId !== null) {
+    lastSessionUserId = null;
     onSignedOutCallback();
   }
 }
