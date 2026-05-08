@@ -95,21 +95,16 @@
 
           <div class="auth-section" data-auth-section="verify" hidden>
             <p class="eyebrow">Verificacion</p>
-            <h2>Confirmar codigo</h2>
-            <form class="auth-form" id="verifyForm">
-              <label>
-                Correo electronico
-                <input id="verifyEmail" name="email" type="email" autocomplete="email" required />
-              </label>
-              <label>
-                Codigo
-                <input id="verifyCode" name="code" inputmode="numeric" autocomplete="one-time-code" required />
-              </label>
+            <h2>Verificar desde el correo</h2>
+            <div class="auth-form">
+              <p class="item-meta">
+                El sistema ahora envia un enlace de verificacion. Al abrirlo, la cuenta se verifica automaticamente y te
+                devuelve a la portada principal.
+              </p>
               <div class="auth-inline-actions">
-                <button class="primary-action" type="submit">Verificar correo</button>
-                <button class="ghost-action" id="previewVerifyButton" type="button">Ver ultimo codigo</button>
+                <button class="ghost-action" id="previewVerifyButton" type="button">Ver ultimo enlace</button>
               </div>
-            </form>
+            </div>
           </div>
 
           <div class="auth-section" data-auth-section="forgot" hidden>
@@ -824,6 +819,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="src/main.js?v=20260508a"></script>
+    <script type="module" src="src/main.js?v=20260508b"></script>
   </body>
 </html>

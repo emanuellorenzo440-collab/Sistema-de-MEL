@@ -113,9 +113,27 @@ function createCode() {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
-function createEmailRecord({ user, type, code, expiresAt }) {
+function createToken() {
+  const parts = new Uint32Array(4);
+  if (window.crypto?.getRandomValues) {
+    window.crypto.getRandomValues(parts);
+    return Array.from(parts)
+      .map((value) => value.toString(16).padStart(8, "0"))
+      .join("");
+  }
+
+  return `${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`;
+}
+
+function buildVerificationLink(token) {
+  const url = new URL(window.location.href);
+  url.searchParams.set("verifyToken", token);
+  return url.toString();
+}
+
+function createEmailRecord({ user, type, code, link, expiresAt }) {
   const labels = {
-    verification: "Codigo de verificacion",
+    verification: "Enlace de verificacion",
     reset: "Codigo para restablecer contrasena",
   };
   return {
@@ -124,8 +142,12 @@ function createEmailRecord({ user, type, code, expiresAt }) {
     toEmail: user.email,
     toName: user.fullName,
     subject: `${labels[type]} - Pulso M&E`,
-    previewCode: code,
-    body: `Hola ${user.fullName}, tu codigo es ${code}. Expira el ${expiresAt}.`,
+    previewCode: code || null,
+    previewLink: link || null,
+    body:
+      type === "verification"
+        ? `Hola ${user.fullName}, abre este enlace para verificar tu cuenta: ${link}. Expira el ${expiresAt}.`
+        : `Hola ${user.fullName}, tu codigo es ${code}. Expira el ${expiresAt}.`,
     status: "queued",
     createdAt: nowIso(),
     expiresAt,
@@ -150,6 +172,7 @@ function normalizeUser(user = {}) {
     allowedRoles: allowedRoles.includes(systemRole) ? allowedRoles : [systemRole, ...allowedRoles],
     viewPermissions,
     verifiedAt: user.verifiedAt || null,
+    verificationTokenHash: user.verificationTokenHash || user.verificationCodeHash || null,
     verificationCodeHash: user.verificationCodeHash || null,
     verificationExpiresAt: user.verificationExpiresAt || null,
     resetCodeHash: user.resetCodeHash || null,
@@ -316,10 +339,11 @@ export async function signUpUser(payload = {}) {
     throw new Error("Ya existe una cuenta registrada con ese correo.");
   }
 
-  const code = createCode();
+  const token = createToken();
+  const link = buildVerificationLink(token);
   const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
   const passwordHash = await sha256(payload.password);
-  const verificationCodeHash = await sha256(code);
+  const verificationTokenHash = await sha256(token);
   const requestedRole = normalizeRoleLabel(payload.requestedRole || "Facilitador");
   const nextUser = normalizeUser({
     id: `usr-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
@@ -330,7 +354,8 @@ export async function signUpUser(payload = {}) {
     systemRole: requestedRole,
     allowedRoles: [requestedRole],
     viewPermissions: defaultPermissionsForRole(requestedRole),
-    verificationCodeHash,
+    verificationTokenHash,
+    verificationCodeHash: null,
     verificationExpiresAt: expiresAt,
     status: "pending_verification",
     createdAt: nowIso(),
@@ -339,13 +364,22 @@ export async function signUpUser(payload = {}) {
   });
 
   state.users.unshift(nextUser);
-  state.emailOutbox.unshift(createEmailRecord({ user: nextUser, type: "verification", code, expiresAt }));
+  state.emailOutbox.unshift(createEmailRecord({ user: nextUser, type: "verification", link, expiresAt }));
   writeStoredAuthState(state, "signed-up");
   return {
     email,
     requestedRole,
     delivery: "demo-email-outbox",
   };
+}
+
+function completeVerification(user) {
+  user.verificationTokenHash = null;
+  user.verificationCodeHash = null;
+  user.verificationExpiresAt = null;
+  user.verifiedAt = nowIso();
+  user.status = "pending_approval";
+  user.updatedAt = nowIso();
 }
 
 export async function verifyRegisteredUser(payload = {}) {
@@ -368,14 +402,34 @@ export async function verifyRegisteredUser(payload = {}) {
     throw new Error("El codigo de verificacion no coincide.");
   }
 
-  user.verificationCodeHash = null;
-  user.verificationExpiresAt = null;
-  user.verifiedAt = nowIso();
-  user.status = "pending_approval";
-  user.updatedAt = nowIso();
+  completeVerification(user);
   writeStoredAuthState(state, "verified");
   return {
     email,
+    status: user.status,
+  };
+}
+
+export async function verifyRegisteredUserByLink(token) {
+  const state = await ensureAuthState();
+  const rawToken = String(token || "").trim();
+  if (!rawToken) {
+    throw new Error("El enlace de verificacion esta incompleto.");
+  }
+
+  const incomingHash = await sha256(rawToken);
+  const user = state.users.find((item) => item.verificationTokenHash === incomingHash);
+  if (!user) {
+    throw new Error("El enlace de verificacion no es valido.");
+  }
+  if (user.verificationExpiresAt && Date.parse(user.verificationExpiresAt) < Date.now()) {
+    throw new Error("El enlace de verificacion ya expiro.");
+  }
+
+  completeVerification(user);
+  writeStoredAuthState(state, "verified");
+  return {
+    email: user.email,
     status: user.status,
   };
 }

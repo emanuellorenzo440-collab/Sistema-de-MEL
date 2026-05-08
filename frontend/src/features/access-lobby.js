@@ -10,8 +10,8 @@ import {
   signInUser,
   signOutUser,
   signUpUser,
-  verifyRegisteredUser,
-} from "../services/auth-service.js?v=20260508a";
+  verifyRegisteredUserByLink,
+} from "../services/auth-service.js?v=20260508b";
 
 const sections = ["signin", "signup", "verify", "forgot"];
 let wired = false;
@@ -59,12 +59,35 @@ async function renderDeliveryPreview(targetEmail = "") {
             <span class="status-pill info">${email.type === "verification" ? "Verificacion" : "Recuperacion"}</span>
           </div>
           <p class="item-meta">${email.subject}</p>
-          <div class="delivery-code">${email.previewCode}</div>
+          ${
+            email.type === "verification"
+              ? `<a class="primary-action delivery-link" href="${email.previewLink || "#"}">Abrir enlace de verificacion</a>`
+              : `<div class="delivery-code">${email.previewCode}</div>`
+          }
           <p class="item-meta">Expira: ${new Date(email.expiresAt).toLocaleString("es-DO")}</p>
         </article>
       `,
     )
     .join("");
+}
+
+async function consumeVerificationLink() {
+  const url = new URL(window.location.href);
+  const token = url.searchParams.get("verifyToken");
+  if (!token) return;
+
+  try {
+    await verifyRegisteredUserByLink(token);
+    url.searchParams.delete("verifyToken");
+    window.history.replaceState({}, "", url.toString());
+    showSection("signin");
+    showToastMessage("Correo verificado. Ya estas de vuelta en la portada del sistema.");
+  } catch (error) {
+    url.searchParams.delete("verifyToken");
+    window.history.replaceState({}, "", url.toString());
+    showSection("signin");
+    showToastMessage(error.message || "No pude validar el enlace.");
+  }
 }
 
 async function updateLobbyVisibility() {
@@ -139,30 +162,11 @@ function bindLobbyEvents() {
           password,
           requestedRole: formData.get("requestedRole"),
         });
-        $("#verifyEmail").value = result.email;
         await renderDeliveryPreview(result.email);
         showSection("verify");
-        showToastMessage("Registro creado. Verifica el correo para seguir.");
+        showToastMessage("Registro creado. Te envie un enlace de verificacion.");
       } catch (error) {
         showToastMessage(error.message || "No pude registrar el usuario.");
-      }
-    })();
-  });
-
-  $("#verifyForm")?.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    void (async () => {
-      try {
-        await verifyRegisteredUser({
-          email: formData.get("email"),
-          code: formData.get("code"),
-        });
-        await renderDeliveryPreview(formData.get("email"));
-        showSection("signin");
-        showToastMessage("Correo verificado. Ahora espera aprobacion de supervision.");
-      } catch (error) {
-        showToastMessage(error.message || "No pude verificar el correo.");
       }
     })();
   });
@@ -221,7 +225,7 @@ function bindLobbyEvents() {
   });
 
   $("#previewVerifyButton")?.addEventListener("click", () => {
-    void renderDeliveryPreview($("#verifyEmail")?.value || $("#signupEmail")?.value || "");
+    void renderDeliveryPreview($("#signupEmail")?.value || "");
   });
 
   $("#previewResetButton")?.addEventListener("click", () => {
@@ -240,6 +244,7 @@ export async function initializeAccessLobby({ onAuthenticated, onSignedOut } = {
   onSignedOutCallback = typeof onSignedOut === "function" ? onSignedOut : () => {};
 
   await ensureAuthState();
+  await consumeVerificationLink();
   fillRequestedRoleOptions();
   bindLobbyEvents();
   showSection("signin");
@@ -248,7 +253,7 @@ export async function initializeAccessLobby({ onAuthenticated, onSignedOut } = {
   await updateLobbyVisibility();
 
   onAuthStateChange(async () => {
-    await renderDeliveryPreview($("#verifyEmail")?.value || $("#resetEmail")?.value || "");
+    await renderDeliveryPreview($("#signupEmail")?.value || $("#resetEmail")?.value || $("#forgotEmail")?.value || "");
     await updateLobbyVisibility();
   });
 }

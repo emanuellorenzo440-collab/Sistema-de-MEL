@@ -20,7 +20,7 @@ import {
   listVisibleViews,
   setSessionRole,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260508a";
+} from "../services/auth-service.js?v=20260508b";
 import {
   createApiIndicator,
   createApiProgram,
@@ -984,7 +984,11 @@ function renderAccessWorkspace() {
                   <span class="status-pill info">${email.type === "verification" ? "Verificacion" : "Recuperacion"}</span>
                 </div>
                 <p class="item-meta">${email.subject}</p>
-                <div class="delivery-code">${email.previewCode}</div>
+                ${
+                  email.type === "verification"
+                    ? `<a class="primary-action delivery-link" href="${email.previewLink || "#"}">Abrir enlace de verificacion</a>`
+                    : `<div class="delivery-code">${email.previewCode}</div>`
+                }
                 <p class="item-meta">Expira: ${new Date(email.expiresAt).toLocaleString("es-DO")}</p>
               </article>
             `,
