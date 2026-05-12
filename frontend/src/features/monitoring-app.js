@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260507i";
-import { $, $$, elements } from "../core/dom.js?v=20260512f";
+import { $, $$, elements } from "../core/dom.js?v=20260512g";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260507i";
 import { seedState } from "../data/seed-state.js?v=20260507i";
 import {
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260512f";
+} from "../services/auth-service.js?v=20260512g";
 import {
   createApiIndicator,
   createApiProgram,

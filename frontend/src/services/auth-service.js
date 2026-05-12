@@ -62,6 +62,8 @@ const SEEDED_FACILITATOR_APUJOLS = {
 
 const SEEDED_ACCOUNTS_CREATED_AT = "2026-05-08T00:00:00.000Z";
 const PRESET_ACCOUNT_VERSION = 2;
+const AUTH_DATA_VERSION = 3;
+const LEGACY_USER_PURGE_MATCHERS = [/alana/i, /alanna/i, /\blana\b/i];
 let presetAccountTemplatesPromise = null;
 
 function clone(value) {
@@ -74,6 +76,11 @@ function nowIso() {
 
 function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
+}
+
+function legacyUserShouldBePurged(user = {}) {
+  const identity = `${user.fullName || ""} ${user.email || ""}`.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return LEGACY_USER_PURGE_MATCHERS.some((matcher) => matcher.test(identity));
 }
 
 export function normalizeRoleLabel(value) {
@@ -267,20 +274,28 @@ function normalizeUser(user = {}) {
 }
 
 function normalizeAuthState(rawState = {}) {
+  const rawUsers = Array.isArray(rawState.users) ? rawState.users.map(normalizeUser) : [];
   const deletedUserEmails = Array.isArray(rawState.deletedUserEmails)
     ? rawState.deletedUserEmails.map(normalizeEmail).filter(Boolean)
     : [];
+  if (Number(rawState.authDataVersion || 0) < AUTH_DATA_VERSION) {
+    rawUsers.forEach((user) => {
+      if (legacyUserShouldBePurged(user) && user.email) {
+        deletedUserEmails.push(user.email);
+      }
+    });
+  }
+  const normalizedDeletedEmails = Array.from(new Set(deletedUserEmails));
   const state = {
-    users: Array.isArray(rawState.users)
-      ? rawState.users.map(normalizeUser).filter((user) => !deletedUserEmails.includes(user.email))
-      : [],
+    users: rawUsers.filter((user) => !normalizedDeletedEmails.includes(user.email)),
     emailOutbox: Array.isArray(rawState.emailOutbox) ? rawState.emailOutbox.slice() : [],
-    deletedUserEmails,
+    deletedUserEmails: normalizedDeletedEmails,
     deletedPresetEmails: Array.isArray(rawState.deletedPresetEmails)
       ? rawState.deletedPresetEmails.map(normalizeEmail).filter(Boolean)
       : [],
     session: rawState.session || null,
     presetAccountVersion: Number(rawState.presetAccountVersion || 0),
+    authDataVersion: AUTH_DATA_VERSION,
   };
 
   if (state.session?.userId) {
@@ -379,6 +394,7 @@ async function buildSeedAuthState() {
     deletedPresetEmails: [],
     session: null,
     presetAccountVersion: PRESET_ACCOUNT_VERSION,
+    authDataVersion: AUTH_DATA_VERSION,
   });
 }
 
@@ -433,6 +449,10 @@ async function ensurePresetUsers(state) {
 
   if (nextState.presetAccountVersion !== PRESET_ACCOUNT_VERSION) {
     nextState.presetAccountVersion = PRESET_ACCOUNT_VERSION;
+    changed = true;
+  }
+  if (nextState.authDataVersion !== AUTH_DATA_VERSION) {
+    nextState.authDataVersion = AUTH_DATA_VERSION;
     changed = true;
   }
 
