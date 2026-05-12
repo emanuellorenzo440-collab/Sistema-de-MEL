@@ -270,6 +270,9 @@ function normalizeAuthState(rawState = {}) {
   const state = {
     users: Array.isArray(rawState.users) ? rawState.users.map(normalizeUser) : [],
     emailOutbox: Array.isArray(rawState.emailOutbox) ? rawState.emailOutbox.slice() : [],
+    deletedPresetEmails: Array.isArray(rawState.deletedPresetEmails)
+      ? rawState.deletedPresetEmails.map(normalizeEmail).filter(Boolean)
+      : [],
     session: rawState.session || null,
     presetAccountVersion: Number(rawState.presetAccountVersion || 0),
   };
@@ -366,6 +369,7 @@ async function buildSeedAuthState() {
       updatedAt: timestamp,
     })),
     emailOutbox: [],
+    deletedPresetEmails: [],
     session: null,
     presetAccountVersion: PRESET_ACCOUNT_VERSION,
   });
@@ -379,6 +383,10 @@ async function ensurePresetUsers(state) {
   let changed = false;
   const shouldApplyPresetMigration = nextState.presetAccountVersion < PRESET_ACCOUNT_VERSION;
   presets.forEach((preset) => {
+    if (nextState.deletedPresetEmails.includes(preset.email)) {
+      return;
+    }
+
     const index = nextState.users.findIndex((user) => user.email === preset.email);
     if (index >= 0) {
       const existing = nextState.users[index];
@@ -948,6 +956,10 @@ export async function deleteManagedUser(userId) {
   }
 
   const [deletedUser] = state.users.splice(userIndex, 1);
+  const presets = await getPresetAccountTemplates();
+  if (presets.some((preset) => preset.email === deletedUser.email)) {
+    state.deletedPresetEmails = Array.from(new Set([...(state.deletedPresetEmails || []), deletedUser.email]));
+  }
   state.emailOutbox = state.emailOutbox.filter((item) => item.toEmail !== deletedUser.email);
   if (state.session?.userId === deletedUser.id) {
     state.session = null;

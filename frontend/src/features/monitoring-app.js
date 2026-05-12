@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260507i";
-import { $, $$, elements } from "../core/dom.js?v=20260512d";
+import { $, $$, elements } from "../core/dom.js?v=20260512e";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260507i";
 import { seedState } from "../data/seed-state.js?v=20260507i";
 import {
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260512d";
+} from "../services/auth-service.js?v=20260512e";
 import {
   createApiIndicator,
   createApiProgram,
@@ -2861,12 +2861,14 @@ function bindEvents() {
     if (!userId || deleteButton.disabled) return;
 
     void (async () => {
+      const userCard = deleteButton.closest("[data-user-access-form]");
       try {
         deleteButton.disabled = true;
         deleteButton.textContent = "Eliminando...";
         await deleteManagedUser(userId);
+        userCard?.remove();
         await syncAuthenticatedAccess();
-        renderAll();
+        renderAccessWorkspace();
         showToast("Usuario eliminado definitivamente.");
       } catch (error) {
         console.error(error);
