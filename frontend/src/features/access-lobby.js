@@ -1,5 +1,6 @@
 import {
   SYSTEM_ROLES,
+  completeRequiredPasswordChange,
   ensureAuthState,
   getCurrentUser,
   onAuthStateChange,
@@ -9,14 +10,15 @@ import {
   signOutUser,
   signUpUser,
   verifyRegisteredUserByLink,
-} from "../services/auth-service.js?v=20260508w";
+} from "../services/auth-service.js?v=20260512a";
 
-const sections = ["signin", "signup", "forgot"];
+const sections = ["signin", "signup", "forgot", "force-password"];
 let wired = false;
 let onAuthenticatedCallback = () => {};
 let onSignedOutCallback = () => {};
 let lastSessionUserId = null;
 let sessionReadyPromise = null;
+let pendingPasswordChange = null;
 
 function $(selector) {
   return document.querySelector(selector);
@@ -132,14 +134,59 @@ function bindLobbyEvents() {
     const formData = new FormData(event.currentTarget);
     void (async () => {
       try {
-        await signInUser({
-          email: formData.get("email"),
-          password: formData.get("password"),
+        const email = formData.get("email");
+        const password = String(formData.get("password") || "");
+        const result = await signInUser({
+          email,
+          password,
         });
+        if (result?.passwordChangeRequired) {
+          pendingPasswordChange = {
+            email: result.user.email,
+            currentPassword: password,
+          };
+          const emailInput = $("#forcePasswordEmail");
+          if (emailInput) emailInput.value = result.user.email;
+          showSection("force-password");
+          showToastMessage("Debes cambiar tu contrasena provisional para entrar.");
+          return;
+        }
         await updateLobbyVisibility();
         showToastMessage("Sesion iniciada.");
       } catch (error) {
         showToastMessage(error.message || "No pude iniciar sesion.");
+      }
+    })();
+  });
+
+  $("#forcePasswordForm")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (!pendingPasswordChange?.email) {
+      showSection("signin");
+      showToastMessage("Vuelve a ingresar con tu clave provisional.");
+      return;
+    }
+    const formData = new FormData(event.currentTarget);
+    const password = String(formData.get("password") || "");
+    const confirmPassword = String(formData.get("confirmPassword") || "");
+    if (password !== confirmPassword) {
+      showToastMessage("Las contrasenas no coinciden.");
+      return;
+    }
+
+    void (async () => {
+      try {
+        await completeRequiredPasswordChange({
+          email: pendingPasswordChange.email,
+          currentPassword: pendingPasswordChange.currentPassword,
+          password,
+        });
+        pendingPasswordChange = null;
+        event.currentTarget.reset();
+        await updateLobbyVisibility();
+        showToastMessage("Contrasena actualizada. Ya estas dentro.");
+      } catch (error) {
+        showToastMessage(error.message || "No pude cambiar la contrasena.");
       }
     })();
   });
@@ -179,8 +226,9 @@ function bindLobbyEvents() {
           email: formData.get("email"),
         });
         $("#resetEmail").value = result.email;
+        if (result.code) $("#resetCode").value = result.code;
         $("#forgotResetBox").hidden = false;
-        showToastMessage("Codigo de recuperacion emitido.");
+        showToastMessage("Codigo de recuperacion enviado.");
       } catch (error) {
         showToastMessage(error.message || "No pude enviar el codigo.");
       }
@@ -215,6 +263,7 @@ function bindLobbyEvents() {
   $("#signOutButton")?.addEventListener("click", () => {
     void (async () => {
       await signOutUser();
+      pendingPasswordChange = null;
       await updateLobbyVisibility();
       showSection("signin");
       showToastMessage("Sesion cerrada.");

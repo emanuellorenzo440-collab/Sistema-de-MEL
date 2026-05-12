@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260507i";
-import { $, $$, elements } from "../core/dom.js?v=20260508w";
+import { $, $$, elements } from "../core/dom.js?v=20260512a";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260507i";
 import { seedState } from "../data/seed-state.js?v=20260507i";
 import {
@@ -19,7 +19,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260508w";
+} from "../services/auth-service.js?v=20260512a";
 import {
   createApiIndicator,
   createApiProgram,
@@ -907,6 +907,10 @@ function renderAccessWorkspace() {
             Contrasena temporal
             <input name="password" type="password" minlength="8" required />
           </label>
+          <label class="access-chip access-wide">
+            <input name="mustChangePassword" type="checkbox" checked />
+            <span>Pedir cambio de clave al primer ingreso</span>
+          </label>
           <label>
             Rol principal
             <select name="systemRole">
@@ -988,7 +992,10 @@ function renderAccessWorkspace() {
                                 <h3>${user.fullName}</h3>
                                 <p class="item-meta">${user.email}</p>
                               </div>
-                              <span class="status-pill ${user.status === "active" ? "good" : user.status === "suspended" ? "danger" : "warning"}">${user.status}</span>
+                              <div class="access-status-stack">
+                                <span class="status-pill ${user.status === "active" ? "good" : user.status === "suspended" ? "danger" : "warning"}">${user.status}</span>
+                                ${user.mustChangePassword ? '<span class="status-pill warning">Cambio de clave</span>' : ""}
+                              </div>
                             </div>
                             <div class="access-card-grid">
                               <label>
@@ -1002,6 +1009,10 @@ function renderAccessWorkspace() {
                               <label>
                                 Nueva contrasena
                                 <input name="password" type="password" minlength="8" placeholder="Dejar en blanco para no cambiar" />
+                              </label>
+                              <label class="access-chip access-wide">
+                                <input name="mustChangePassword" type="checkbox" ${user.mustChangePassword ? "checked" : ""} />
+                                <span>Requerir cambio de clave al entrar</span>
                               </label>
                               <label>
                                 Rol principal
@@ -2788,6 +2799,7 @@ function bindEvents() {
             systemRole,
             status: formData.get("status"),
             allowedRoles: [systemRole],
+            mustChangePassword: formData.get("mustChangePassword") === "on",
             accessNote: formData.get("accessNote"),
           });
           event.target.reset();
@@ -2820,6 +2832,7 @@ function bindEvents() {
           status: formData.get("status"),
           allowedRoles,
           viewPermissions,
+          mustChangePassword: formData.get("mustChangePassword") === "on",
           accessNote: formData.get("accessNote"),
         });
         await syncAuthenticatedAccess();

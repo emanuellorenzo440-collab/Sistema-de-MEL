@@ -991,9 +991,23 @@ textarea {
   padding: 7px 10px;
 }
 
+.access-chip.access-wide {
+  border-radius: 8px;
+  justify-content: flex-start;
+  min-height: 44px;
+  width: 100%;
+}
+
 .access-chip input {
   min-height: auto;
   width: auto;
+}
+
+.access-status-stack {
+  align-items: flex-end;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .user-access-card input,

@@ -158,7 +158,14 @@ function createEmailRecord({ user, type, code, link, expiresAt }) {
   const labels = {
     verification: "Enlace de verificacion",
     reset: "Codigo para restablecer contrasena",
+    "temporary-password": "Credenciales provisionales",
   };
+  const body =
+    type === "verification"
+      ? `Hola ${user.fullName}, abre este enlace para verificar tu cuenta: ${link}. Expira el ${expiresAt}.`
+      : type === "temporary-password"
+        ? `Hola ${user.fullName}, tu cuenta de Pulso M&E fue creada. Correo: ${user.email}. Clave provisional: ${code}. El sistema te pedira cambiarla al entrar.`
+        : `Hola ${user.fullName}, tu codigo es ${code}. Expira el ${expiresAt}.`;
   return {
     id: `mail-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
     type,
@@ -167,10 +174,7 @@ function createEmailRecord({ user, type, code, link, expiresAt }) {
     subject: `${labels[type]} - Pulso M&E`,
     previewCode: code || null,
     previewLink: link || null,
-    body:
-      type === "verification"
-        ? `Hola ${user.fullName}, abre este enlace para verificar tu cuenta: ${link}. Expira el ${expiresAt}.`
-        : `Hola ${user.fullName}, tu codigo es ${code}. Expira el ${expiresAt}.`,
+    body,
     status: "queued",
     createdAt: nowIso(),
     expiresAt,
@@ -252,6 +256,9 @@ function normalizeUser(user = {}) {
     verificationExpiresAt: user.verificationExpiresAt || null,
     resetCodeHash: user.resetCodeHash || null,
     resetExpiresAt: user.resetExpiresAt || null,
+    mustChangePassword: Boolean(user.mustChangePassword),
+    passwordUpdatedAt: user.passwordUpdatedAt || null,
+    temporaryPasswordIssuedAt: user.temporaryPasswordIssuedAt || null,
     lastLoginAt: user.lastLoginAt || null,
     accessNote: user.accessNote || "",
     createdAt: user.createdAt || nowIso(),
@@ -558,6 +565,7 @@ export async function createManagedUser(payload = {}) {
   const password = String(payload.password || "").trim();
   const systemRole = normalizeRoleLabel(payload.systemRole || payload.requestedRole || "Facilitador");
   const status = payload.status || "active";
+  const mustChangePassword = payload.mustChangePassword !== false;
 
   if (!fullName) {
     throw new Error("Debes indicar el nombre del usuario.");
@@ -588,12 +596,18 @@ export async function createManagedUser(payload = {}) {
     viewPermissions: viewPermissions.length ? viewPermissions : defaultPermissionsForRole(systemRole),
     verifiedAt: nowIso(),
     status,
+    mustChangePassword,
+    passwordUpdatedAt: null,
+    temporaryPasswordIssuedAt: mustChangePassword ? nowIso() : null,
     createdAt: nowIso(),
     updatedAt: nowIso(),
     accessNote: String(payload.accessNote || "Usuario creado desde Accesos.").trim(),
   });
 
   state.users.unshift(nextUser);
+  state.emailOutbox.unshift(
+    createEmailRecord({ user: nextUser, type: "temporary-password", code: password, expiresAt: null }),
+  );
   writeStoredAuthState(state, "managed-user-created");
   return clone({
     ...nextUser,
@@ -688,6 +702,18 @@ export async function signInUser(payload = {}) {
     throw new Error("Tu cuenta no tiene acceso activo todavia.");
   }
 
+  if (user.mustChangePassword) {
+    return clone({
+      passwordChangeRequired: true,
+      user: {
+        id: user.id,
+        fullName: user.fullName,
+        email: user.email,
+        systemRole: user.systemRole,
+      },
+    });
+  }
+
   user.lastLoginAt = nowIso();
   user.updatedAt = nowIso();
   state.session = {
@@ -714,6 +740,60 @@ export async function signOutUser() {
   writeStoredAuthState(state, "signed-out");
 }
 
+export async function completeRequiredPasswordChange(payload = {}) {
+  const state = await ensureAuthState();
+  const email = normalizeEmail(payload.email);
+  const currentPassword = String(payload.currentPassword || "");
+  const nextPassword = String(payload.password || "").trim();
+  const user = state.users.find((item) => item.email === email);
+  if (!user) {
+    throw new Error("No encontre una cuenta con ese correo.");
+  }
+  if (user.status === "suspended") {
+    throw new Error("Tu acceso al sistema esta suspendido.");
+  }
+  if (user.status !== "active") {
+    throw new Error("Tu cuenta no tiene acceso activo todavia.");
+  }
+  if (!nextPassword || nextPassword.length < 8) {
+    throw new Error("La nueva contrasena debe tener al menos 8 caracteres.");
+  }
+
+  const currentHash = await sha256(currentPassword);
+  const nextHash = await sha256(nextPassword);
+  if (currentHash !== user.passwordHash) {
+    throw new Error("La contrasena provisional no coincide.");
+  }
+  if (nextHash === user.passwordHash) {
+    throw new Error("La nueva contrasena debe ser distinta a la provisional.");
+  }
+
+  user.passwordHash = nextHash;
+  user.mustChangePassword = false;
+  user.passwordUpdatedAt = nowIso();
+  user.temporaryPasswordIssuedAt = null;
+  user.resetCodeHash = null;
+  user.resetExpiresAt = null;
+  user.lastLoginAt = nowIso();
+  user.updatedAt = nowIso();
+  state.session = {
+    userId: user.id,
+    activeRole: normalizeRoleLabel(user.systemRole),
+    createdAt: nowIso(),
+  };
+  writeStoredAuthState(state, "password-change-completed");
+  return clone({
+    user: {
+      id: user.id,
+      fullName: user.fullName,
+      email: user.email,
+      systemRole: user.systemRole,
+      allowedRoles: user.allowedRoles,
+      viewPermissions: user.viewPermissions,
+    },
+  });
+}
+
 export async function requestPasswordReset(payload = {}) {
   const state = await ensureAuthState();
   const email = normalizeEmail(payload.email);
@@ -732,6 +812,7 @@ export async function requestPasswordReset(payload = {}) {
   return {
     email,
     delivery: "demo-email-outbox",
+    code,
   };
 }
 
@@ -760,6 +841,9 @@ export async function resetPassword(payload = {}) {
   }
 
   user.passwordHash = await sha256(nextPassword);
+  user.mustChangePassword = false;
+  user.passwordUpdatedAt = nowIso();
+  user.temporaryPasswordIssuedAt = null;
   user.resetCodeHash = null;
   user.resetExpiresAt = null;
   user.updatedAt = nowIso();
@@ -787,6 +871,7 @@ export async function updateManagedUserAccess(userId, updates = {}) {
   const nextViewPermissions = normalizeViewPermissions(
     updates.viewPermissions?.length ? updates.viewPermissions : user.viewPermissions,
   );
+  const mustChangePassword = Boolean(updates.mustChangePassword);
 
   if (!nextFullName) {
     throw new Error("Debes indicar el nombre del usuario.");
@@ -805,6 +890,17 @@ export async function updateManagedUserAccess(userId, updates = {}) {
   user.email = nextEmail;
   if (nextPassword) {
     user.passwordHash = await sha256(nextPassword);
+    user.passwordUpdatedAt = mustChangePassword ? null : nowIso();
+    user.temporaryPasswordIssuedAt = mustChangePassword ? nowIso() : null;
+    if (mustChangePassword) {
+      state.emailOutbox.unshift(
+        createEmailRecord({ user, type: "temporary-password", code: nextPassword, expiresAt: null }),
+      );
+    }
+  }
+  user.mustChangePassword = mustChangePassword;
+  if (!nextPassword && !mustChangePassword) {
+    user.temporaryPasswordIssuedAt = null;
   }
   user.systemRole = nextSystemRole;
   user.allowedRoles = nextAllowedRoles.includes(nextSystemRole)
