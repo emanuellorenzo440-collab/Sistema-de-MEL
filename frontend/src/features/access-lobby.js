@@ -10,7 +10,7 @@ import {
   signOutUser,
   signUpUser,
   verifyRegisteredUserByLink,
-} from "../services/auth-service.js?v=20260512j";
+} from "../services/auth-service.js?v=20260512k";
 
 const sections = ["signin", "signup", "forgot", "force-password"];
 let wired = false;
@@ -39,6 +39,20 @@ function showSection(sectionId) {
     if (panel) panel.hidden = section !== sectionId;
     if (tab) tab.classList.toggle("active", section === sectionId);
   });
+}
+
+function setSignInError(message = "") {
+  const errorBox = $("#signinError");
+  const passwordInput = $("#signinPassword");
+  const emailInput = $("#signinEmail");
+  const hasError = Boolean(message);
+  if (errorBox) {
+    errorBox.textContent = message;
+    errorBox.hidden = !hasError;
+  }
+  passwordInput?.classList.toggle("auth-input-error", hasError);
+  passwordInput?.setAttribute("aria-invalid", hasError ? "true" : "false");
+  emailInput?.setAttribute("aria-invalid", "false");
 }
 
 function normalizeSessionRole(user) {
@@ -126,13 +140,18 @@ function bindLobbyEvents() {
 
   document.querySelectorAll("[data-open-auth]").forEach((button) => {
     button.addEventListener("click", () => {
+      setSignInError("");
       showSection(button.dataset.openAuth);
     });
+  });
+  ["#signinEmail", "#signinPassword"].forEach((selector) => {
+    $(selector)?.addEventListener("input", () => setSignInError(""));
   });
   $("#signinForm")?.addEventListener("submit", (event) => {
     event.preventDefault();
     const submitButton = event.currentTarget.querySelector('button[type="submit"]');
     if (submitButton?.disabled) return;
+    setSignInError("");
     const formData = new FormData(event.currentTarget);
     void (async () => {
       try {
@@ -160,7 +179,10 @@ function bindLobbyEvents() {
         await updateLobbyVisibility();
         showToastMessage("Sesion iniciada.");
       } catch (error) {
-        showToastMessage(error.message || "No pude iniciar sesion.");
+        const message = error.message || "No pude iniciar sesion.";
+        const isPasswordError = /contrasena|contraseña|password/i.test(message);
+        setSignInError(isPasswordError ? "Contrasena incorrecta." : message);
+        showToastMessage(isPasswordError ? "Contrasena incorrecta." : message);
       } finally {
         if (submitButton) {
           submitButton.disabled = false;
