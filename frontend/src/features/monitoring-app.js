@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260512b";
+} from "../services/auth-service.js?v=20260512c";
 import {
   createApiIndicator,
   createApiProgram,
@@ -2843,23 +2843,39 @@ function bindEvents() {
   });
 
   elements.accessUserGrid?.addEventListener("click", (event) => {
-    const deleteButton = event.target.closest("[data-delete-access]");
+    const clickTarget = event.target instanceof Element ? event.target : event.target?.parentElement;
+    const deleteButton = clickTarget?.closest("[data-delete-access]");
     if (!deleteButton) return;
 
+    event.preventDefault();
     const userId = deleteButton.dataset.deleteAccess;
     const form = deleteButton.closest("[data-user-access-form]");
     const userEmail = form?.querySelector('input[name="email"]')?.value || "este usuario";
-    const confirmed = window.confirm(`Eliminar definitivamente ${userEmail}? Esta accion no se puede deshacer.`);
-    if (!confirmed) return;
+    if (deleteButton.dataset.confirmDelete !== "true") {
+      deleteButton.dataset.confirmDelete = "true";
+      deleteButton.textContent = "Confirmar eliminar";
+      showToast(`Pulsa otra vez para eliminar definitivamente ${userEmail}.`);
+      window.setTimeout(() => {
+        if (deleteButton.dataset.confirmDelete === "true") {
+          deleteButton.dataset.confirmDelete = "false";
+          deleteButton.textContent = "Eliminar definitivo";
+        }
+      }, 6000);
+      return;
+    }
 
     void (async () => {
       try {
+        deleteButton.disabled = true;
         await deleteManagedUser(userId);
         await syncAuthenticatedAccess();
         renderAll();
         showToast("Usuario eliminado definitivamente.");
       } catch (error) {
         console.error(error);
+        deleteButton.disabled = false;
+        deleteButton.dataset.confirmDelete = "false";
+        deleteButton.textContent = "Eliminar definitivo";
         showToast(error.message || "No pude eliminar el usuario.");
       }
     })();
