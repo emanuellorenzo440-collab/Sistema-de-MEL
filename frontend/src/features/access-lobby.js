@@ -10,7 +10,7 @@ import {
   signOutUser,
   signUpUser,
   verifyRegisteredUserByLink,
-} from "../services/auth-service.js?v=20260512i";
+} from "../services/auth-service.js?v=20260512j";
 
 const sections = ["signin", "signup", "forgot", "force-password"];
 let wired = false;
@@ -131,9 +131,15 @@ function bindLobbyEvents() {
   });
   $("#signinForm")?.addEventListener("submit", (event) => {
     event.preventDefault();
+    const submitButton = event.currentTarget.querySelector('button[type="submit"]');
+    if (submitButton?.disabled) return;
     const formData = new FormData(event.currentTarget);
     void (async () => {
       try {
+        if (submitButton) {
+          submitButton.disabled = true;
+          submitButton.textContent = "Entrando...";
+        }
         const email = formData.get("email");
         const password = String(formData.get("password") || "");
         const result = await signInUser({
@@ -155,12 +161,19 @@ function bindLobbyEvents() {
         showToastMessage("Sesion iniciada.");
       } catch (error) {
         showToastMessage(error.message || "No pude iniciar sesion.");
+      } finally {
+        if (submitButton) {
+          submitButton.disabled = false;
+          submitButton.textContent = "Entrar";
+        }
       }
     })();
   });
 
   $("#forcePasswordForm")?.addEventListener("submit", (event) => {
     event.preventDefault();
+    const submitButton = event.currentTarget.querySelector('button[type="submit"]');
+    if (submitButton?.disabled) return;
     if (!pendingPasswordChange?.email) {
       showSection("signin");
       showToastMessage("Vuelve a ingresar con tu clave provisional.");
@@ -176,6 +189,10 @@ function bindLobbyEvents() {
 
     void (async () => {
       try {
+        if (submitButton) {
+          submitButton.disabled = true;
+          submitButton.textContent = "Guardando...";
+        }
         await completeRequiredPasswordChange({
           email: pendingPasswordChange.email,
           currentPassword: pendingPasswordChange.currentPassword,
@@ -187,6 +204,11 @@ function bindLobbyEvents() {
         showToastMessage("Contrasena actualizada. Ya estas dentro.");
       } catch (error) {
         showToastMessage(error.message || "No pude cambiar la contrasena.");
+      } finally {
+        if (submitButton) {
+          submitButton.disabled = false;
+          submitButton.textContent = "Guardar y entrar";
+        }
       }
     })();
   });

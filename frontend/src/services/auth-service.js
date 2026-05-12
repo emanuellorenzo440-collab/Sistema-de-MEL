@@ -64,6 +64,7 @@ const SEEDED_ACCOUNTS_CREATED_AT = "2026-05-08T00:00:00.000Z";
 const PRESET_ACCOUNT_VERSION = 2;
 const AUTH_DATA_VERSION = 5;
 const LEGACY_ACCESS_CUTOFF = "2026-05-12T00:00:00.000Z";
+const MAX_DELETED_USER_AUDIT = 500;
 const LEGACY_USER_PURGE_MATCHERS = [
   /alana/i,
   /alanna/i,
@@ -76,6 +77,8 @@ const LEGACY_USER_PURGE_MATCHERS = [
   /conveyofhope/i,
 ];
 let presetAccountTemplatesPromise = null;
+let authStateCache = null;
+let authHydrationPromise = null;
 
 function clone(value) {
   return structuredClone(value);
@@ -174,6 +177,8 @@ function dispatchAuthChange(type, detail = {}) {
 
 window.addEventListener("storage", (event) => {
   if (event.key === AUTH_STORAGE_KEY || event.key === AUTH_SESSION_KEY) {
+    authStateCache = null;
+    authHydrationPromise = null;
     dispatchAuthChange("storage-synced", { session: readStoredAuthState()?.session || null });
   }
 });
@@ -349,7 +354,11 @@ function normalizeAuthState(rawState = {}) {
   const normalizedDeletedEmails = Array.from(new Set(deletedUserEmails));
   const deletedRegistryByKey = new Map();
   deletedUserRegistry.forEach((record) => {
-    deletedRegistryByKey.set(`${record.email}:${record.deletedAt}:${record.userId || ""}`, record);
+    const key = `${record.email}:${record.userId || ""}:${record.reason || ""}`;
+    const existing = deletedRegistryByKey.get(key);
+    if (!existing || recordTime(record.deletedAt) >= recordTime(existing.deletedAt)) {
+      deletedRegistryByKey.set(key, record);
+    }
   });
   const state = {
     users: rawUsers.filter((user) => {
@@ -359,7 +368,9 @@ function normalizeAuthState(rawState = {}) {
     }),
     emailOutbox: Array.isArray(rawState.emailOutbox) ? rawState.emailOutbox.slice() : [],
     deletedUserEmails: normalizedDeletedEmails,
-    deletedUserRegistry: Array.from(deletedRegistryByKey.values()),
+    deletedUserRegistry: Array.from(deletedRegistryByKey.values())
+      .sort((left, right) => recordTime(right.deletedAt) - recordTime(left.deletedAt))
+      .slice(0, MAX_DELETED_USER_AUDIT),
     deletedPresetEmails: Array.isArray(rawState.deletedPresetEmails)
       ? rawState.deletedPresetEmails.map(normalizeEmail).filter(Boolean)
       : [],
@@ -452,6 +463,8 @@ function writeStoredAuthState(state, eventType = "updated") {
   const normalized = normalizeAuthState(state);
   window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(normalized));
   writeStoredSession(normalized.session);
+  authStateCache = normalized;
+  authHydrationPromise = null;
   dispatchAuthChange(eventType, { session: normalized.session });
   return normalized;
 }
@@ -541,17 +554,27 @@ async function ensurePresetUsers(state) {
 }
 
 export async function ensureAuthState() {
-  const existing = readStoredAuthState();
-  if (existing) {
-    const hydrated = await ensurePresetUsers(existing);
-    if (hydrated.changed) {
-      return writeStoredAuthState(hydrated.state, "seeded");
-    }
-    return hydrated.state;
-  }
+  if (authStateCache) return authStateCache;
+  if (authHydrationPromise) return authHydrationPromise;
 
-  const seeded = await ensurePresetUsers(await buildSeedAuthState());
-  return writeStoredAuthState(seeded.state, "seeded");
+  authHydrationPromise = (async () => {
+    const existing = readStoredAuthState();
+    if (existing) {
+      const hydrated = await ensurePresetUsers(existing);
+      if (hydrated.changed) {
+        return writeStoredAuthState(hydrated.state, "seeded");
+      }
+      authStateCache = hydrated.state;
+      return hydrated.state;
+    }
+
+    const seeded = await ensurePresetUsers(await buildSeedAuthState());
+    return writeStoredAuthState(seeded.state, "seeded");
+  })().finally(() => {
+    authHydrationPromise = null;
+  });
+
+  return authHydrationPromise;
 }
 
 export async function getAuthState() {
