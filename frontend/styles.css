@@ -438,6 +438,11 @@ h3 {
   text-decoration: none;
 }
 
+.danger-action {
+  border-color: #f2b8b2;
+  color: #9a332c;
+}
+
 .icon-button {
   aspect-ratio: 1;
   font-size: 1.2rem;

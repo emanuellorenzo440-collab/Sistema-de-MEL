@@ -932,6 +932,35 @@ export async function updateManagedUserAccess(userId, updates = {}) {
   return clone(user);
 }
 
+export async function deleteManagedUser(userId) {
+  const state = await ensureAuthState();
+  const actor = state.users.find((item) => item.id === state.session?.userId);
+  if (!actor || actor.status !== "active") {
+    throw new Error("Necesitas una sesion activa para eliminar usuarios.");
+  }
+  if (actor.id === userId) {
+    throw new Error("No puedes eliminar tu propia cuenta mientras estas dentro.");
+  }
+
+  const userIndex = state.users.findIndex((item) => item.id === userId);
+  if (userIndex === -1) {
+    throw new Error("No encontre el usuario solicitado.");
+  }
+
+  const [deletedUser] = state.users.splice(userIndex, 1);
+  state.emailOutbox = state.emailOutbox.filter((item) => item.toEmail !== deletedUser.email);
+  if (state.session?.userId === deletedUser.id) {
+    state.session = null;
+  }
+
+  writeStoredAuthState(state, "managed-user-deleted");
+  return clone({
+    id: deletedUser.id,
+    email: deletedUser.email,
+    fullName: deletedUser.fullName,
+  });
+}
+
 export async function setSessionRole(nextRole) {
   const state = await ensureAuthState();
   const user = state.users.find((item) => item.id === state.session?.userId);

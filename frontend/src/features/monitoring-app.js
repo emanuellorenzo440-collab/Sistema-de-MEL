@@ -13,13 +13,14 @@ import {
   SYSTEM_ROLES,
   VIEW_DEFINITIONS,
   createManagedUser,
+  deleteManagedUser,
   getAllowedRoles,
   getCurrentUser,
   getSessionRole,
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260512a";
+} from "../services/auth-service.js?v=20260512b";
 import {
   createApiIndicator,
   createApiProgram,
@@ -1006,10 +1007,6 @@ function renderAccessWorkspace() {
                                 Correo electronico
                                 <input name="email" type="email" value="${escapeHtml(user.email || "")}" required />
                               </label>
-                              <label>
-                                Nueva contrasena
-                                <input name="password" type="password" minlength="8" placeholder="Dejar en blanco para no cambiar" />
-                              </label>
                               <label class="access-chip access-wide">
                                 <input name="mustChangePassword" type="checkbox" ${user.mustChangePassword ? "checked" : ""} />
                                 <span>Requerir cambio de clave al entrar</span>
@@ -1043,6 +1040,7 @@ function renderAccessWorkspace() {
                               <textarea name="accessNote" rows="3">${escapeHtml(user.accessNote || "")}</textarea>
                             </label>
                             <div class="item-actions">
+                              <button class="ghost-action danger-action" data-delete-access="${user.id}" type="button">Eliminar definitivo</button>
                               <button class="primary-action" data-save-access="${user.id}" type="submit">Guardar acceso</button>
                             </div>
                           </form>
@@ -2827,7 +2825,6 @@ function bindEvents() {
         await updateManagedUserAccess(userId, {
           fullName: formData.get("fullName"),
           email: formData.get("email"),
-          password: formData.get("password"),
           systemRole: formData.get("systemRole"),
           status: formData.get("status"),
           allowedRoles,
@@ -2841,6 +2838,29 @@ function bindEvents() {
       } catch (error) {
         console.error(error);
         showToast(error.message || "No pude actualizar el acceso.");
+      }
+    })();
+  });
+
+  elements.accessUserGrid?.addEventListener("click", (event) => {
+    const deleteButton = event.target.closest("[data-delete-access]");
+    if (!deleteButton) return;
+
+    const userId = deleteButton.dataset.deleteAccess;
+    const form = deleteButton.closest("[data-user-access-form]");
+    const userEmail = form?.querySelector('input[name="email"]')?.value || "este usuario";
+    const confirmed = window.confirm(`Eliminar definitivamente ${userEmail}? Esta accion no se puede deshacer.`);
+    if (!confirmed) return;
+
+    void (async () => {
+      try {
+        await deleteManagedUser(userId);
+        await syncAuthenticatedAccess();
+        renderAll();
+        showToast("Usuario eliminado definitivamente.");
+      } catch (error) {
+        console.error(error);
+        showToast(error.message || "No pude eliminar el usuario.");
       }
     })();
   });
