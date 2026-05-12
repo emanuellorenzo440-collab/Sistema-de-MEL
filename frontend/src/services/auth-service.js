@@ -62,8 +62,8 @@ const SEEDED_FACILITATOR_APUJOLS = {
 
 const SEEDED_ACCOUNTS_CREATED_AT = "2026-05-08T00:00:00.000Z";
 const PRESET_ACCOUNT_VERSION = 2;
-const AUTH_DATA_VERSION = 3;
-const LEGACY_USER_PURGE_MATCHERS = [/alana/i, /alanna/i, /\blana\b/i];
+const AUTH_DATA_VERSION = 4;
+const LEGACY_USER_PURGE_MATCHERS = [/alana/i, /alanna/i, /\blana\b/i, /ap+lehost/i, /applehost/i];
 let presetAccountTemplatesPromise = null;
 
 function clone(value) {
@@ -81,6 +81,30 @@ function normalizeEmail(value) {
 function legacyUserShouldBePurged(user = {}) {
   const identity = `${user.fullName || ""} ${user.email || ""}`.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   return LEGACY_USER_PURGE_MATCHERS.some((matcher) => matcher.test(identity));
+}
+
+function normalizeDeletedUserRecord(record = {}) {
+  const email = normalizeEmail(record.email || record.userEmail);
+  return {
+    id: record.id || `del-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+    userId: record.userId || null,
+    fullName: String(record.fullName || record.userName || "Usuario eliminado").trim(),
+    email,
+    deletedAt: record.deletedAt || nowIso(),
+    deletedBy: record.deletedBy || "Sistema",
+    reason: record.reason || "Eliminacion definitiva de acceso",
+  };
+}
+
+function createDeletedUserRecord(user = {}, { actor = null, reason = "Eliminacion definitiva de acceso" } = {}) {
+  return normalizeDeletedUserRecord({
+    userId: user.id,
+    fullName: user.fullName,
+    email: user.email,
+    deletedAt: nowIso(),
+    deletedBy: actor?.email || actor?.fullName || "Sistema",
+    reason,
+  });
 }
 
 export function normalizeRoleLabel(value) {
@@ -278,18 +302,31 @@ function normalizeAuthState(rawState = {}) {
   const deletedUserEmails = Array.isArray(rawState.deletedUserEmails)
     ? rawState.deletedUserEmails.map(normalizeEmail).filter(Boolean)
     : [];
+  const deletedUserRegistry = Array.isArray(rawState.deletedUserRegistry)
+    ? rawState.deletedUserRegistry.map(normalizeDeletedUserRecord).filter((record) => record.email)
+    : [];
   if (Number(rawState.authDataVersion || 0) < AUTH_DATA_VERSION) {
     rawUsers.forEach((user) => {
       if (legacyUserShouldBePurged(user) && user.email) {
         deletedUserEmails.push(user.email);
+        deletedUserRegistry.push(
+          createDeletedUserRecord(user, {
+            reason: "Purga automatica de registro heredado Lana/Alanna/applehost",
+          }),
+        );
       }
     });
   }
   const normalizedDeletedEmails = Array.from(new Set(deletedUserEmails));
+  const deletedRegistryByKey = new Map();
+  deletedUserRegistry.forEach((record) => {
+    deletedRegistryByKey.set(`${record.email}:${record.deletedAt}:${record.userId || ""}`, record);
+  });
   const state = {
     users: rawUsers.filter((user) => !normalizedDeletedEmails.includes(user.email)),
     emailOutbox: Array.isArray(rawState.emailOutbox) ? rawState.emailOutbox.slice() : [],
     deletedUserEmails: normalizedDeletedEmails,
+    deletedUserRegistry: Array.from(deletedRegistryByKey.values()),
     deletedPresetEmails: Array.isArray(rawState.deletedPresetEmails)
       ? rawState.deletedPresetEmails.map(normalizeEmail).filter(Boolean)
       : [],
@@ -391,6 +428,7 @@ async function buildSeedAuthState() {
     })),
     emailOutbox: [],
     deletedUserEmails: [],
+    deletedUserRegistry: [],
     deletedPresetEmails: [],
     session: null,
     presetAccountVersion: PRESET_ACCOUNT_VERSION,
@@ -986,6 +1024,13 @@ export async function deleteManagedUser(userId) {
 
   const [deletedUser] = state.users.splice(userIndex, 1);
   state.deletedUserEmails = Array.from(new Set([...(state.deletedUserEmails || []), deletedUser.email]));
+  state.deletedUserRegistry = [
+    createDeletedUserRecord(deletedUser, {
+      actor,
+      reason: "Eliminacion definitiva desde Accesos",
+    }),
+    ...(state.deletedUserRegistry || []),
+  ];
   const presets = await getPresetAccountTemplates();
   if (presets.some((preset) => preset.email === deletedUser.email)) {
     state.deletedPresetEmails = Array.from(new Set([...(state.deletedPresetEmails || []), deletedUser.email]));
