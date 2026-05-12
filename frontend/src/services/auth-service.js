@@ -267,9 +267,15 @@ function normalizeUser(user = {}) {
 }
 
 function normalizeAuthState(rawState = {}) {
+  const deletedUserEmails = Array.isArray(rawState.deletedUserEmails)
+    ? rawState.deletedUserEmails.map(normalizeEmail).filter(Boolean)
+    : [];
   const state = {
-    users: Array.isArray(rawState.users) ? rawState.users.map(normalizeUser) : [],
+    users: Array.isArray(rawState.users)
+      ? rawState.users.map(normalizeUser).filter((user) => !deletedUserEmails.includes(user.email))
+      : [],
     emailOutbox: Array.isArray(rawState.emailOutbox) ? rawState.emailOutbox.slice() : [],
+    deletedUserEmails,
     deletedPresetEmails: Array.isArray(rawState.deletedPresetEmails)
       ? rawState.deletedPresetEmails.map(normalizeEmail).filter(Boolean)
       : [],
@@ -369,6 +375,7 @@ async function buildSeedAuthState() {
       updatedAt: timestamp,
     })),
     emailOutbox: [],
+    deletedUserEmails: [],
     deletedPresetEmails: [],
     session: null,
     presetAccountVersion: PRESET_ACCOUNT_VERSION,
@@ -587,6 +594,8 @@ export async function createManagedUser(payload = {}) {
   if (state.users.some((user) => user.email === email)) {
     throw new Error("Ya existe una cuenta registrada con ese correo.");
   }
+  state.deletedUserEmails = (state.deletedUserEmails || []).filter((item) => item !== email);
+  state.deletedPresetEmails = (state.deletedPresetEmails || []).filter((item) => item !== email);
 
   const allowedRoles = normalizeRoleList(payload.allowedRoles?.length ? payload.allowedRoles : [systemRole]);
   const viewPermissions = normalizeViewPermissions(
@@ -956,6 +965,7 @@ export async function deleteManagedUser(userId) {
   }
 
   const [deletedUser] = state.users.splice(userIndex, 1);
+  state.deletedUserEmails = Array.from(new Set([...(state.deletedUserEmails || []), deletedUser.email]));
   const presets = await getPresetAccountTemplates();
   if (presets.some((preset) => preset.email === deletedUser.email)) {
     state.deletedPresetEmails = Array.from(new Set([...(state.deletedPresetEmails || []), deletedUser.email]));

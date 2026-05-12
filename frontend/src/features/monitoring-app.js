@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260507i";
-import { $, $$, elements } from "../core/dom.js?v=20260512e";
+import { $, $$, elements } from "../core/dom.js?v=20260512f";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260507i";
 import { seedState } from "../data/seed-state.js?v=20260507i";
 import {
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260512e";
+} from "../services/auth-service.js?v=20260512f";
 import {
   createApiIndicator,
   createApiProgram,
@@ -49,6 +49,8 @@ const ROLE_STORAGE_KEY = "pulso-me-active-role";
 let currentUser = null;
 let currentUserRoles = SYSTEM_ROLES.slice();
 let currentUserViews = VIEW_DEFINITIONS.map((view) => view.id);
+let accessRenderRequest = 0;
+const deletedAccessUserIds = new Set();
 
 function loadState() {
   return loadStoredState(STORAGE_KEY, seedState, normalizeState);
@@ -874,9 +876,11 @@ function renderPrograms() {
 
 function renderAccessWorkspace() {
   if (!elements.accessUserGrid || !elements.accessRequestCount) return;
+  const renderRequest = ++accessRenderRequest;
 
   void (async () => {
-    const users = await listManagedUsers();
+    const users = (await listManagedUsers()).filter((user) => !deletedAccessUserIds.has(user.id));
+    if (renderRequest !== accessRenderRequest) return;
     const groups = [
       { key: "pending_verification", label: "Solicitudes nuevas", empty: "No hay usuarios pendientes de verificacion." },
       { key: "pending_approval", label: "Pendientes de aprobacion", empty: "No hay usuarios esperando aprobacion." },
@@ -2863,17 +2867,20 @@ function bindEvents() {
     void (async () => {
       const userCard = deleteButton.closest("[data-user-access-form]");
       try {
+        deletedAccessUserIds.add(userId);
+        userCard?.remove();
         deleteButton.disabled = true;
         deleteButton.textContent = "Eliminando...";
         await deleteManagedUser(userId);
-        userCard?.remove();
         await syncAuthenticatedAccess();
         renderAccessWorkspace();
         showToast("Usuario eliminado definitivamente.");
       } catch (error) {
         console.error(error);
+        deletedAccessUserIds.delete(userId);
         deleteButton.disabled = false;
         deleteButton.textContent = "Eliminar definitivo";
+        renderAccessWorkspace();
         showToast(error.message || "No pude eliminar el usuario.");
       }
     })();
