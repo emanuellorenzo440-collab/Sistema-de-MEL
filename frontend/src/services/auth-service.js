@@ -62,8 +62,19 @@ const SEEDED_FACILITATOR_APUJOLS = {
 
 const SEEDED_ACCOUNTS_CREATED_AT = "2026-05-08T00:00:00.000Z";
 const PRESET_ACCOUNT_VERSION = 2;
-const AUTH_DATA_VERSION = 4;
-const LEGACY_USER_PURGE_MATCHERS = [/alana/i, /alanna/i, /\blana\b/i, /ap+lehost/i, /applehost/i];
+const AUTH_DATA_VERSION = 5;
+const LEGACY_ACCESS_CUTOFF = "2026-05-12T00:00:00.000Z";
+const LEGACY_USER_PURGE_MATCHERS = [
+  /alana/i,
+  /alanna/i,
+  /\blana\b/i,
+  /apujo/i,
+  /apujols/i,
+  /ap+lehost/i,
+  /applehost/i,
+  /companyofhomes/i,
+  /conveyofhope/i,
+];
 let presetAccountTemplatesPromise = null;
 
 function clone(value) {
@@ -81,6 +92,16 @@ function normalizeEmail(value) {
 function legacyUserShouldBePurged(user = {}) {
   const identity = `${user.fullName || ""} ${user.email || ""}`.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   return LEGACY_USER_PURGE_MATCHERS.some((matcher) => matcher.test(identity));
+}
+
+function recordTime(value) {
+  const time = Date.parse(value || "");
+  return Number.isFinite(time) ? time : 0;
+}
+
+function legacyUserIsBeforeAccessCutoff(user = {}) {
+  const createdTime = recordTime(user.createdAt || user.updatedAt || user.lastLoginAt);
+  return createdTime > 0 && createdTime < Date.parse(LEGACY_ACCESS_CUTOFF);
 }
 
 function normalizeDeletedUserRecord(record = {}) {
@@ -105,6 +126,13 @@ function createDeletedUserRecord(user = {}, { actor = null, reason = "Eliminacio
     deletedBy: actor?.email || actor?.fullName || "Sistema",
     reason,
   });
+}
+
+function latestDeletionTimeForEmail(email, registry = []) {
+  const normalizedEmail = normalizeEmail(email);
+  return registry
+    .filter((record) => record.email === normalizedEmail)
+    .reduce((latest, record) => Math.max(latest, recordTime(record.deletedAt)), 0);
 }
 
 export function normalizeRoleLabel(value) {
@@ -305,25 +333,30 @@ function normalizeAuthState(rawState = {}) {
   const deletedUserRegistry = Array.isArray(rawState.deletedUserRegistry)
     ? rawState.deletedUserRegistry.map(normalizeDeletedUserRecord).filter((record) => record.email)
     : [];
-  if (Number(rawState.authDataVersion || 0) < AUTH_DATA_VERSION) {
-    rawUsers.forEach((user) => {
-      if (legacyUserShouldBePurged(user) && user.email) {
-        deletedUserEmails.push(user.email);
-        deletedUserRegistry.push(
-          createDeletedUserRecord(user, {
-            reason: "Purga automatica de registro heredado Lana/Alanna/applehost",
-          }),
-        );
-      }
-    });
-  }
+  rawUsers.forEach((user) => {
+    const shouldPurgeLegacy =
+      legacyUserShouldBePurged(user) &&
+      (Number(rawState.authDataVersion || 0) < AUTH_DATA_VERSION || legacyUserIsBeforeAccessCutoff(user));
+    if (shouldPurgeLegacy && user.email) {
+      deletedUserEmails.push(user.email);
+      deletedUserRegistry.push(
+        createDeletedUserRecord(user, {
+          reason: "Purga automatica de registro heredado Lana/Apujo/applehost",
+        }),
+      );
+    }
+  });
   const normalizedDeletedEmails = Array.from(new Set(deletedUserEmails));
   const deletedRegistryByKey = new Map();
   deletedUserRegistry.forEach((record) => {
     deletedRegistryByKey.set(`${record.email}:${record.deletedAt}:${record.userId || ""}`, record);
   });
   const state = {
-    users: rawUsers.filter((user) => !normalizedDeletedEmails.includes(user.email)),
+    users: rawUsers.filter((user) => {
+      if (normalizedDeletedEmails.includes(user.email)) return false;
+      const latestDeletion = latestDeletionTimeForEmail(user.email, deletedUserRegistry);
+      return !latestDeletion || recordTime(user.createdAt || user.updatedAt) > latestDeletion;
+    }),
     emailOutbox: Array.isArray(rawState.emailOutbox) ? rawState.emailOutbox.slice() : [],
     deletedUserEmails: normalizedDeletedEmails,
     deletedUserRegistry: Array.from(deletedRegistryByKey.values()),
@@ -375,12 +408,19 @@ function writeStoredSession(session) {
 
 function restorePersistedSession(state) {
   const normalized = normalizeAuthState(state);
+  const persistedSession = readStoredSession();
+  if (persistedSession?.userId && persistedSession.userId !== normalized.session?.userId) {
+    const sessionUser = normalized.users.find((user) => user.id === persistedSession.userId);
+    if (!sessionUser || sessionUser.status !== "active") {
+      writeStoredSession(null);
+    }
+  }
+
   if (normalized.session?.userId) {
     writeStoredSession(normalized.session);
     return normalized;
   }
 
-  const persistedSession = readStoredSession();
   if (!persistedSession?.userId) return normalized;
 
   const sessionUser = normalized.users.find((user) => user.id === persistedSession.userId);
