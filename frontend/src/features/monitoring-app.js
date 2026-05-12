@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260507i";
-import { $, $$, elements } from "../core/dom.js?v=20260512a";
+import { $, $$, elements } from "../core/dom.js?v=20260512d";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260507i";
 import { seedState } from "../data/seed-state.js?v=20260507i";
 import {
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260512c";
+} from "../services/auth-service.js?v=20260512d";
 import {
   createApiIndicator,
   createApiProgram,
@@ -156,6 +156,7 @@ function normalizeState(savedState) {
   nextState.chartPreferences = { ...seedState.chartPreferences, ...(savedState.chartPreferences || {}) };
   nextState.filters = { ...seedState.filters, ...(savedState.filters || {}) };
   nextState.role = normalizeRoleLabel(nextState.role || seedState.role);
+  nextState.activeView = typeof savedState.activeView === "string" ? savedState.activeView : "dashboard";
   nextState.designProgram = savedState.designProgram || nextState.programs[0]?.name;
   nextState.formsProgram = savedState.formsProgram || nextState.designProgram || nextState.programs[0]?.name;
   nextState.selectedConceptPaper = savedState.selectedConceptPaper || nextState.conceptPapers[0]?.id;
@@ -1608,9 +1609,11 @@ function renderAll() {
   renderActions();
   renderPrograms();
   renderAccessWorkspace();
+  switchView(state.activeView || firstAllowedView(), { persist: false });
 }
 
-function switchView(viewName) {
+function switchView(viewName, options = {}) {
+  const { persist = true } = options;
   const titles = {
     dashboard: "Resumen ejecutivo",
     report: "Nuevo reporte",
@@ -1626,12 +1629,18 @@ function switchView(viewName) {
   if (!viewIsEnabled(viewName)) {
     viewName = firstAllowedView();
   }
+  if (state) {
+    state.activeView = viewName;
+  }
   $$(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.view === viewName));
   $$(".view").forEach((panel) => panel.classList.toggle("active", panel.dataset.viewPanel === viewName));
   if (elements.globalFilters) {
     elements.globalFilters.hidden = viewName === "access";
   }
   elements.pageTitle.textContent = titles[viewName];
+  if (persist && state) {
+    saveState();
+  }
 }
 
 function showToast(message) {
@@ -2849,24 +2858,12 @@ function bindEvents() {
 
     event.preventDefault();
     const userId = deleteButton.dataset.deleteAccess;
-    const form = deleteButton.closest("[data-user-access-form]");
-    const userEmail = form?.querySelector('input[name="email"]')?.value || "este usuario";
-    if (deleteButton.dataset.confirmDelete !== "true") {
-      deleteButton.dataset.confirmDelete = "true";
-      deleteButton.textContent = "Confirmar eliminar";
-      showToast(`Pulsa otra vez para eliminar definitivamente ${userEmail}.`);
-      window.setTimeout(() => {
-        if (deleteButton.dataset.confirmDelete === "true") {
-          deleteButton.dataset.confirmDelete = "false";
-          deleteButton.textContent = "Eliminar definitivo";
-        }
-      }, 6000);
-      return;
-    }
+    if (!userId || deleteButton.disabled) return;
 
     void (async () => {
       try {
         deleteButton.disabled = true;
+        deleteButton.textContent = "Eliminando...";
         await deleteManagedUser(userId);
         await syncAuthenticatedAccess();
         renderAll();
@@ -2874,7 +2871,6 @@ function bindEvents() {
       } catch (error) {
         console.error(error);
         deleteButton.disabled = false;
-        deleteButton.dataset.confirmDelete = "false";
         deleteButton.textContent = "Eliminar definitivo";
         showToast(error.message || "No pude eliminar el usuario.");
       }
