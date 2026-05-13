@@ -1,9 +1,9 @@
-import { getApiBaseUrl } from "./mel-api.js?v=20260513e";
+import { getApiBaseUrl } from "./mel-api.js?v=20260513f";
 
 const AUTH_STORAGE_KEY = "pulso-me-auth-v1";
 const AUTH_SESSION_KEY = "pulso-me-session-v1";
 const AUTH_EVENT_NAME = "mel:auth-changed";
-const AUTH_API_TIMEOUT_MS = 1800;
+const AUTH_API_TIMEOUT_MS = 10000;
 const REMOTE_SESSION_SYNC_INTERVAL_MS = 15000;
 
 export const SYSTEM_ROLES = [
@@ -94,8 +94,35 @@ function authApiBaseUrl() {
   }
 }
 
+function isLocalAuthRuntime() {
+  return ["localhost", "127.0.0.1"].includes(window.location.hostname);
+}
+
+function isStaticGitHost() {
+  return /(^|\.)github\.io$/i.test(window.location.hostname);
+}
+
+function requiresSharedAuthApi() {
+  return Boolean(authApiBaseUrl()) && !isLocalAuthRuntime() && !isStaticGitHost();
+}
+
 function isNetworkAuthError(error) {
   return error?.name === "AbortError" || error?.isNetworkError;
+}
+
+function shouldUseLocalAuthFallback(error) {
+  return isNetworkAuthError(error) && !requiresSharedAuthApi();
+}
+
+function sharedAuthApiError(error) {
+  if (!isNetworkAuthError(error)) return error;
+  const message =
+    error?.name === "AbortError"
+      ? "La API de accesos tardo demasiado en responder. El usuario no se guardo. Intenta de nuevo cuando Railway termine de responder."
+      : "No pude conectar con la API de accesos. El usuario no se guardo. Revisa que Railway este activo y vuelve a intentar.";
+  const nextError = new Error(message);
+  nextError.cause = error;
+  return nextError;
 }
 
 async function requestAuthApi(pathname, options = {}) {
@@ -806,7 +833,7 @@ export async function listManagedUsers() {
         resetCodeHash: undefined,
       }));
   } catch (error) {
-    if (!isNetworkAuthError(error)) throw error;
+    if (!shouldUseLocalAuthFallback(error)) throw sharedAuthApiError(error);
   }
 
   const state = await ensureAuthState();
@@ -937,7 +964,7 @@ export async function createManagedUser(payload = {}) {
       passwordHash: undefined,
     });
   } catch (error) {
-    if (!isNetworkAuthError(error)) throw error;
+    if (!shouldUseLocalAuthFallback(error)) throw sharedAuthApiError(error);
   }
 
   const nextUser = normalizeUser({
@@ -1059,7 +1086,7 @@ export async function signInUser(payload = {}) {
       },
     });
   } catch (error) {
-    if (!isNetworkAuthError(error)) throw error;
+    if (!shouldUseLocalAuthFallback(error)) throw sharedAuthApiError(error);
   }
 
   const user = state.users.find((item) => item.email === email);
@@ -1145,7 +1172,7 @@ export async function completeRequiredPasswordChange(payload = {}) {
       },
     });
   } catch (error) {
-    if (!isNetworkAuthError(error)) throw error;
+    if (!shouldUseLocalAuthFallback(error)) throw sharedAuthApiError(error);
   }
 
   const user = state.users.find((item) => item.email === email);
@@ -1308,7 +1335,7 @@ export async function updateManagedUserAccess(userId, updates = {}) {
     });
     return clone(await upsertRemoteUser(response.user, "access-updated-remote"));
   } catch (error) {
-    if (!isNetworkAuthError(error)) throw error;
+    if (!shouldUseLocalAuthFallback(error)) throw sharedAuthApiError(error);
   }
 
   user.fullName = nextFullName;
@@ -1391,7 +1418,7 @@ export async function deleteManagedUser(userId) {
       fullName: userPendingDelete.fullName,
     });
   } catch (error) {
-    if (!isNetworkAuthError(error)) throw error;
+    if (!shouldUseLocalAuthFallback(error)) throw sharedAuthApiError(error);
   }
 
   const [deletedUser] = state.users.splice(userIndex, 1);
