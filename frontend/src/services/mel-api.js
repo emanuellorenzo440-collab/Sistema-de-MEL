@@ -115,6 +115,19 @@ export async function fetchApiIndicators(filters = {}) {
   return response.data || [];
 }
 
+export async function fetchApiConceptPapers(filters = {}) {
+  const response = await requestJson("concept-papers", {}, filters);
+  return response.data || [];
+}
+
+export async function createApiConceptPaper(conceptPaper) {
+  const response = await requestJson("concept-papers", {
+    method: "POST",
+    body: JSON.stringify(conceptPaper),
+  });
+  return response.data;
+}
+
 export async function createApiIndicator(indicator) {
   const response = await requestJson("indicators", {
     method: "POST",

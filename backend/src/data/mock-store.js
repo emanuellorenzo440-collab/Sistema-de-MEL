@@ -42,6 +42,40 @@ const indicators = seedState.indicators.map((indicator) => ({
   programId: programIdByName().get(indicator.program) || null,
 }));
 
+function asList(value, fallback = []) {
+  return Array.isArray(value) ? value.map((item) => String(item || "")).filter(Boolean) : fallback;
+}
+
+function normalizedConceptPaper(input = {}) {
+  const timestamp = nowIso();
+  const program = String(input.program || "");
+  const fileName = String(input.fileName || input.name || "documento");
+  return {
+    id: String(input.id || `cp-${slugify(program || fileName)}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`),
+    program,
+    title: String(input.title || fileName || "Concept paper"),
+    presenter: String(input.presenter || input.uploadedBy || "Equipo M&E"),
+    fileName,
+    path: String(input.path || ""),
+    dataUrl: input.dataUrl || null,
+    mimeType: String(input.mimeType || input.type || "application/octet-stream"),
+    size: asNumber(input.size),
+    uploadedAt: input.uploadedAt || timestamp,
+    uploadedBy: input.uploadedBy || null,
+    year: String(input.year || timestamp.slice(0, 4)),
+    status: String(input.status || "Cargado"),
+    objective: String(input.objective || "Documento cargado por administracion para alimentar la biblioteca de Concept Papers."),
+    beneficiaries: String(input.beneficiaries || "Pendiente de completar desde el documento cargado."),
+    budget: String(input.budget || "Pendiente"),
+    methodology: asList(input.methodology, ["Revisar metodologia dentro del documento adjunto."]),
+    expectedImpact: asList(input.expectedImpact, ["Revisar impacto esperado dentro del documento adjunto."]),
+    measurableResults: asList(input.measurableResults, ["Revisar resultados medibles dentro del documento adjunto."]),
+    recommendedForms: asList(input.recommendedForms, ["Monitoreo semanal", "Evaluacion final"]),
+    achievementIndicators: asList(input.achievementIndicators, ["Indicadores pendientes de definir desde el Concept Paper."]),
+  };
+}
+
+const conceptPapers = seedState.conceptPapers.map(normalizedConceptPaper);
 const reports = [];
 const reportStatusHistory = [];
 const deletedReports = [];
@@ -72,6 +106,7 @@ function snapshotStore() {
     storeVersion: STORE_VERSION,
     programs,
     indicators,
+    conceptPapers,
     reports,
     reportStatusHistory,
     deletedReports,
@@ -95,6 +130,9 @@ function hydratePersistentStore() {
 
   if (Array.isArray(stored.programs) && stored.programs.length) replaceArray(programs, stored.programs);
   if (Array.isArray(stored.indicators) && stored.indicators.length) replaceArray(indicators, stored.indicators);
+  if (Array.isArray(stored.conceptPapers) && stored.conceptPapers.length) {
+    replaceArray(conceptPapers, stored.conceptPapers.map(normalizedConceptPaper));
+  }
   replaceArray(reports, Array.isArray(stored.reports) ? stored.reports.map(normalizedReport) : []);
   replaceArray(reportStatusHistory, Array.isArray(stored.reportStatusHistory) ? stored.reportStatusHistory : []);
   replaceArray(deletedReports, Array.isArray(stored.deletedReports) ? stored.deletedReports : []);
@@ -472,6 +510,25 @@ export function deleteIndicator(indicatorId) {
   indicators.splice(index, 1);
   persistStore();
   return true;
+}
+
+export function listConceptPapers(filters = {}) {
+  const { program, year, status } = filters;
+  return conceptPapers
+    .filter((paper) => {
+      if (program && paper.program !== program) return false;
+      if (year && paper.year !== year) return false;
+      if (status && paper.status !== status) return false;
+      return true;
+    })
+    .map((paper) => structuredClone(paper));
+}
+
+export function createConceptPaper(input = {}) {
+  const paper = normalizedConceptPaper(input);
+  conceptPapers.unshift(paper);
+  persistStore();
+  return structuredClone(paper);
 }
 
 export function queryReports(filters = {}) {

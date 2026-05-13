@@ -1,10 +1,11 @@
-import { STORAGE_KEY } from "../core/config.js?v=20260513l";
-import { seedState } from "../data/seed-state.js?v=20260513l";
-import { REPORT_STATUSES, isApprovedReportStatus, isPendingApprovalStatus } from "../../../shared/contracts/reporting.js?v=20260513l";
+import { STORAGE_KEY } from "../core/config.js?v=20260513m";
+import { seedState } from "../data/seed-state.js?v=20260513m";
+import { REPORT_STATUSES, isApprovedReportStatus, isPendingApprovalStatus } from "../../../shared/contracts/reporting.js?v=20260513m";
 import {
   createApiReport,
   createApiReportsBulk,
   fetchApiAnalyticsOverview,
+  fetchApiConceptPapers,
   fetchApiDeletedReports,
   fetchApiIndicators,
   fetchApiNotifications,
@@ -13,7 +14,7 @@ import {
   getApiBaseUrl,
   isApiConfigured,
   updateApiReportStatus,
-} from "./mel-api.js?v=20260513l";
+} from "./mel-api.js?v=20260513m";
 
 const CHART_COLORS = ["#14b8a6", "#2563eb", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6"];
 let syncInFlight = false;
@@ -542,12 +543,17 @@ async function pullRemoteNotifications() {
 }
 
 async function pullRemotePlanningData() {
-  const [remotePrograms, remoteIndicators] = await Promise.all([fetchApiPrograms(), fetchApiIndicators()]);
+  const [remotePrograms, remoteIndicators, remoteConceptPapers] = await Promise.all([
+    fetchApiPrograms(),
+    fetchApiIndicators(),
+    fetchApiConceptPapers(),
+  ]);
   const currentState = normalizeState(readStoredState());
   const nextState = recomputeIndicators({
     ...currentState,
     programs: remotePrograms.length ? remotePrograms : currentState.programs,
     indicators: remoteIndicators.length ? remoteIndicators : currentState.indicators,
+    conceptPapers: remoteConceptPapers.length ? remoteConceptPapers : currentState.conceptPapers,
   });
   commitStoredState(nextState, { source: "pullRemotePlanningData" });
   return nextState;

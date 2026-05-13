@@ -1,14 +1,14 @@
-import { STORAGE_KEY } from "../core/config.js?v=20260513l";
-import { $, $$, elements } from "../core/dom.js?v=20260513l";
-import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260513l";
-import { seedState } from "../data/seed-state.js?v=20260513l";
+import { STORAGE_KEY } from "../core/config.js?v=20260513m";
+import { $, $$, elements } from "../core/dom.js?v=20260513m";
+import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260513m";
+import { seedState } from "../data/seed-state.js?v=20260513m";
 import {
   REPORT_STATUSES,
   canReviewReports,
   isApprovedReportStatus,
   isPendingApprovalStatus,
   reviewRoleForStatus,
-} from "../../../shared/contracts/reporting.js?v=20260513l";
+} from "../../../shared/contracts/reporting.js?v=20260513m";
 import {
   SYSTEM_ROLES,
   VIEW_DEFINITIONS,
@@ -20,8 +20,9 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260513l";
+} from "../services/auth-service.js?v=20260513m";
 import {
+  createApiConceptPaper,
   createApiIndicator,
   createApiProgram,
   createApiReport,
@@ -29,6 +30,7 @@ import {
   deleteApiReport,
   deleteApiIndicator,
   deleteApiProgram,
+  fetchApiConceptPapers,
   fetchApiNotifications,
   fetchApiReports,
   isApiConfigured,
@@ -36,7 +38,7 @@ import {
   updateApiReportStatus,
   updateApiIndicator,
   updateApiProgram,
-} from "../services/mel-api.js?v=20260513l";
+} from "../services/mel-api.js?v=20260513m";
 import {
   currentMonth,
   escapeHtml,
@@ -48,11 +50,12 @@ import {
   slugify,
   statusForProgress,
   unique,
-} from "../shared/utils.js?v=20260513l";
+} from "../shared/utils.js?v=20260513m";
 
 let state = null;
 const ROLE_STORAGE_KEY = "pulso-me-active-role";
 const MAX_REPORT_ATTACHMENT_BYTES = 8 * 1024 * 1024;
+const MAX_CONCEPT_PAPER_BYTES = 15 * 1024 * 1024;
 let currentUser = null;
 let currentUserRoles = SYSTEM_ROLES.slice();
 let currentUserViews = VIEW_DEFINITIONS.map((view) => view.id);
@@ -566,6 +569,55 @@ async function attachmentFromFile(file, uploadedBy = null) {
   };
 }
 
+async function conceptPaperDocumentFromFile(file, formData) {
+  if (!file) {
+    throw new Error("Selecciona un documento para cargar.");
+  }
+  if (file.size > MAX_CONCEPT_PAPER_BYTES) {
+    throw new Error(`El documento supera ${formatFileSize(MAX_CONCEPT_PAPER_BYTES)}. Sube una version mas liviana.`);
+  }
+
+  const program = String(formData.get("program") || "").trim();
+  const title = String(formData.get("title") || file.name || "").trim();
+  const uploadedBy = currentUser?.email || currentUser?.fullName || activeRole();
+  return {
+    id: `cp-${slugify(program || title || file.name)}-${Date.now()}`,
+    program,
+    title,
+    presenter: String(formData.get("presenter") || uploadedBy || "Equipo M&E").trim(),
+    fileName: file.name,
+    dataUrl: await readFileAsDataUrl(file),
+    mimeType: file.type || "application/octet-stream",
+    size: file.size,
+    uploadedAt: new Date().toISOString(),
+    uploadedBy,
+    year: String(formData.get("year") || new Date().getFullYear()).trim(),
+    status: "Cargado",
+    objective:
+      String(formData.get("objective") || "").trim() ||
+      "Documento cargado por administracion para alimentar la biblioteca de Concept Papers.",
+    beneficiaries: "Pendiente de completar desde el documento cargado.",
+    budget: "Pendiente",
+    methodology: ["Revisar metodologia dentro del documento adjunto."],
+    expectedImpact: ["Revisar impacto esperado dentro del documento adjunto."],
+    measurableResults: ["Revisar resultados medibles dentro del documento adjunto."],
+    recommendedForms: ["Monitoreo semanal", "Evaluacion final"],
+    achievementIndicators: ["Indicadores pendientes de definir desde el Concept Paper."],
+  };
+}
+
+async function refreshConceptPapersFromApi() {
+  if (!isApiConfigured()) return;
+  const remoteConceptPapers = await fetchApiConceptPapers();
+  if (remoteConceptPapers.length) {
+    state.conceptPapers = remoteConceptPapers;
+    if (!state.conceptPapers.some((paper) => paper.id === state.selectedConceptPaper)) {
+      state.selectedConceptPaper = state.conceptPapers[0]?.id;
+    }
+    saveState();
+  }
+}
+
 function renderIndicators() {
   const programIndicators =
     state.filters.program === "Todos"
@@ -658,7 +710,12 @@ function renderConceptPapers() {
 
   elements.conceptPaperList.innerHTML = papers
     .map(
-      (paper) => `
+      (paper) => {
+        const documentHref = paper.dataUrl || (paper.path ? localFileUrl(paper.path) : "");
+        const openDocument = documentHref
+          ? `<a class="ghost-link" href="${escapeHtml(documentHref)}" target="_blank" rel="noreferrer">Abrir documento</a>`
+          : `<span class="item-meta">Sin archivo</span>`;
+        return `
         <article class="concept-card ${paper.id === activePaper?.id ? "active" : ""}">
           <div>
             <p class="eyebrow">${paper.year} · ${paper.status}</p>
@@ -667,10 +724,11 @@ function renderConceptPapers() {
           </div>
           <div class="concept-actions">
             <button class="ghost-action" data-concept-id="${paper.id}" type="button">Ver resumen</button>
-            <a class="ghost-link" href="${localFileUrl(paper.path)}" target="_blank" rel="noreferrer">Abrir PDF</a>
+            ${openDocument}
           </div>
         </article>
-      `,
+      `;
+      },
     )
     .join("");
 
@@ -689,6 +747,7 @@ function renderConceptPapers() {
         <span>${activePaper.beneficiaries}</span>
         <span>Presupuesto: ${activePaper.budget}</span>
         <span>Archivo: ${activePaper.fileName}</span>
+        ${activePaper.size ? `<span>Tamano: ${formatFileSize(activePaper.size)}</span>` : ""}
       </div>
     </article>
     <div class="concept-detail-grid">
@@ -1176,6 +1235,46 @@ function renderAccessWorkspace() {
         </label>
         <div class="item-actions">
           <button class="primary-action" type="submit">Crear usuario</button>
+        </div>
+      </form>
+      <form class="user-access-card concept-upload-card" id="createConceptPaperForm">
+        <div class="user-access-top">
+          <div>
+            <p class="eyebrow">Concept Papers</p>
+            <h3>Cargar documento al sistema</h3>
+          </div>
+          <span class="status-pill info">${state.conceptPapers.length} cargados</span>
+        </div>
+        <div class="access-card-grid">
+          <label>
+            Programa
+            <select name="program" required>
+              ${state.programs.map((program) => `<option value="${escapeHtml(program.name)}">${escapeHtml(program.name)}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            Ano
+            <input name="year" type="number" min="2000" max="2100" value="${new Date().getFullYear()}" required />
+          </label>
+          <label>
+            Titulo
+            <input name="title" type="text" placeholder="Ej. Concept Paper 2026" required />
+          </label>
+          <label>
+            Responsable / presentador
+            <input name="presenter" type="text" value="${escapeHtml(currentUser?.fullName || "Supervision M&E")}" />
+          </label>
+          <label class="span-2">
+            Documento
+            <input name="conceptFile" type="file" required />
+          </label>
+          <label class="span-2">
+            Objetivo o nota breve
+            <textarea name="objective" rows="2" placeholder="Resumen breve para identificar el documento en Concept Papers."></textarea>
+          </label>
+        </div>
+        <div class="item-actions">
+          <button class="primary-action" type="submit">Subir a Concept Papers</button>
         </div>
       </form>
       <div class="access-summary-grid">
@@ -3225,6 +3324,30 @@ function bindEvents() {
   });
 
   elements.accessUserGrid?.addEventListener("submit", (event) => {
+    if (event.target.id === "createConceptPaperForm") {
+      event.preventDefault();
+      const form = event.target;
+      const formData = new FormData(form);
+      const file = form.elements.conceptFile?.files?.[0] || null;
+      void (async () => {
+        try {
+          const conceptPaper = await conceptPaperDocumentFromFile(file, formData);
+          const savedPaper = isApiConfigured() ? await createApiConceptPaper(conceptPaper) : conceptPaper;
+          state.conceptPapers = [savedPaper, ...state.conceptPapers.filter((paper) => paper.id !== savedPaper.id)];
+          state.selectedConceptPaper = savedPaper.id;
+          saveState();
+          form.reset();
+          await refreshConceptPapersFromApi();
+          renderAll();
+          showToast("Concept Paper cargado y disponible para todos.");
+        } catch (error) {
+          console.error(error);
+          showToast(error.message || "No pude cargar el Concept Paper.");
+        }
+      })();
+      return;
+    }
+
     if (event.target.id === "createManagedUserForm") {
       event.preventDefault();
       const formData = new FormData(event.target);

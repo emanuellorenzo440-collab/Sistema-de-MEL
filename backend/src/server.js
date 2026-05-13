@@ -3,6 +3,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  createConceptPaper,
   createIndicator,
   createProgram,
   createReport,
@@ -11,6 +12,7 @@ import {
   deleteIndicator,
   deleteProgram,
   findReportById,
+  listConceptPapers,
   listEmailOutbox,
   listIndicators,
   listNotifications,
@@ -271,6 +273,34 @@ export async function handleIndicatorDelete(_request, response, indicatorId) {
   sendEmpty(response);
 }
 
+export async function handleConceptPapers(_request, response, url) {
+  const filters = {
+    program: url.searchParams.get("program") || undefined,
+    year: url.searchParams.get("year") || undefined,
+    status: url.searchParams.get("status") || undefined,
+  };
+  sendJson(response, 200, { data: listConceptPapers(filters), filters });
+}
+
+export async function handleConceptPaperCreate(request, response) {
+  let payload;
+  try {
+    payload = await readJsonBody(request);
+  } catch {
+    sendJson(response, 400, { error: "El cuerpo del Concept Paper no es JSON valido." });
+    return;
+  }
+
+  const required = requireFields(payload, ["program", "title", "fileName", "dataUrl"]);
+  if (required) {
+    sendJson(response, 400, required);
+    return;
+  }
+
+  const conceptPaper = createConceptPaper(payload);
+  sendJson(response, 201, { data: conceptPaper });
+}
+
 export async function handleReportsList(request, response, url) {
   const filters = parseFilters(url);
   const reports = filterReportsByScope(queryReports(filters), filters.scope);
@@ -475,6 +505,7 @@ function apiIndex() {
     resources: [
       "programs",
       "indicators",
+      "concept-papers",
       "reports",
       "reports/deleted",
       "notifications",
@@ -634,6 +665,16 @@ async function router(request, response) {
 
   if (request.method === "DELETE" && indicatorMatch) {
     await handleIndicatorDelete(request, response, decodeURIComponent(indicatorMatch[1]));
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/v1/concept-papers") {
+    await handleConceptPapers(request, response, url);
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/v1/concept-papers") {
+    await handleConceptPaperCreate(request, response, url);
     return;
   }
 
