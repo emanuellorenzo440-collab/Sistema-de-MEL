@@ -1,14 +1,14 @@
-import { STORAGE_KEY } from "../core/config.js?v=20260513h";
-import { $, $$, elements } from "../core/dom.js?v=20260513h";
-import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260513h";
-import { seedState } from "../data/seed-state.js?v=20260513h";
+import { STORAGE_KEY } from "../core/config.js?v=20260513i";
+import { $, $$, elements } from "../core/dom.js?v=20260513i";
+import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260513i";
+import { seedState } from "../data/seed-state.js?v=20260513i";
 import {
   REPORT_STATUSES,
   canReviewReports,
   isApprovedReportStatus,
   isPendingApprovalStatus,
   reviewRoleForStatus,
-} from "../../../shared/contracts/reporting.js?v=20260513h";
+} from "../../../shared/contracts/reporting.js?v=20260513i";
 import {
   SYSTEM_ROLES,
   VIEW_DEFINITIONS,
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260513h";
+} from "../services/auth-service.js?v=20260513i";
 import {
   createApiIndicator,
   createApiProgram,
@@ -32,9 +32,10 @@ import {
   fetchApiReports,
   isApiConfigured,
   markApiNotificationRead,
+  updateApiReportStatus,
   updateApiIndicator,
   updateApiProgram,
-} from "../services/mel-api.js?v=20260513h";
+} from "../services/mel-api.js?v=20260513i";
 import {
   currentMonth,
   escapeHtml,
@@ -46,7 +47,7 @@ import {
   slugify,
   statusForProgress,
   unique,
-} from "../shared/utils.js?v=20260513h";
+} from "../shared/utils.js?v=20260513i";
 
 let state = null;
 const ROLE_STORAGE_KEY = "pulso-me-active-role";
@@ -55,6 +56,7 @@ let currentUserRoles = SYSTEM_ROLES.slice();
 let currentUserViews = VIEW_DEFINITIONS.map((view) => view.id);
 let accessRenderRequest = 0;
 const deletedAccessUserIds = new Set();
+let activeStatusReportId = null;
 
 function loadState() {
   return loadStoredState(STORAGE_KEY, seedState, normalizeState);
@@ -443,12 +445,19 @@ function approvalButtonLabel(report) {
 function reportsAssignedToRole(role) {
   return state.reports
     .filter((report) => isPendingApprovalStatus(report.status))
+    .filter((report) => isSystemAdminRole(role) || reviewRoleForStatus(report.status) === role)
     .sort((left, right) => String(right.date || "").localeCompare(String(left.date || "")));
 }
 
 function inboxReportsForRole(role) {
   return state.reports
-    .filter((report) => isPendingApprovalStatus(report.status))
+    .filter((report) => {
+      if (report.status === REPORT_STATUSES.NEEDS_CORRECTION) {
+        return report.correctionForRole === role || (role === "Facilitador" && !report.correctionForRole);
+      }
+      if (!isPendingApprovalStatus(report.status)) return false;
+      return isSystemAdminRole(role) || reviewRoleForStatus(report.status) === role || role === "Facilitador";
+    })
     .sort((left, right) => String(right.date || "").localeCompare(String(left.date || "")));
 }
 
@@ -467,6 +476,12 @@ function formatPendingStageBreakdown(reports) {
 
 function waitingMessageForRole(role) {
   return "No hay reportes pendientes por aprobar.";
+}
+
+function latestCorrectionNote(report) {
+  return report?.status === REPORT_STATUSES.NEEDS_CORRECTION
+    ? String(report.reviewNote || report.correctionNote || "").trim()
+    : "";
 }
 
 function renderIndicators() {
@@ -768,12 +783,44 @@ function renderNotificationCard(notification) {
   `;
 }
 
+function renderReportStatusDetail(report) {
+  if (!report) return "";
+  const indicator = indicatorById(report.indicatorId);
+  const correctionNote = latestCorrectionNote(report);
+  const nextStage = reviewRoleForStatus(report.status);
+  return `
+    <article class="notification-item high">
+      <div class="notification-top">
+        <div>
+          <p class="eyebrow">Detalle del reporte</p>
+          <h3>${report.program}</h3>
+          <p class="item-meta">${indicator?.name ?? "Indicador eliminado"} · ${report.period} · ${report.province}</p>
+        </div>
+        <span class="status-pill ${classForReportStatus(report.status)}">${report.status}</span>
+      </div>
+      <p>${report.value.toLocaleString("es-DO")} reportados por ${report.owner}. ${nextStage ? `Pendiente para ${nextStage}.` : ""}</p>
+      ${report.notes ? `<p class="item-meta"><strong>Nota original:</strong> ${escapeHtml(report.notes)}</p>` : ""}
+      ${
+        correctionNote
+          ? `<p class="item-meta"><strong>Correccion solicitada para ${escapeHtml(report.correctionForRole || "Facilitador")}:</strong> ${escapeHtml(correctionNote)}</p>`
+          : `<p class="item-meta">No hay correcciones pendientes registradas para este reporte.</p>`
+      }
+      <div class="item-actions">
+        <button type="button" data-close-report-detail>Ocultar detalle</button>
+      </div>
+    </article>
+  `;
+}
+
 function renderReportInboxCard(report, role) {
   const indicator = indicatorById(report.indicatorId);
   const currentStage = reviewRoleForStatus(report.status);
   const participants = `${Number(report.women || 0).toLocaleString("es-DO")} mujeres · ${Number(report.men || 0).toLocaleString("es-DO")} hombres`;
+  const correctionNote = latestCorrectionNote(report);
   const roleMessage =
-    role === "Facilitador"
+    report.status === REPORT_STATUSES.NEEDS_CORRECTION
+      ? `Correccion asignada a ${report.correctionForRole || "Facilitador"}.`
+      : role === "Facilitador"
       ? `Esperando revision de ${currentStage || "equipo validador"}.`
       : `Pendiente para ${currentStage || role}.`;
 
@@ -793,6 +840,7 @@ function renderReportInboxCard(report, role) {
       </div>
       ${report.evidence ? `<p class="item-meta">Evidencia: ${report.evidence}</p>` : ""}
       ${report.notes ? `<p class="item-meta">Notas: ${report.notes}</p>` : ""}
+      ${correctionNote ? `<p class="item-meta"><strong>Correccion solicitada:</strong> ${escapeHtml(correctionNote)}</p>` : ""}
       <div class="item-actions">
         <button type="button" data-open-report="${report.id}">${role === "Facilitador" ? "Ver estado" : "Ver revision"}</button>
       </div>
@@ -809,18 +857,22 @@ function renderNotifications() {
   elements.notificationCount.textContent = countText;
   elements.notificationCount.className = `status-pill ${visibleCount ? "warning" : "good"}`;
   const waitingMessage = waitingMessageForRole(role);
+  const activeStatusReport = state.reports.find((report) => report.id === activeStatusReportId);
+  const detailMarkup = activeStatusReport ? renderReportStatusDetail(activeStatusReport) : "";
   const markup = inboxReports.length
     ? inboxReports.slice(0, 6).map((report) => renderReportInboxCard(report, role)).join("")
     : visibleNotifications.length
       ? visibleNotifications.slice(0, 6).map(renderNotificationCard).join("")
     : `<p class="item-meta">${waitingMessage}</p>`;
 
-  elements.notificationList.innerHTML = markup;
-  elements.supervisionNotificationList.innerHTML = inboxReports.length
+  elements.notificationList.innerHTML = `${detailMarkup}${markup}`;
+  elements.supervisionNotificationList.innerHTML = `${detailMarkup}${
+    inboxReports.length
     ? inboxReports.slice(0, 3).map((report) => renderReportInboxCard(report, role)).join("")
     : visibleNotifications.length
       ? visibleNotifications.slice(0, 3).map(renderNotificationCard).join("")
-    : `<p class="item-meta">${waitingMessage}</p>`;
+    : `<p class="item-meta">${waitingMessage}</p>`
+  }`;
 }
 
 function renderActions() {
@@ -1810,6 +1862,52 @@ async function refreshReportsAndNotificationsFromApi() {
   saveState();
 }
 
+function correctionRoleForReport(report) {
+  if (report.status === REPORT_STATUSES.PENDING_PROGRAM_MANAGER) return "Coordinador de programa";
+  if (report.status === REPORT_STATUSES.PENDING_MEL) return "Program Manager";
+  return "Facilitador";
+}
+
+async function saveReviewDecision(report, nextStatus, note = "") {
+  const payload = {
+    status: nextStatus,
+    actorId: currentUser?.id || currentUser?.email || `local-${slugify(activeRole())}`,
+    actorRole: activeRole(),
+    note,
+  };
+
+  if (isApiConfigured()) {
+    await updateApiReportStatus(report.id, payload);
+    await refreshReportsAndNotificationsFromApi();
+    return;
+  }
+
+  const previousStatus = report.status;
+  report.status = nextStatus;
+  report.reviewNote = note || null;
+  report.correctionForRole =
+    nextStatus === REPORT_STATUSES.NEEDS_CORRECTION ? correctionRoleForReport({ status: previousStatus }) : null;
+  state.notifications = (state.notifications || []).filter((notification) => notification.reportId !== report.id);
+  state.notifications =
+    nextStatus === REPORT_STATUSES.NEEDS_CORRECTION
+      ? [
+          {
+            id: `notif-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+            reportId: report.id,
+            program: report.program,
+            recipientRole: report.correctionForRole,
+            title: `Correccion solicitada: ${report.program}`,
+            message: note,
+            status: "unread",
+            priority: "high",
+            createdAt: new Date().toISOString(),
+          },
+          ...state.notifications,
+        ]
+      : [...createLocalReviewNotifications(report), ...state.notifications];
+  saveState();
+}
+
 function botSummaryForDraft(report, formTitle = "Formulario") {
   const indicator = indicatorById(report.indicatorId);
   const fragments = [
@@ -2695,8 +2793,17 @@ function bindEvents() {
     list.addEventListener("click", (event) => {
       const reportId = event.target.closest("[data-open-report]")?.dataset.openReport;
       const notificationId = event.target.closest("[data-read-notification]")?.dataset.readNotification;
+      const closeDetail = event.target.closest("[data-close-report-detail]");
+
+      if (closeDetail) {
+        activeStatusReportId = null;
+        renderNotifications();
+        return;
+      }
 
       if (reportId) {
+        activeStatusReportId = reportId;
+        renderNotifications();
         switchView("supervision");
       }
 
@@ -2838,32 +2945,35 @@ function bindEvents() {
     const report = state.reports.find((item) => item.id === approveId || item.id === returnId);
     if (!report) return;
 
-    if (approveId) {
-      report.status = nextApprovalStatusForReport(report);
-      state.notifications = (state.notifications || []).filter((notification) => notification.reportId !== report.id);
-      state.notifications = [...createLocalReviewNotifications(report), ...state.notifications];
-      showToast(
-        report.status === REPORT_STATUSES.APPROVED
-          ? "Reporte aprobado y habilitado para analitica."
-          : `Reporte enviado a ${reviewRoleForStatus(report.status)}.`,
-      );
-    }
+    void (async () => {
+      try {
+        if (approveId) {
+          const nextStatus = nextApprovalStatusForReport(report);
+          await saveReviewDecision(report, nextStatus, "Aprobado para continuar la cadena de revision.");
+          showToast(
+            nextStatus === REPORT_STATUSES.APPROVED
+              ? "Reporte aprobado y habilitado para analitica."
+              : `Reporte enviado a ${reviewRoleForStatus(nextStatus)}.`,
+          );
+        }
 
-    if (returnId) {
-      report.status = REPORT_STATUSES.NEEDS_CORRECTION;
-      state.notifications = (state.notifications || []).filter((notification) => notification.reportId !== report.id);
-      state.actions.unshift({
-        title: `Corregir reporte de ${report.program}`,
-        owner: report.owner,
-        due: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
-        program: report.program,
-        status: "Abierto",
-      });
-      showToast("Correccion solicitada.");
-    }
+        if (returnId) {
+          const note = window.prompt("Indica que debe corregirse en este reporte:");
+          if (!note?.trim()) {
+            showToast("Debes escribir una nota de correccion.");
+            return;
+          }
+          await saveReviewDecision(report, REPORT_STATUSES.NEEDS_CORRECTION, note.trim());
+          activeStatusReportId = report.id;
+          showToast("Correccion solicitada con nota.");
+        }
 
-    saveState();
-    renderAll();
+        renderAll();
+      } catch (error) {
+        console.error(error);
+        showToast(error.message || "No pude actualizar la revision.");
+      }
+    })();
   });
 
   elements.indicatorBoard.addEventListener("click", (event) => {

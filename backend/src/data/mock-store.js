@@ -134,6 +134,7 @@ function normalizedReport(input = {}) {
     reviewedBy: input.reviewedBy || null,
     reviewedAt: input.reviewedAt || null,
     reviewNote: input.reviewNote || null,
+    correctionForRole: input.correctionForRole || null,
     createdAt: input.createdAt || timestamp,
     updatedAt: input.updatedAt || timestamp,
   };
@@ -163,6 +164,23 @@ function reviewRecipientsForReport(report) {
       email: program?.melSupervisorEmail || "supervision-me@pulso-me.local",
     },
   };
+}
+
+function correctionRoleForStatus(status) {
+  if (status === REPORT_STATUSES.PENDING_PROGRAM_MANAGER) return "Coordinador de programa";
+  if (status === REPORT_STATUSES.PENDING_MEL) return "Program Manager";
+  return "Facilitador";
+}
+
+function correctionRecipientForReport(report, role) {
+  if (role === "Facilitador") {
+    return {
+      role,
+      name: report.owner || "Facilitador",
+      email: report.ownerEmail || contactEmail(report.owner || "facilitador", "facilitador"),
+    };
+  }
+  return reviewRecipientsForReport(report)[role] || { role, name: role, email: contactEmail(role, role) };
 }
 
 function createEmailOutboxItem({ report, notification, recipient }) {
@@ -224,6 +242,32 @@ function createReviewNotificationsForReport(report) {
     createEmailOutboxItem({ report, notification, recipient: stageRecipient });
     return structuredClone(notification);
   });
+}
+
+function createCorrectionNotificationForReport(report, recipientRole, note) {
+  const indicator = indicators.find((item) => item.id === report.indicatorId);
+  const recipient = correctionRecipientForReport(report, recipientRole);
+  const notification = {
+    id: `notif-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+    companyId: report.companyId || DEFAULT_COMPANY_ID,
+    programId: report.programId,
+    program: report.program,
+    reportId: report.id,
+    indicatorId: report.indicatorId,
+    title: `Correccion solicitada: ${report.program}`,
+    message: `Se solicito corregir ${indicator?.name || "un indicador"} (${report.period}). Nota: ${note}`,
+    type: "report_correction_requested",
+    priority: "high",
+    recipientRole: recipient.role,
+    recipientName: recipient.name,
+    recipientEmail: recipient.email,
+    status: "unread",
+    correctionNote: note,
+    createdAt: nowIso(),
+    readAt: null,
+  };
+  notifications.unshift(notification);
+  return structuredClone(notification);
 }
 
 function createSupervisorAuditNotification(report, action, actorRole = null) {
@@ -479,6 +523,8 @@ export function saveReportStatusDecision(reportId, decision = {}) {
   report.reviewedBy = decision.actorId || report.reviewedBy;
   report.reviewedAt = changedAt;
   report.reviewNote = decision.note || null;
+  report.correctionForRole =
+    nextStatus === REPORT_STATUSES.NEEDS_CORRECTION ? correctionRoleForStatus(previousStatus) : null;
   report.updatedAt = changedAt;
 
   const historyEntry = {
@@ -493,7 +539,10 @@ export function saveReportStatusDecision(reportId, decision = {}) {
   };
 
   reportStatusHistory.unshift(historyEntry);
-  const followUpNotifications = createReviewNotificationsForReport(report);
+  const followUpNotifications =
+    nextStatus === REPORT_STATUSES.NEEDS_CORRECTION
+      ? [createCorrectionNotificationForReport(report, report.correctionForRole, decision.note || "Requiere correccion.")]
+      : createReviewNotificationsForReport(report);
   const supervisorNotification = createSupervisorAuditNotification(
     report,
     `${decision.actorRole || "Un revisor"} cambio el estado de ${previousStatus} a ${nextStatus}`,

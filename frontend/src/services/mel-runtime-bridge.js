@@ -1,6 +1,6 @@
-import { STORAGE_KEY } from "../core/config.js?v=20260513h";
-import { seedState } from "../data/seed-state.js?v=20260513h";
-import { REPORT_STATUSES, isApprovedReportStatus, isPendingApprovalStatus } from "../../../shared/contracts/reporting.js?v=20260513h";
+import { STORAGE_KEY } from "../core/config.js?v=20260513i";
+import { seedState } from "../data/seed-state.js?v=20260513i";
+import { REPORT_STATUSES, isApprovedReportStatus, isPendingApprovalStatus } from "../../../shared/contracts/reporting.js?v=20260513i";
 import {
   createApiReport,
   createApiReportsBulk,
@@ -12,7 +12,7 @@ import {
   getApiBaseUrl,
   isApiConfigured,
   updateApiReportStatus,
-} from "./mel-api.js?v=20260513h";
+} from "./mel-api.js?v=20260513i";
 
 const CHART_COLORS = ["#14b8a6", "#2563eb", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6"];
 let syncInFlight = false;
@@ -706,23 +706,6 @@ export function startRuntimeBridge() {
       window.setTimeout(() => {
         void runSyncPass();
       }, 1200);
-    });
-  }
-
-  const reviewList = document.querySelector("#reviewList");
-  if (reviewList) {
-    reviewList.addEventListener("click", (event) => {
-      const approveId = event.target?.dataset?.approve;
-      const returnId = event.target?.dataset?.return;
-      const reportId = approveId || returnId;
-      if (!reportId) return;
-
-      window.setTimeout(() => {
-        void pushReviewDecision(reportId).catch((error) => {
-          console.error(error);
-          updateConnectionBadge(false, "Revision no sincronizada");
-        });
-      }, 0);
     });
   }
 
