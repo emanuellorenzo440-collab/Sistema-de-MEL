@@ -62,19 +62,19 @@ const SEEDED_FACILITATOR_APUJOLS = {
 
 const SEEDED_ACCOUNTS_CREATED_AT = "2026-05-08T00:00:00.000Z";
 const PRESET_ACCOUNT_VERSION = 2;
-const AUTH_DATA_VERSION = 5;
+const AUTH_DATA_VERSION = 6;
 const LEGACY_ACCESS_CUTOFF = "2026-05-12T00:00:00.000Z";
 const MAX_DELETED_USER_AUDIT = 500;
+const PROTECTED_PRESET_EMAILS = [SEEDED_FACILITATOR_APUJOLS.email];
 const LEGACY_USER_PURGE_MATCHERS = [
   /alana/i,
   /alanna/i,
   /\blana\b/i,
-  /apujo/i,
-  /apujols/i,
+  /\bapujo\b/i,
+  /apujo@companyofhomes\.org/i,
+  /apujo@conveyofhope\.org/i,
   /ap+lehost/i,
   /applehost/i,
-  /companyofhomes/i,
-  /conveyofhope/i,
 ];
 let presetAccountTemplatesPromise = null;
 let authStateCache = null;
@@ -94,7 +94,20 @@ function normalizeEmail(value) {
 
 function legacyUserShouldBePurged(user = {}) {
   const identity = `${user.fullName || ""} ${user.email || ""}`.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (PROTECTED_PRESET_EMAILS.includes(normalizeEmail(user.email))) return false;
   return LEGACY_USER_PURGE_MATCHERS.some((matcher) => matcher.test(identity));
+}
+
+function recoverProtectedPresetEmails({ deletedUserEmails = [], deletedUserRegistry = [], deletedPresetEmails = [] }) {
+  const manualPresetDeletes = new Set(deletedPresetEmails);
+  return {
+    deletedUserEmails: deletedUserEmails.filter(
+      (email) => !PROTECTED_PRESET_EMAILS.includes(email) || manualPresetDeletes.has(email),
+    ),
+    deletedUserRegistry: deletedUserRegistry.filter(
+      (record) => !PROTECTED_PRESET_EMAILS.includes(record.email) || manualPresetDeletes.has(record.email),
+    ),
+  };
 }
 
 function recordTime(value) {
@@ -339,12 +352,22 @@ function normalizeUser(user = {}) {
 
 function normalizeAuthState(rawState = {}) {
   const rawUsers = Array.isArray(rawState.users) ? rawState.users.map(normalizeUser) : [];
-  const deletedUserEmails = Array.isArray(rawState.deletedUserEmails)
+  let deletedUserEmails = Array.isArray(rawState.deletedUserEmails)
     ? rawState.deletedUserEmails.map(normalizeEmail).filter(Boolean)
     : [];
-  const deletedUserRegistry = Array.isArray(rawState.deletedUserRegistry)
+  let deletedUserRegistry = Array.isArray(rawState.deletedUserRegistry)
     ? rawState.deletedUserRegistry.map(normalizeDeletedUserRecord).filter((record) => record.email)
     : [];
+  const deletedPresetEmails = Array.isArray(rawState.deletedPresetEmails)
+    ? rawState.deletedPresetEmails.map(normalizeEmail).filter(Boolean)
+    : [];
+
+  ({ deletedUserEmails, deletedUserRegistry } = recoverProtectedPresetEmails({
+    deletedUserEmails,
+    deletedUserRegistry,
+    deletedPresetEmails,
+  }));
+
   rawUsers.forEach((user) => {
     const shouldPurgeLegacy =
       legacyUserShouldBePurged(user) &&
@@ -378,9 +401,7 @@ function normalizeAuthState(rawState = {}) {
     deletedUserRegistry: Array.from(deletedRegistryByKey.values())
       .sort((left, right) => recordTime(right.deletedAt) - recordTime(left.deletedAt))
       .slice(0, MAX_DELETED_USER_AUDIT),
-    deletedPresetEmails: Array.isArray(rawState.deletedPresetEmails)
-      ? rawState.deletedPresetEmails.map(normalizeEmail).filter(Boolean)
-      : [],
+    deletedPresetEmails,
     session: rawState.session || null,
     presetAccountVersion: Number(rawState.presetAccountVersion || 0),
     authDataVersion: AUTH_DATA_VERSION,
