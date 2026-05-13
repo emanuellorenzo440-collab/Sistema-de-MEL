@@ -7,6 +7,7 @@ import {
   createProgram,
   createReport,
   createReportsBulk,
+  deleteCorrectableReport,
   deleteIndicator,
   deleteProgram,
   findReportById,
@@ -316,6 +317,31 @@ export async function handleReportBulkCreate(request, response) {
   sendJson(response, 201, { data: reports, count: reports.length });
 }
 
+export async function handleReportDelete(request, response, reportId) {
+  let payload;
+  try {
+    payload = await readJsonBody(request);
+  } catch {
+    sendJson(response, 400, { error: "La solicitud de eliminacion no es JSON valido." });
+    return;
+  }
+
+  try {
+    const deletedReport = deleteCorrectableReport(reportId, {
+      actorId: payload.actorId || null,
+      actorRole: payload.actorRole || null,
+      note: payload.note || null,
+    });
+    if (!deletedReport) {
+      sendJson(response, 404, { error: "No encontre el reporte solicitado." });
+      return;
+    }
+    sendJson(response, 200, { data: deletedReport });
+  } catch (error) {
+    sendJson(response, error.status || 500, { error: error.message || "No pude eliminar el reporte." });
+  }
+}
+
 export async function handleNotificationsList(_request, response, url) {
   const filters = {
     companyId: url.searchParams.get("companyId") || undefined,
@@ -615,6 +641,12 @@ async function router(request, response) {
 
   if (request.method === "POST" && pathname === "/api/v1/reports/bulk") {
     await handleReportBulkCreate(request, response, url);
+    return;
+  }
+
+  const reportMatch = pathname.match(/^\/api\/v1\/reports\/([^/]+)$/);
+  if (request.method === "DELETE" && reportMatch) {
+    await handleReportDelete(request, response, decodeURIComponent(reportMatch[1]));
     return;
   }
 

@@ -511,6 +511,50 @@ export function findReportById(reportId) {
   return reports.find((report) => report.id === reportId) || null;
 }
 
+export function deleteCorrectableReport(reportId, decision = {}) {
+  const index = reports.findIndex((report) => report.id === reportId);
+  if (index < 0) return null;
+
+  const report = reports[index];
+  if (report.status !== REPORT_STATUSES.NEEDS_CORRECTION) {
+    const error = new Error("Solo puedes eliminar reportes que estan en correccion.");
+    error.status = 409;
+    throw error;
+  }
+
+  const actorRole = decision.actorRole || null;
+  const allowedRole = report.correctionForRole || "Facilitador";
+  if (actorRole !== allowedRole && actorRole !== "Supervision M&E") {
+    const error = new Error(`Este reporte solo puede eliminarlo ${allowedRole}.`);
+    error.status = 403;
+    throw error;
+  }
+
+  const [deletedReport] = reports.splice(index, 1);
+  const deletedAt = nowIso();
+  reportStatusHistory.unshift({
+    id: `hist-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+    reportId,
+    previousStatus: deletedReport.status,
+    status: "Eliminado para correccion",
+    actorId: decision.actorId || null,
+    actorRole,
+    note: decision.note || "Reporte eliminado para subir una version corregida.",
+    createdAt: deletedAt,
+  });
+
+  for (let i = notifications.length - 1; i >= 0; i -= 1) {
+    if (notifications[i].reportId === reportId) notifications.splice(i, 1);
+  }
+  for (let i = emailOutbox.length - 1; i >= 0; i -= 1) {
+    if (emailOutbox[i].reportId === reportId) emailOutbox.splice(i, 1);
+  }
+
+  persistStore();
+
+  return structuredClone(deletedReport);
+}
+
 export function saveReportStatusDecision(reportId, decision = {}) {
   const report = findReportById(reportId);
   if (!report) return null;

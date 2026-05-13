@@ -189,6 +189,14 @@ export async function updateApiReportStatus(reportId, payload) {
   return response;
 }
 
+export async function deleteApiReport(reportId, payload = {}) {
+  const response = await requestJson("reports/" + encodeURIComponent(reportId), {
+    method: "DELETE",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
 export async function fetchApiReportStatusHistory(reportId) {
   const response = await requestJson("reports/" + encodeURIComponent(reportId) + "/status-history");
   return response.data || [];

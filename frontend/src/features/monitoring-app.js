@@ -1,14 +1,14 @@
-import { STORAGE_KEY } from "../core/config.js?v=20260513i";
-import { $, $$, elements } from "../core/dom.js?v=20260513i";
-import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260513i";
-import { seedState } from "../data/seed-state.js?v=20260513i";
+import { STORAGE_KEY } from "../core/config.js?v=20260513j";
+import { $, $$, elements } from "../core/dom.js?v=20260513j";
+import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260513j";
+import { seedState } from "../data/seed-state.js?v=20260513j";
 import {
   REPORT_STATUSES,
   canReviewReports,
   isApprovedReportStatus,
   isPendingApprovalStatus,
   reviewRoleForStatus,
-} from "../../../shared/contracts/reporting.js?v=20260513i";
+} from "../../../shared/contracts/reporting.js?v=20260513j";
 import {
   SYSTEM_ROLES,
   VIEW_DEFINITIONS,
@@ -20,12 +20,13 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260513i";
+} from "../services/auth-service.js?v=20260513j";
 import {
   createApiIndicator,
   createApiProgram,
   createApiReport,
   createApiReportsBulk,
+  deleteApiReport,
   deleteApiIndicator,
   deleteApiProgram,
   fetchApiNotifications,
@@ -35,7 +36,7 @@ import {
   updateApiReportStatus,
   updateApiIndicator,
   updateApiProgram,
-} from "../services/mel-api.js?v=20260513i";
+} from "../services/mel-api.js?v=20260513j";
 import {
   currentMonth,
   escapeHtml,
@@ -47,7 +48,7 @@ import {
   slugify,
   statusForProgress,
   unique,
-} from "../shared/utils.js?v=20260513i";
+} from "../shared/utils.js?v=20260513j";
 
 let state = null;
 const ROLE_STORAGE_KEY = "pulso-me-active-role";
@@ -484,6 +485,12 @@ function latestCorrectionNote(report) {
     : "";
 }
 
+function canDeleteCorrectableReport(report, role = activeRole()) {
+  if (!report || report.status !== REPORT_STATUSES.NEEDS_CORRECTION) return false;
+  const correctionRole = report.correctionForRole || "Facilitador";
+  return normalizeRoleLabel(role) === correctionRole || isSystemAdminRole(role);
+}
+
 function renderIndicators() {
   const programIndicators =
     state.filters.program === "Todos"
@@ -788,6 +795,7 @@ function renderReportStatusDetail(report) {
   const indicator = indicatorById(report.indicatorId);
   const correctionNote = latestCorrectionNote(report);
   const nextStage = reviewRoleForStatus(report.status);
+  const deleteAllowed = canDeleteCorrectableReport(report);
   return `
     <article class="notification-item high">
       <div class="notification-top">
@@ -806,6 +814,11 @@ function renderReportStatusDetail(report) {
           : `<p class="item-meta">No hay correcciones pendientes registradas para este reporte.</p>`
       }
       <div class="item-actions">
+        ${
+          deleteAllowed
+            ? `<button class="ghost-action danger-action" type="button" data-delete-correctable-report="${report.id}">Eliminar y subir corregido</button>`
+            : ""
+        }
         <button type="button" data-close-report-detail>Ocultar detalle</button>
       </div>
     </article>
@@ -1908,6 +1921,42 @@ async function saveReviewDecision(report, nextStatus, note = "") {
   saveState();
 }
 
+async function deleteCorrectableReportFromUi(reportId) {
+  const report = state.reports.find((item) => item.id === reportId);
+  if (!report) {
+    showToast("No encontre el reporte.");
+    return;
+  }
+  if (!canDeleteCorrectableReport(report)) {
+    showToast("Solo puedes eliminar reportes que esten asignados a tu rol para correccion.");
+    return;
+  }
+
+  const confirmed = window.confirm("Este reporte se eliminara para que puedas subirlo nuevamente corregido. Deseas continuar?");
+  if (!confirmed) return;
+
+  try {
+    if (isApiConfigured()) {
+      await deleteApiReport(reportId, {
+        actorId: currentUser?.id || currentUser?.email || `local-${slugify(activeRole())}`,
+        actorRole: activeRole(),
+        note: "Reporte eliminado para subir una version corregida.",
+      });
+      await refreshReportsAndNotificationsFromApi();
+    } else {
+      state.reports = state.reports.filter((item) => item.id !== reportId);
+      state.notifications = (state.notifications || []).filter((notification) => notification.reportId !== reportId);
+      saveState();
+    }
+    activeStatusReportId = null;
+    renderAll();
+    showToast("Reporte eliminado. Ya puedes subirlo nuevamente corregido.");
+  } catch (error) {
+    console.error(error);
+    showToast(error.message || "No pude eliminar el reporte.");
+  }
+}
+
 function botSummaryForDraft(report, formTitle = "Formulario") {
   const indicator = indicatorById(report.indicatorId);
   const fragments = [
@@ -2794,10 +2843,16 @@ function bindEvents() {
       const reportId = event.target.closest("[data-open-report]")?.dataset.openReport;
       const notificationId = event.target.closest("[data-read-notification]")?.dataset.readNotification;
       const closeDetail = event.target.closest("[data-close-report-detail]");
+      const deleteCorrectableId = event.target.closest("[data-delete-correctable-report]")?.dataset.deleteCorrectableReport;
 
       if (closeDetail) {
         activeStatusReportId = null;
         renderNotifications();
+        return;
+      }
+
+      if (deleteCorrectableId) {
+        void deleteCorrectableReportFromUi(deleteCorrectableId);
         return;
       }
 
