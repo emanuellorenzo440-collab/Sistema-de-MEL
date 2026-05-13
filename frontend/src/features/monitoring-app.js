@@ -1,14 +1,14 @@
-import { STORAGE_KEY } from "../core/config.js?v=20260513k";
-import { $, $$, elements } from "../core/dom.js?v=20260513k";
-import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260513k";
-import { seedState } from "../data/seed-state.js?v=20260513k";
+import { STORAGE_KEY } from "../core/config.js?v=20260513l";
+import { $, $$, elements } from "../core/dom.js?v=20260513l";
+import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260513l";
+import { seedState } from "../data/seed-state.js?v=20260513l";
 import {
   REPORT_STATUSES,
   canReviewReports,
   isApprovedReportStatus,
   isPendingApprovalStatus,
   reviewRoleForStatus,
-} from "../../../shared/contracts/reporting.js?v=20260513k";
+} from "../../../shared/contracts/reporting.js?v=20260513l";
 import {
   SYSTEM_ROLES,
   VIEW_DEFINITIONS,
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260513k";
+} from "../services/auth-service.js?v=20260513l";
 import {
   createApiIndicator,
   createApiProgram,
@@ -36,7 +36,7 @@ import {
   updateApiReportStatus,
   updateApiIndicator,
   updateApiProgram,
-} from "../services/mel-api.js?v=20260513k";
+} from "../services/mel-api.js?v=20260513l";
 import {
   currentMonth,
   escapeHtml,
@@ -48,7 +48,7 @@ import {
   slugify,
   statusForProgress,
   unique,
-} from "../shared/utils.js?v=20260513k";
+} from "../shared/utils.js?v=20260513l";
 
 let state = null;
 const ROLE_STORAGE_KEY = "pulso-me-active-role";

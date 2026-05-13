@@ -1,10 +1,11 @@
-import { STORAGE_KEY } from "../core/config.js?v=20260513k";
-import { seedState } from "../data/seed-state.js?v=20260513k";
-import { REPORT_STATUSES, isApprovedReportStatus, isPendingApprovalStatus } from "../../../shared/contracts/reporting.js?v=20260513k";
+import { STORAGE_KEY } from "../core/config.js?v=20260513l";
+import { seedState } from "../data/seed-state.js?v=20260513l";
+import { REPORT_STATUSES, isApprovedReportStatus, isPendingApprovalStatus } from "../../../shared/contracts/reporting.js?v=20260513l";
 import {
   createApiReport,
   createApiReportsBulk,
   fetchApiAnalyticsOverview,
+  fetchApiDeletedReports,
   fetchApiIndicators,
   fetchApiNotifications,
   fetchApiPrograms,
@@ -12,7 +13,7 @@ import {
   getApiBaseUrl,
   isApiConfigured,
   updateApiReportStatus,
-} from "./mel-api.js?v=20260513k";
+} from "./mel-api.js?v=20260513l";
 
 const CHART_COLORS = ["#14b8a6", "#2563eb", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6"];
 let syncInFlight = false;
@@ -143,18 +144,14 @@ function sortReports(reports) {
     });
 }
 
-function mergeRemoteReports(localReports = [], remoteReports = []) {
+function mergeRemoteReports(localReports = [], remoteReports = [], deletedReportIds = new Set()) {
   const localById = new Map(localReports.map((report) => [report.id, report]));
-  const merged = remoteReports.map((report) => ({
-    ...(localById.get(report.id) || {}),
-    ...report,
-  }));
-
-  localReports.forEach((report) => {
-    if (!merged.find((candidate) => candidate.id === report.id)) {
-      merged.push(report);
-    }
-  });
+  const merged = remoteReports
+    .filter((report) => !deletedReportIds.has(report.id))
+    .map((report) => ({
+      ...(localById.get(report.id) || {}),
+      ...report,
+    }));
 
   return sortReports(merged);
 }
@@ -518,11 +515,15 @@ async function refreshAnalyticsOverview() {
 }
 
 async function pullRemoteReports() {
-  const remoteReports = await fetchApiReports({ scope: "all" });
+  const [remoteReports, deletedReports] = await Promise.all([
+    fetchApiReports({ scope: "all" }),
+    fetchApiDeletedReports(),
+  ]);
+  const deletedReportIds = new Set(deletedReports.map((report) => report.id));
   const currentState = normalizeState(readStoredState());
   const nextState = recomputeIndicators({
     ...currentState,
-    reports: mergeRemoteReports(currentState.reports, remoteReports),
+    reports: mergeRemoteReports(currentState.reports, remoteReports, deletedReportIds),
   });
   commitStoredState(nextState, { source: "pullRemoteReports" });
   return nextState;
@@ -553,12 +554,21 @@ async function pullRemotePlanningData() {
 
 async function pushMissingReports() {
   const state = normalizeState(readStoredState());
-  const remoteReports = await fetchApiReports({ scope: "all" });
+  const [remoteReports, deletedReports] = await Promise.all([
+    fetchApiReports({ scope: "all" }),
+    fetchApiDeletedReports(),
+  ]);
   const remoteIds = new Set(remoteReports.map((report) => report.id));
-  const missingReports = state.reports.filter((report) => !remoteIds.has(report.id));
+  const deletedReportIds = new Set(deletedReports.map((report) => report.id));
+  const missingReports = state.reports.filter((report) => !remoteIds.has(report.id) && !deletedReportIds.has(report.id));
 
   if (!missingReports.length) {
-    return { state, remoteReports };
+    const nextState = recomputeIndicators({
+      ...state,
+      reports: mergeRemoteReports(state.reports, remoteReports, deletedReportIds),
+    });
+    commitStoredState(nextState, { source: "pushMissingReports" });
+    return { state: nextState, remoteReports };
   }
 
   if (missingReports.length === 1) {
@@ -570,7 +580,7 @@ async function pushMissingReports() {
   const refreshedReports = await fetchApiReports({ scope: "all" });
   const nextState = recomputeIndicators({
     ...state,
-    reports: mergeRemoteReports(state.reports, refreshedReports),
+    reports: mergeRemoteReports(state.reports, refreshedReports, deletedReportIds),
   });
   commitStoredState(nextState, { source: "pushMissingReports" });
   return { state: nextState, remoteReports: refreshedReports };

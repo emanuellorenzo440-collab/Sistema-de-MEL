@@ -142,6 +142,11 @@ export async function fetchApiReports(filters = {}) {
   return response.data || [];
 }
 
+export async function fetchApiDeletedReports(filters = {}) {
+  const response = await requestJson("reports/deleted", {}, filters);
+  return response.data || [];
+}
+
 export async function fetchApiNotifications(filters = {}) {
   const response = await requestJson("notifications", {}, filters);
   return response.data || [];

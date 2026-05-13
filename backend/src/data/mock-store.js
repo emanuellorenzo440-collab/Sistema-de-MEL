@@ -576,7 +576,23 @@ export function deleteCorrectableReport(reportId, decision = {}) {
 
 export function listDeletedReports(filters = {}) {
   const { program, programId, province, period, actorRole } = filters;
-  return deletedReports
+  const deletedById = new Map(deletedReports.map((report) => [report.id, structuredClone(report)]));
+  reportStatusHistory
+    .filter((entry) => String(entry.status || "").startsWith("Eliminado"))
+    .forEach((entry) => {
+      if (deletedById.has(entry.reportId)) return;
+      deletedById.set(entry.reportId, {
+        id: entry.reportId,
+        deletedAt: entry.createdAt,
+        deletedBy: entry.actorId || null,
+        deletedByRole: entry.actorRole || null,
+        deletionStatus: entry.status,
+        deletionNote: entry.note || "",
+        previousStatus: entry.previousStatus || null,
+      });
+    });
+
+  return Array.from(deletedById.values())
     .filter((report) => {
       if (program && report.program !== program) return false;
       if (programId && report.programId !== programId) return false;
