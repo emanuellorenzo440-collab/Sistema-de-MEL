@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260513d";
+} from "../services/auth-service.js?v=20260513e";
 import {
   createApiIndicator,
   createApiProgram,
@@ -30,7 +30,7 @@ import {
   markApiNotificationRead,
   updateApiIndicator,
   updateApiProgram,
-} from "../services/mel-api.js?v=20260513d";
+} from "../services/mel-api.js?v=20260513e";
 import {
   currentMonth,
   escapeHtml,
@@ -874,6 +874,96 @@ function renderPrograms() {
     .join("");
 }
 
+function captureFormValues(form) {
+  if (!form) return null;
+  const values = {};
+  Array.from(form.elements || []).forEach((control) => {
+    if (!control.name || control.disabled) return;
+    if (control.type === "checkbox") {
+      const group = Array.from(form.elements).filter((item) => item.name === control.name && item.type === "checkbox");
+      values[control.name] = group.length > 1
+        ? group.filter((item) => item.checked).map((item) => item.value)
+        : control.checked;
+      return;
+    }
+    if (control.type === "radio") {
+      if (control.checked) values[control.name] = control.value;
+      return;
+    }
+    values[control.name] = control.value;
+  });
+  return values;
+}
+
+function restoreFormValues(form, values) {
+  if (!form || !values) return;
+  Array.from(form.elements || []).forEach((control) => {
+    if (!control.name || control.disabled || !(control.name in values)) return;
+    const value = values[control.name];
+    if (control.type === "checkbox") {
+      control.checked = Array.isArray(value) ? value.includes(control.value) : Boolean(value);
+      return;
+    }
+    if (control.type === "radio") {
+      control.checked = control.value === value;
+      return;
+    }
+    control.value = value;
+  });
+}
+
+function captureAccessWorkspaceDraft() {
+  if (!elements.accessUserGrid) return null;
+  const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const createForm = elements.accessUserGrid.querySelector("#createManagedUserForm");
+  const editForms = Array.from(elements.accessUserGrid.querySelectorAll("[data-user-access-form]"));
+  const activeForm = activeElement?.closest?.("form");
+
+  return {
+    activeFormId:
+      activeForm?.id === "createManagedUserForm"
+        ? "create"
+        : activeForm?.dataset?.userAccessForm
+          ? `edit:${activeForm.dataset.userAccessForm}`
+          : null,
+    activeFieldName: activeElement?.name || null,
+    selectionStart: typeof activeElement?.selectionStart === "number" ? activeElement.selectionStart : null,
+    selectionEnd: typeof activeElement?.selectionEnd === "number" ? activeElement.selectionEnd : null,
+    create: captureFormValues(createForm),
+    edits: editForms.map((form) => ({
+      id: form.dataset.userAccessForm,
+      values: captureFormValues(form),
+    })),
+  };
+}
+
+function restoreAccessWorkspaceDraft(snapshot) {
+  if (!snapshot || !elements.accessUserGrid) return;
+  restoreFormValues(elements.accessUserGrid.querySelector("#createManagedUserForm"), snapshot.create);
+  snapshot.edits?.forEach((entry) => {
+    restoreFormValues(elements.accessUserGrid.querySelector(`[data-user-access-form="${entry.id}"]`), entry.values);
+  });
+
+  const activeForm =
+    snapshot.activeFormId === "create"
+      ? elements.accessUserGrid.querySelector("#createManagedUserForm")
+      : snapshot.activeFormId?.startsWith("edit:")
+        ? elements.accessUserGrid.querySelector(`[data-user-access-form="${snapshot.activeFormId.slice(5)}"]`)
+        : null;
+  const activeField = activeForm?.elements?.[snapshot.activeFieldName];
+  const focusTarget = Array.isArray(activeField) ? activeField[0] : activeField;
+  if (focusTarget instanceof HTMLElement) {
+    focusTarget.focus({ preventScroll: true });
+    if (
+      typeof focusTarget.setSelectionRange === "function" &&
+      snapshot.selectionStart !== null &&
+      snapshot.selectionEnd !== null
+    ) {
+      focusTarget.setSelectionRange(snapshot.selectionStart, snapshot.selectionEnd);
+    }
+  }
+}
+
 function renderAccessWorkspace() {
   if (!elements.accessUserGrid || !elements.accessRequestCount) return;
   const renderRequest = ++accessRenderRequest;
@@ -1060,9 +1150,9 @@ function renderAccessWorkspace() {
       })
       .join("");
 
-    elements.accessUserGrid.innerHTML = users.length
-      ? `${summaryMarkup}${cardsMarkup}`
-      : `<p class="item-meta">Todavia no hay usuarios registrados.</p>`;
+    const draftSnapshot = captureAccessWorkspaceDraft();
+    elements.accessUserGrid.innerHTML = `${summaryMarkup}${cardsMarkup}`;
+    restoreAccessWorkspaceDraft(draftSnapshot);
   })().catch((error) => {
     console.error(error);
     elements.accessUserGrid.innerHTML = `<p class="item-meta">No pude cargar los accesos.</p>`;
