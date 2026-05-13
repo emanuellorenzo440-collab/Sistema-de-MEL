@@ -138,6 +138,13 @@ function latestDeletionTimeForEmail(email, registry = []) {
     .reduce((latest, record) => Math.max(latest, recordTime(record.deletedAt)), 0);
 }
 
+function clearDeletionMarkersForEmail(state, email) {
+  const normalizedEmail = normalizeEmail(email);
+  state.deletedUserEmails = (state.deletedUserEmails || []).filter((item) => item !== normalizedEmail);
+  state.deletedPresetEmails = (state.deletedPresetEmails || []).filter((item) => item !== normalizedEmail);
+  state.deletedUserRegistry = (state.deletedUserRegistry || []).filter((record) => record.email !== normalizedEmail);
+}
+
 export function normalizeRoleLabel(value) {
   const normalized = String(value || "")
     .trim()
@@ -654,6 +661,7 @@ export async function signUpUser(payload = {}) {
   if (state.users.some((user) => user.email === email)) {
     throw new Error("Ya existe una cuenta registrada con ese correo.");
   }
+  clearDeletionMarkersForEmail(state, email);
 
   const token = createToken();
   const link = buildVerificationLink(token);
@@ -715,8 +723,7 @@ export async function createManagedUser(payload = {}) {
   if (state.users.some((user) => user.email === email)) {
     throw new Error("Ya existe una cuenta registrada con ese correo.");
   }
-  state.deletedUserEmails = (state.deletedUserEmails || []).filter((item) => item !== email);
-  state.deletedPresetEmails = (state.deletedPresetEmails || []).filter((item) => item !== email);
+  clearDeletionMarkersForEmail(state, email);
 
   const allowedRoles = normalizeRoleList(payload.allowedRoles?.length ? payload.allowedRoles : [systemRole]);
   const viewPermissions = normalizeViewPermissions(
