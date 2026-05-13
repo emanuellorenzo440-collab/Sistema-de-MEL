@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260513b";
+} from "../services/auth-service.js?v=20260513d";
 import {
   createApiIndicator,
   createApiProgram,
@@ -30,7 +30,7 @@ import {
   markApiNotificationRead,
   updateApiIndicator,
   updateApiProgram,
-} from "../services/mel-api.js?v=20260513b";
+} from "../services/mel-api.js?v=20260513d";
 import {
   currentMonth,
   escapeHtml,

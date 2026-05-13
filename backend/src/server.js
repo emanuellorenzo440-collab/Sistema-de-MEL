@@ -35,6 +35,7 @@ import { buildAnalyticsConfig, buildAnalyticsOverview } from "./services/analyti
 const PORT = Number(process.env.PORT || 8080);
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const frontendDir = path.resolve(dirname, "..", "..", "frontend");
+const sharedDir = path.resolve(dirname, "..", "..", "shared");
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -74,8 +75,12 @@ function sendStaticFile(request, response) {
 
   const url = new URL(request.url || "/", "http://localhost");
   const requestedPath = decodeURIComponent(url.pathname === "/" ? "/index.html" : url.pathname);
-  const filePath = path.resolve(frontendDir, `.${requestedPath}`);
-  const safePath = filePath.startsWith(frontendDir) ? filePath : path.join(frontendDir, "index.html");
+  const staticRoot = requestedPath.startsWith("/shared/") ? sharedDir : frontendDir;
+  const relativePath = requestedPath.startsWith("/shared/")
+    ? requestedPath.replace(/^\/shared\//, "")
+    : requestedPath.replace(/^\//, "");
+  const filePath = path.resolve(staticRoot, relativePath || "index.html");
+  const safePath = filePath.startsWith(staticRoot) ? filePath : path.join(frontendDir, "index.html");
   const finalPath = fs.existsSync(safePath) && fs.statSync(safePath).isFile()
     ? safePath
     : path.join(frontendDir, "index.html");
