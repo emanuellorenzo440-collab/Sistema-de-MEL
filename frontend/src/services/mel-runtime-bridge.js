@@ -1,6 +1,6 @@
-import { STORAGE_KEY } from "../core/config.js?v=20260513f";
-import { seedState } from "../data/seed-state.js?v=20260513f";
-import { REPORT_STATUSES, isApprovedReportStatus, isPendingApprovalStatus } from "../../../shared/contracts/reporting.js?v=20260513f";
+import { STORAGE_KEY } from "../core/config.js?v=20260513g";
+import { seedState } from "../data/seed-state.js?v=20260513g";
+import { REPORT_STATUSES, isApprovedReportStatus, isPendingApprovalStatus } from "../../../shared/contracts/reporting.js?v=20260513g";
 import {
   createApiReport,
   createApiReportsBulk,
@@ -12,11 +12,9 @@ import {
   getApiBaseUrl,
   isApiConfigured,
   updateApiReportStatus,
-} from "./mel-api.js?v=20260513f";
+} from "./mel-api.js?v=20260513g";
 
-const SYNC_INTERVAL_MS = 6000;
 const CHART_COLORS = ["#14b8a6", "#2563eb", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6"];
-let syncTimer = null;
 let syncInFlight = false;
 let analyticsInFlight = false;
 
@@ -730,23 +728,10 @@ export function startRuntimeBridge() {
 
   bindAnalyticsRefreshTriggers();
 
-  if (!syncTimer) {
-    syncTimer = window.setInterval(() => {
-      void runSyncPass();
-    }, SYNC_INTERVAL_MS);
-  }
-
-  document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) {
-      void runSyncPass();
-    }
-  });
-
   window.addEventListener("mel:manual-refresh", () => {
     void runSyncPass();
     scheduleAnalyticsRefresh(50);
   });
 
   scheduleAnalyticsRefresh(100);
-  void runSyncPass();
 }

@@ -1,7 +1,8 @@
-import { getApiBaseUrl } from "./mel-api.js?v=20260513f";
+import { getApiBaseUrl } from "./mel-api.js?v=20260513g";
 
 const AUTH_STORAGE_KEY = "pulso-me-auth-v1";
 const AUTH_SESSION_KEY = "pulso-me-session-v1";
+const AUTH_SIGNED_OUT_KEY = "pulso-me-signed-out-v1";
 const AUTH_EVENT_NAME = "mel:auth-changed";
 const AUTH_API_TIMEOUT_MS = 10000;
 const REMOTE_SESSION_SYNC_INTERVAL_MS = 15000;
@@ -605,6 +606,7 @@ function writeStoredSession(session) {
   try {
     if (session?.userId) {
       window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
+      window.sessionStorage.removeItem(AUTH_SIGNED_OUT_KEY);
     } else {
       window.localStorage.removeItem(AUTH_SESSION_KEY);
     }
@@ -615,6 +617,13 @@ function writeStoredSession(session) {
 
 function restorePersistedSession(state) {
   const normalized = normalizeAuthState(state);
+  if (window.sessionStorage.getItem(AUTH_SIGNED_OUT_KEY) === "1") {
+    writeStoredSession(null);
+    return {
+      ...normalized,
+      session: null,
+    };
+  }
   const persistedSession = readStoredSession();
   if (persistedSession?.userId && persistedSession.userId !== normalized.session?.userId) {
     const sessionUser = normalized.users.find((user) => user.id === persistedSession.userId);
@@ -1146,6 +1155,11 @@ export async function signInUser(payload = {}) {
 export async function signOutUser() {
   const state = await ensureAuthState();
   state.session = null;
+  try {
+    window.sessionStorage.setItem(AUTH_SIGNED_OUT_KEY, "1");
+  } catch {
+    // ignore storage issues during sign out
+  }
   writeStoredAuthState(state, "signed-out");
 }
 
