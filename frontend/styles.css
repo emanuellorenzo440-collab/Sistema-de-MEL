@@ -2,6 +2,7 @@
   --bg: #f5f7f8;
   --surface: #ffffff;
   --surface-strong: #eef3f1;
+  --surface-muted: #f3f6f5;
   --ink: #14201f;
   --muted: #65716f;
   --line: #dfe6e4;
@@ -815,6 +816,42 @@ textarea {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 8px 10px;
+}
+
+.attachment-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.attachment-link {
+  align-items: center;
+  background: #eef7f5;
+  border: 1px solid #b9ded8;
+  border-radius: 8px;
+  color: var(--teal-dark);
+  display: inline-flex;
+  font-weight: 800;
+  gap: 6px;
+  min-height: 34px;
+  padding: 8px 10px;
+  text-decoration: none;
+}
+
+.attachment-link small {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.attachment-link.unavailable {
+  background: var(--surface-muted);
+  color: var(--muted);
+}
+
+.report-row-actions {
+  align-items: center;
 }
 
 .compact-label {

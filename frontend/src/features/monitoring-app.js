@@ -52,6 +52,7 @@ import {
 
 let state = null;
 const ROLE_STORAGE_KEY = "pulso-me-active-role";
+const MAX_REPORT_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 let currentUser = null;
 let currentUserRoles = SYSTEM_ROLES.slice();
 let currentUserViews = VIEW_DEFINITIONS.map((view) => view.id);
@@ -413,11 +414,14 @@ function renderReports() {
           <td>${report.owner}</td>
           <td><span class="status-pill ${classForReportStatus(report.status)}">${report.status}</span></td>
           <td>
-            ${
-              canDeleteReport(report)
-                ? `<button class="ghost-action danger-action" type="button" data-delete-report="${report.id}">Eliminar</button>`
-                : `<span class="item-meta">-</span>`
-            }
+            <div class="item-actions report-row-actions">
+              ${renderAttachmentLinks(report, true) || `<span class="item-meta">-</span>`}
+              ${
+                canDeleteReport(report)
+                  ? `<button class="ghost-action danger-action" type="button" data-delete-report="${report.id}">Eliminar</button>`
+                  : ""
+              }
+            </div>
           </td>
         </tr>
       `;
@@ -498,6 +502,68 @@ function canDeleteReport(report, role = activeRole()) {
   if (report.status !== REPORT_STATUSES.NEEDS_CORRECTION) return false;
   const correctionRole = report.correctionForRole || "Facilitador";
   return normalizeRoleLabel(role) === correctionRole;
+}
+
+function formatFileSize(bytes = 0) {
+  const size = Number(bytes || 0);
+  if (size >= 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  if (size >= 1024) return `${Math.round(size / 1024)} KB`;
+  return size ? `${size} B` : "";
+}
+
+function reportAttachments(report) {
+  return Array.isArray(report?.attachments) ? report.attachments.filter((attachment) => attachment?.name) : [];
+}
+
+function renderAttachmentLinks(report, compact = false) {
+  const attachments = reportAttachments(report);
+  if (!attachments.length) {
+    return compact ? "" : `<p class="item-meta">Documento adjunto: Sin documento adjunto.</p>`;
+  }
+
+  const links = attachments
+    .map((attachment, index) => {
+      const label = escapeHtml(attachment.name || `Documento ${index + 1}`);
+      const size = formatFileSize(attachment.size);
+      const meta = [attachment.type, size].filter(Boolean).join(" · ");
+      if (!attachment.dataUrl) {
+        return `<span class="attachment-link unavailable">${label}${meta ? ` <small>${escapeHtml(meta)}</small>` : ""}</span>`;
+      }
+      return `
+        <a class="attachment-link" href="${escapeHtml(attachment.dataUrl)}" target="_blank" rel="noreferrer">
+          Abrir ${label}${meta ? ` <small>${escapeHtml(meta)}</small>` : ""}
+        </a>
+      `;
+    })
+    .join("");
+
+  return `<div class="attachment-list">${links}</div>`;
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("No pude leer el documento adjunto."));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function attachmentFromFile(file, uploadedBy = null) {
+  if (!file) return null;
+  if (file.size > MAX_REPORT_ATTACHMENT_BYTES) {
+    throw new Error(`El documento adjunto supera ${formatFileSize(MAX_REPORT_ATTACHMENT_BYTES)}. Sube un archivo mas liviano.`);
+  }
+
+  return {
+    id: `att-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+    name: file.name,
+    type: file.type || "application/octet-stream",
+    size: file.size,
+    uploadedAt: new Date().toISOString(),
+    uploadedBy: uploadedBy || currentUser?.email || activeRole(),
+    dataUrl: await readFileAsDataUrl(file),
+  };
 }
 
 function renderIndicators() {
@@ -756,6 +822,7 @@ function renderReviewQueue() {
                 <span class="status-pill ${classForReportStatus(report.status)}">${report.status}</span>
               </div>
               <p>${report.value.toLocaleString("es-DO")} reportados por ${report.owner}. Evidencia: ${report.evidence || "Sin evidencia"}</p>
+              ${renderAttachmentLinks(report)}
               <div class="coverage">
                 <span>${participants}</span>
                 <span>${Number(report.youth || 0).toLocaleString("es-DO")} jovenes</span>
@@ -817,6 +884,7 @@ function renderReportStatusDetail(report) {
         <span class="status-pill ${classForReportStatus(report.status)}">${report.status}</span>
       </div>
       <p>${report.value.toLocaleString("es-DO")} reportados por ${report.owner}. ${nextStage ? `Pendiente para ${nextStage}.` : ""}</p>
+      ${renderAttachmentLinks(report)}
       ${report.notes ? `<p class="item-meta"><strong>Nota original:</strong> ${escapeHtml(report.notes)}</p>` : ""}
       ${
         correctionNote
@@ -862,6 +930,7 @@ function renderReportInboxCard(report, role) {
         <span>${Number(report.youth || 0).toLocaleString("es-DO")} jovenes</span>
       </div>
       ${report.evidence ? `<p class="item-meta">Evidencia: ${report.evidence}</p>` : ""}
+      ${renderAttachmentLinks(report)}
       ${report.notes ? `<p class="item-meta">Notas: ${report.notes}</p>` : ""}
       ${correctionNote ? `<p class="item-meta"><strong>Correccion solicitada:</strong> ${escapeHtml(correctionNote)}</p>` : ""}
       <div class="item-actions">
@@ -2038,10 +2107,13 @@ function renderReportDrafts() {
     : `<p class="item-meta">Sube un formulario del sistema y el asistente preparara borradores de reporte aqui.</p>`;
 }
 
-function buildDraftsFromImportedRows(rows, fileName) {
+function buildDraftsFromImportedRows(rows, fileName, sourceAttachment = null) {
   const { form, reports, submissionId } = rowsToReports(rows, fileName);
-  const drafts = reports.map((report) => ({
+  const drafts = reports.map((report, index) => ({
     ...report,
+    attachments: sourceAttachment
+      ? [{ ...sourceAttachment, id: `${sourceAttachment.id}-${index + 1}` }]
+      : report.attachments || [],
     sourceFileName: fileName,
     formTitle: form.title,
     submissionId,
@@ -2069,10 +2141,11 @@ function analyzeReportFormFile(file) {
   }
 
   const reader = new FileReader();
-  reader.onload = () => {
+  reader.onload = async () => {
     try {
       const rows = parseCsv(String(reader.result || ""));
-      const { drafts } = buildDraftsFromImportedRows(rows, file.name);
+      const sourceAttachment = await attachmentFromFile(file, activeRole());
+      const { drafts } = buildDraftsFromImportedRows(rows, file.name, sourceAttachment);
       if (!drafts.length) {
         throw new Error("El formulario fue leido, pero no encontre datos que puedan alimentar la captura.");
       }
@@ -2154,6 +2227,14 @@ async function addReport(formData) {
     return false;
   }
   const value = Number(formData.get("value"));
+  const attachedFile = elements.reportFormUploadInput.files?.[0] || null;
+  let attachedDocument = null;
+  try {
+    attachedDocument = attachedFile ? await attachmentFromFile(attachedFile, formData.get("owner")) : null;
+  } catch (error) {
+    showToast(error.message || "No pude adjuntar el documento.");
+    return false;
+  }
   const newReport = {
     id: `rep-${Date.now()}`,
     companyId: "org-default",
@@ -2168,8 +2249,9 @@ async function addReport(formData) {
     men: Number(formData.get("men") || 0),
     youth: Number(formData.get("youth") || 0),
     owner: formData.get("owner"),
-    evidence: formData.get("evidence"),
+    evidence: formData.get("evidence") || attachedDocument?.name || "",
     notes: formData.get("notes"),
+    attachments: attachedDocument ? [attachedDocument] : [],
     status: REPORT_STATUSES.PENDING_COORDINATION,
   };
 
@@ -2182,7 +2264,7 @@ async function addReport(formData) {
       saveState();
     }
     renderAll();
-    showToast("Reporte enviado a coordinacion para primera aprobacion.");
+    showToast(attachedDocument ? "Reporte y documento enviados a revision." : "Reporte enviado a coordinacion para primera aprobacion.");
     return true;
   } catch (error) {
     console.error(error);
@@ -2817,8 +2899,17 @@ function bindEvents() {
   });
   elements.reportFormUploadInput.addEventListener("change", () => {
     const file = elements.reportFormUploadInput.files?.[0];
+    if (file && file.size > MAX_REPORT_ATTACHMENT_BYTES) {
+      elements.reportUploadStatus.textContent = "Archivo grande";
+      elements.reportUploadStatus.className = "status-pill danger";
+      elements.reportUploadPreview.innerHTML = `<p class="item-meta">El documento supera ${formatFileSize(MAX_REPORT_ATTACHMENT_BYTES)}. Sube una version mas liviana para adjuntarla al reporte.</p>`;
+      return;
+    }
     elements.reportUploadStatus.textContent = file ? file.name : "Sin archivo";
     elements.reportUploadStatus.className = `status-pill ${file ? "info" : "neutral"}`;
+    elements.reportUploadPreview.innerHTML = file
+      ? `<p class="item-meta">${escapeHtml(file.name)} se adjuntara al reporte cuando lo envies a revision.</p>`
+      : "";
   });
   elements.analyzeReportFormButton.addEventListener("click", () => {
     analyzeReportFormFile(elements.reportFormUploadInput.files?.[0]);
@@ -3014,6 +3105,9 @@ function bindEvents() {
       if (!saved) return;
       elements.reportForm.reset();
       elements.reportPeriod.value = state.filters.period === "Todos" ? currentMonth() : state.filters.period;
+      elements.reportUploadStatus.textContent = "Sin archivo";
+      elements.reportUploadStatus.className = "status-pill neutral";
+      elements.reportUploadPreview.innerHTML = "";
       switchView("dashboard");
     })();
   });

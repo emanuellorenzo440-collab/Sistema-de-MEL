@@ -173,6 +173,7 @@ function mapLocalReportToApi(report) {
     owner: report.owner,
     evidence: report.evidence || "",
     notes: report.notes || "",
+    attachments: Array.isArray(report.attachments) ? report.attachments : [],
     status: report.status || REPORT_STATUSES.PENDING_COORDINATION,
     sourceFormId: report.sourceFormId || null,
     submissionId: report.submissionId || null,
