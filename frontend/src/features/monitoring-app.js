@@ -1,14 +1,14 @@
-import { STORAGE_KEY } from "../core/config.js?v=20260513m";
-import { $, $$, elements } from "../core/dom.js?v=20260513m";
-import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260513m";
-import { seedState } from "../data/seed-state.js?v=20260513m";
+import { STORAGE_KEY } from "../core/config.js?v=20260513n";
+import { $, $$, elements } from "../core/dom.js?v=20260513n";
+import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260513n";
+import { seedState } from "../data/seed-state.js?v=20260513n";
 import {
   REPORT_STATUSES,
   canReviewReports,
   isApprovedReportStatus,
   isPendingApprovalStatus,
   reviewRoleForStatus,
-} from "../../../shared/contracts/reporting.js?v=20260513m";
+} from "../../../shared/contracts/reporting.js?v=20260513n";
 import {
   SYSTEM_ROLES,
   VIEW_DEFINITIONS,
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260513m";
+} from "../services/auth-service.js?v=20260513n";
 import {
   createApiConceptPaper,
   createApiIndicator,
@@ -38,7 +38,7 @@ import {
   updateApiReportStatus,
   updateApiIndicator,
   updateApiProgram,
-} from "../services/mel-api.js?v=20260513m";
+} from "../services/mel-api.js?v=20260513n";
 import {
   currentMonth,
   escapeHtml,
@@ -50,7 +50,7 @@ import {
   slugify,
   statusForProgress,
   unique,
-} from "../shared/utils.js?v=20260513m";
+} from "../shared/utils.js?v=20260513n";
 
 let state = null;
 const ROLE_STORAGE_KEY = "pulso-me-active-role";
@@ -91,6 +91,24 @@ function normalizeRoleLabel(value) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
   return ROLE_LABELS[normalized] || String(value || "").trim() || "Facilitador";
+}
+
+function conceptProgramFromContent(input = {}) {
+  const fallbackProgram = String(input.program || "").trim();
+  const text = `${input.program || ""} ${input.title || ""} ${input.fileName || input.name || ""}`.toLowerCase();
+  if (/\bcfa\b|\bcfi\b/.test(text)) return "Programa CFI";
+  if (/\bhiga\b|\biga\b/.test(text)) return "IGA";
+  if (/agricultura/.test(text)) return "Agricultura";
+  if (/club de chicos|chicos/.test(text)) return "Club de Chicos";
+  return fallbackProgram;
+}
+
+function normalizeConceptPaperState(paper = {}) {
+  return {
+    ...paper,
+    program: conceptProgramFromContent(paper),
+    title: String(paper.title || paper.fileName || "Concept paper").replace(/\bCFA\b/g, "CFI"),
+  };
 }
 
 function activeRole() {
@@ -160,7 +178,9 @@ function normalizeState(savedState) {
   });
   nextState.indicators = mergeByKey(savedState.indicators || [], seedState.indicators, (item) => item.id || item.name);
   nextState.monitoringForms = mergeByKey(savedState.monitoringForms || [], seedState.monitoringForms, (item) => item.id);
-  nextState.conceptPapers = mergeByKey(savedState.conceptPapers || [], seedState.conceptPapers, (item) => item.id);
+  nextState.conceptPapers = mergeByKey(savedState.conceptPapers || [], seedState.conceptPapers, (item) => item.id).map(
+    normalizeConceptPaperState,
+  );
   nextState.reports = Array.isArray(savedState.reports) ? savedState.reports.slice() : [];
   nextState.notifications = Array.isArray(savedState.notifications) ? savedState.notifications.slice() : [];
   nextState.reportDrafts = Array.isArray(savedState.reportDrafts) ? savedState.reportDrafts.slice() : [];
@@ -582,8 +602,8 @@ async function conceptPaperDocumentFromFile(file, formData) {
   const uploadedBy = currentUser?.email || currentUser?.fullName || activeRole();
   return {
     id: `cp-${slugify(program || title || file.name)}-${Date.now()}`,
-    program,
-    title,
+    program: conceptProgramFromContent({ program, title, fileName: file.name }),
+    title: title.replace(/\bCFA\b/g, "CFI"),
     presenter: String(formData.get("presenter") || uploadedBy || "Equipo M&E").trim(),
     fileName: file.name,
     dataUrl: await readFileAsDataUrl(file),

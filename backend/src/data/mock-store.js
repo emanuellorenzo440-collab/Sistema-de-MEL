@@ -28,10 +28,11 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-const programs = seedState.programs.map((program) => ({
+const seededPrograms = seedState.programs.map((program) => ({
   id: `prog-${slugify(program.name)}`,
   ...structuredClone(program),
 }));
+const programs = structuredClone(seededPrograms);
 
 function programIdByName() {
   return new Map(programs.map((program) => [program.name, program.id]));
@@ -46,14 +47,25 @@ function asList(value, fallback = []) {
   return Array.isArray(value) ? value.map((item) => String(item || "")).filter(Boolean) : fallback;
 }
 
+function conceptProgramFromContent(input = {}, fallbackProgram = "") {
+  const text = `${input.program || ""} ${input.title || ""} ${input.fileName || input.name || ""}`.toLowerCase();
+  if (/\bcfa\b|\bcfi\b/.test(text)) return "Programa CFI";
+  if (/\bhiga\b|\biga\b/.test(text)) return "IGA";
+  if (/agricultura/.test(text)) return "Agricultura";
+  if (/club de chicos|chicos/.test(text)) return "Club de Chicos";
+  return fallbackProgram;
+}
+
 function normalizedConceptPaper(input = {}) {
   const timestamp = nowIso();
-  const program = String(input.program || "");
+  const inputProgram = String(input.program || "");
+  const program = conceptProgramFromContent(input, inputProgram);
   const fileName = String(input.fileName || input.name || "documento");
+  const title = String(input.title || fileName || "Concept paper").replace(/\bCFA\b/g, "CFI");
   return {
     id: String(input.id || `cp-${slugify(program || fileName)}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`),
     program,
-    title: String(input.title || fileName || "Concept paper"),
+    title,
     presenter: String(input.presenter || input.uploadedBy || "Equipo M&E"),
     fileName,
     path: String(input.path || ""),
@@ -101,6 +113,15 @@ function replaceArray(target, nextItems = []) {
   target.splice(0, target.length, ...structuredClone(nextItems));
 }
 
+function mergeMissingByKey(target, source, keyFn) {
+  source.forEach((item) => {
+    const key = keyFn(item);
+    if (!target.some((candidate) => keyFn(candidate) === key)) {
+      target.push(structuredClone(item));
+    }
+  });
+}
+
 function snapshotStore() {
   return {
     storeVersion: STORE_VERSION,
@@ -133,6 +154,8 @@ function hydratePersistentStore() {
   if (Array.isArray(stored.conceptPapers) && stored.conceptPapers.length) {
     replaceArray(conceptPapers, stored.conceptPapers.map(normalizedConceptPaper));
   }
+  mergeMissingByKey(programs, seededPrograms, (program) => program.name);
+  mergeMissingByKey(conceptPapers, seedState.conceptPapers.map(normalizedConceptPaper), (paper) => paper.id);
   replaceArray(reports, Array.isArray(stored.reports) ? stored.reports.map(normalizedReport) : []);
   replaceArray(reportStatusHistory, Array.isArray(stored.reportStatusHistory) ? stored.reportStatusHistory : []);
   replaceArray(deletedReports, Array.isArray(stored.deletedReports) ? stored.deletedReports : []);
