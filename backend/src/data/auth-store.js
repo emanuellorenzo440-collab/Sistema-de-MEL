@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const CURRENT_AUTH_DATA_VERSION = 1;
+const PRESET_ACCOUNT_VERSION = 3;
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const defaultDataDir = path.resolve(dirname, "..", "..", "data");
@@ -148,6 +149,7 @@ function createSeedUser(account) {
 function buildInitialState() {
   return {
     authDataVersion: CURRENT_AUTH_DATA_VERSION,
+    presetAccountVersion: PRESET_ACCOUNT_VERSION,
     users: SEEDED_ACCOUNTS.map(createSeedUser),
     deletedUserRegistry: [],
     emailOutbox: [],
@@ -222,14 +224,35 @@ function migrateState(state) {
     emailOutbox: Array.isArray(state?.emailOutbox) ? state.emailOutbox : [],
     auditLog: Array.isArray(state?.auditLog) ? state.auditLog : [],
     authDataVersion: CURRENT_AUTH_DATA_VERSION,
+    presetAccountVersion: Number(state?.presetAccountVersion || 0),
   };
 
   for (const seed of SEEDED_ACCOUNTS) {
     const email = normalizeEmail(seed.email);
-    if (!next.users.some((user) => user.email === email)) {
+    const existing = next.users.find((user) => user.email === email);
+    if (!existing) {
       next.users.push(createSeedUser(seed));
+      continue;
+    }
+
+    if (next.presetAccountVersion < PRESET_ACCOUNT_VERSION) {
+      const presetUser = createSeedUser(seed);
+      Object.assign(existing, {
+        fullName: presetUser.fullName,
+        primaryRole: presetUser.primaryRole,
+        enabledProfiles: presetUser.enabledProfiles,
+        viewPermissions: presetUser.viewPermissions,
+        status: "active",
+        accessNote: presetUser.accessNote,
+        mustChangePassword: false,
+        passwordHash: presetUser.passwordHash,
+        updatedAt: nowIso(),
+        updatedBy: "seed",
+      });
     }
   }
+
+  next.presetAccountVersion = PRESET_ACCOUNT_VERSION;
 
   return next;
 }
