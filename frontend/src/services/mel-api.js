@@ -12,6 +12,10 @@ function isPrivateNetworkRuntime() {
   return /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(window.location.hostname);
 }
 
+function isStaticGitHost() {
+  return /(^|\.)github\.io$/i.test(window.location.hostname);
+}
+
 export function getApiBaseUrl() {
   const url = new URL(window.location.href);
   const queryBase = url.searchParams.get("apiBase");
@@ -32,7 +36,7 @@ export function getApiBaseUrl() {
     return `http://${window.location.hostname}:8080/api/v1`;
   }
 
-  return null;
+  return isStaticGitHost() ? null : `${window.location.origin}/api/v1`;
 }
 
 export function isApiConfigured() {

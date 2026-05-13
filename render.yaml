@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: sistema-de-mel
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MEL_AUTH_DATA_DIR
+        value: /opt/render/project/src/backend/data
+    disk:
+      name: mel-auth-data
+      mountPath: /opt/render/project/src/backend/data
+      sizeGB: 1

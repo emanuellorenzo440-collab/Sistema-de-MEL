@@ -1,4 +1,7 @@
+import fs from "node:fs";
 import http from "node:http";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   createIndicator,
   createProgram,
@@ -30,6 +33,20 @@ import { resolveAnalyticsScope, validateReportStatusChange } from "./domain/repo
 import { buildAnalyticsConfig, buildAnalyticsOverview } from "./services/analytics-service.js";
 
 const PORT = Number(process.env.PORT || 8080);
+const dirname = path.dirname(fileURLToPath(import.meta.url));
+const frontendDir = path.resolve(dirname, "..", "..", "frontend");
+const MIME_TYPES = {
+  ".html": "text/html; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
+  ".webp": "image/webp",
+};
 const CORS_HEADERS = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
@@ -47,6 +64,34 @@ function sendJson(response, status, body) {
 function sendEmpty(response, status = 204) {
   response.writeHead(status, CORS_HEADERS);
   response.end();
+}
+
+function sendStaticFile(request, response) {
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    sendJson(response, 405, { error: "Metodo no permitido." });
+    return;
+  }
+
+  const url = new URL(request.url || "/", "http://localhost");
+  const requestedPath = decodeURIComponent(url.pathname === "/" ? "/index.html" : url.pathname);
+  const filePath = path.resolve(frontendDir, `.${requestedPath}`);
+  const safePath = filePath.startsWith(frontendDir) ? filePath : path.join(frontendDir, "index.html");
+  const finalPath = fs.existsSync(safePath) && fs.statSync(safePath).isFile()
+    ? safePath
+    : path.join(frontendDir, "index.html");
+  const extension = path.extname(finalPath).toLowerCase();
+
+  response.writeHead(200, {
+    "content-type": MIME_TYPES[extension] || "application/octet-stream",
+    "cache-control": extension === ".html" ? "no-store" : "public, max-age=300",
+  });
+
+  if (request.method === "HEAD") {
+    response.end();
+    return;
+  }
+
+  fs.createReadStream(finalPath).pipe(response);
 }
 
 function sendApiError(response, error) {
@@ -606,7 +651,12 @@ async function router(request, response) {
     return;
   }
 
-  sendJson(response, 404, { error: "Route not found" });
+  if (pathname.startsWith("/api/")) {
+    sendJson(response, 404, { error: "Route not found" });
+    return;
+  }
+
+  sendStaticFile(request, response);
 }
 
 export function startServer(port = PORT) {

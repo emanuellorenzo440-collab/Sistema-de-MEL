@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "python3 -m http.server 4173 --directory frontend",
+    "start": "node backend/src/server.js",
     "start:frontend": "python3 -m http.server 4173 --directory frontend",
     "start:backend": "node backend/src/server.js",
     "check": "node --check frontend/src/main.js && node --check frontend/src/features/monitoring-app.js && node --check frontend/src/features/access-lobby.js && node --check frontend/src/shared/utils.js && node --check frontend/src/core/storage.js && node --check frontend/src/core/dom.js && node --check frontend/src/core/config.js && node --check frontend/src/data/seed-state.js && node --check frontend/src/services/mel-api.js && node --check frontend/src/services/mel-runtime-bridge.js && node --check frontend/src/services/auth-service.js && node --check shared/contracts/reporting.js && node --check backend/src/data/auth-store.js && node --check backend/src/data/mock-store.js && node --check backend/src/domain/reporting-rules.js && node --check backend/src/services/analytics-service.js && node --check backend/src/server.js"
