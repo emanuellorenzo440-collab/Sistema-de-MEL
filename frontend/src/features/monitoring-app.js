@@ -1,14 +1,14 @@
-import { STORAGE_KEY } from "../core/config.js?v=20260507i";
-import { $, $$, elements } from "../core/dom.js?v=20260513a";
-import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260507i";
-import { seedState } from "../data/seed-state.js?v=20260507i";
+import { STORAGE_KEY } from "../core/config.js?v=20260513h";
+import { $, $$, elements } from "../core/dom.js?v=20260513h";
+import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260513h";
+import { seedState } from "../data/seed-state.js?v=20260513h";
 import {
   REPORT_STATUSES,
   canReviewReports,
   isApprovedReportStatus,
   isPendingApprovalStatus,
   reviewRoleForStatus,
-} from "../../../shared/contracts/reporting.js?v=20260507i";
+} from "../../../shared/contracts/reporting.js?v=20260513h";
 import {
   SYSTEM_ROLES,
   VIEW_DEFINITIONS,
@@ -20,17 +20,21 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260513g";
+} from "../services/auth-service.js?v=20260513h";
 import {
   createApiIndicator,
   createApiProgram,
+  createApiReport,
+  createApiReportsBulk,
   deleteApiIndicator,
   deleteApiProgram,
+  fetchApiNotifications,
+  fetchApiReports,
   isApiConfigured,
   markApiNotificationRead,
   updateApiIndicator,
   updateApiProgram,
-} from "../services/mel-api.js?v=20260513g";
+} from "../services/mel-api.js?v=20260513h";
 import {
   currentMonth,
   escapeHtml,
@@ -42,7 +46,7 @@ import {
   slugify,
   statusForProgress,
   unique,
-} from "../shared/utils.js?v=20260507i";
+} from "../shared/utils.js?v=20260513h";
 
 let state = null;
 const ROLE_STORAGE_KEY = "pulso-me-active-role";
@@ -1794,6 +1798,18 @@ function queueReportForReview(report) {
   }
 }
 
+async function refreshReportsAndNotificationsFromApi() {
+  if (!isApiConfigured()) return;
+  const [remoteReports, remoteNotifications] = await Promise.all([
+    fetchApiReports({ scope: "all" }),
+    fetchApiNotifications(),
+  ]);
+  state.reports = remoteReports;
+  state.notifications = remoteNotifications;
+  recomputeIndicatorValues();
+  saveState();
+}
+
 function botSummaryForDraft(report, formTitle = "Formulario") {
   const indicator = indicatorById(report.indicatorId);
   const fragments = [
@@ -1916,21 +1932,32 @@ function analyzeReportFormFile(file) {
   reader.readAsText(file);
 }
 
-function submitDraftReports() {
+async function submitDraftReports() {
   const drafts = state.reportDrafts || [];
   if (!drafts.length) {
     showToast("No hay borradores listos para enviar.");
     return;
   }
 
-  drafts.forEach((draft) => {
-    queueReportForReview({
+  const reportsToSubmit = drafts.map((draft) => ({
       ...draft,
       botSummary: undefined,
       formTitle: undefined,
       sourceFileName: undefined,
-    });
-  });
+  }));
+
+  try {
+    if (isApiConfigured()) {
+      await createApiReportsBulk(reportsToSubmit);
+      await refreshReportsAndNotificationsFromApi();
+    } else {
+      reportsToSubmit.forEach((report) => queueReportForReview(report));
+    }
+  } catch (error) {
+    console.error(error);
+    showToast(error.message || "No pude enviar los reportes a la API.");
+    return;
+  }
 
   state.formSubmissions.unshift({
     id: drafts[0].submissionId || `sub-${Date.now()}`,
@@ -1955,8 +1982,12 @@ function submitDraftReports() {
   showToast("Borradores enviados a revision.");
 }
 
-function addReport(formData) {
+async function addReport(formData) {
   const indicator = state.indicators.find((item) => item.name === formData.get("indicator"));
+  if (!indicator) {
+    showToast("Selecciona un indicador valido.");
+    return false;
+  }
   const value = Number(formData.get("value"));
   const newReport = {
     id: `rep-${Date.now()}`,
@@ -1977,10 +2008,22 @@ function addReport(formData) {
     status: REPORT_STATUSES.PENDING_COORDINATION,
   };
 
-  queueReportForReview(newReport);
-  saveState();
-  renderAll();
-  showToast("Reporte enviado a coordinacion para primera aprobacion.");
+  try {
+    if (isApiConfigured()) {
+      await createApiReport(newReport);
+      await refreshReportsAndNotificationsFromApi();
+    } else {
+      queueReportForReview(newReport);
+      saveState();
+    }
+    renderAll();
+    showToast("Reporte enviado a coordinacion para primera aprobacion.");
+    return true;
+  } catch (error) {
+    console.error(error);
+    showToast(error.message || "No pude guardar el reporte en la API.");
+    return false;
+  }
 }
 
 function exportCsv() {
@@ -2288,6 +2331,7 @@ function importCompletedForm(file) {
 
   const reader = new FileReader();
   reader.onload = () => {
+    void (async () => {
     try {
       const rows = parseCsv(String(reader.result || ""));
       const { form, reports, submissionId } = rowsToReports(rows, file.name);
@@ -2298,9 +2342,14 @@ function importCompletedForm(file) {
         return;
       }
 
-      reports.forEach((report) => {
-        queueReportForReview(report);
-      });
+      if (isApiConfigured()) {
+        await createApiReportsBulk(reports);
+        await refreshReportsAndNotificationsFromApi();
+      } else {
+        reports.forEach((report) => {
+          queueReportForReview(report);
+        });
+      }
 
       state.formSubmissions.unshift({
         id: submissionId,
@@ -2328,6 +2377,7 @@ function importCompletedForm(file) {
       elements.uploadPreview.innerHTML = `<p class="item-meta">${error.message}</p>`;
       showToast("No pude importar el formulario.");
     }
+    })();
   };
   reader.readAsText(file);
 }
@@ -2617,7 +2667,9 @@ function bindEvents() {
     applyDraftToReportForm(firstDraft);
     showToast("Primer borrador cargado en captura.");
   });
-  elements.submitDraftReportsButton.addEventListener("click", submitDraftReports);
+  elements.submitDraftReportsButton.addEventListener("click", () => {
+    void submitDraftReports();
+  });
   elements.reportDraftList.addEventListener("click", (event) => {
     const draftIndex = Number(event.target.closest("[data-apply-draft]")?.dataset.applyDraft);
     if (Number.isNaN(draftIndex)) return;
@@ -2771,10 +2823,13 @@ function bindEvents() {
 
   elements.reportForm.addEventListener("submit", (event) => {
     event.preventDefault();
-    addReport(new FormData(elements.reportForm));
-    elements.reportForm.reset();
-    elements.reportPeriod.value = state.filters.period === "Todos" ? currentMonth() : state.filters.period;
-    switchView("dashboard");
+    void (async () => {
+      const saved = await addReport(new FormData(elements.reportForm));
+      if (!saved) return;
+      elements.reportForm.reset();
+      elements.reportPeriod.value = state.filters.period === "Todos" ? currentMonth() : state.filters.period;
+      switchView("dashboard");
+    })();
   });
 
   elements.reviewList.addEventListener("click", (event) => {

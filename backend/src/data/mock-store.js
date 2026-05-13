@@ -1,5 +1,14 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { seedState } from "../../../frontend/src/data/seed-state.js";
 import { REPORT_STATUSES, reviewRoleForStatus } from "../../../shared/contracts/reporting.js";
+
+const STORE_VERSION = 1;
+const dirname = path.dirname(fileURLToPath(import.meta.url));
+const defaultDataDir = path.resolve(dirname, "..", "..", "data");
+const dataDir = process.env.MEL_DATA_DIR || process.env.RAILWAY_VOLUME_MOUNT_PATH || defaultDataDir;
+const melStorePath = process.env.MEL_STORE_DB_PATH || path.join(dataDir, "mel-store.json");
 
 function slugify(value) {
   return String(value || "")
@@ -39,6 +48,57 @@ const notifications = [];
 const emailOutbox = [];
 const DEFAULT_COMPANY_ID = "org-default";
 
+function ensureStoreDir() {
+  fs.mkdirSync(path.dirname(melStorePath), { recursive: true });
+}
+
+function readPersistentStore() {
+  try {
+    const raw = fs.readFileSync(melStorePath, "utf8");
+    return JSON.parse(raw);
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+function replaceArray(target, nextItems = []) {
+  target.splice(0, target.length, ...structuredClone(nextItems));
+}
+
+function snapshotStore() {
+  return {
+    storeVersion: STORE_VERSION,
+    programs,
+    indicators,
+    reports,
+    reportStatusHistory,
+    notifications,
+    emailOutbox,
+    updatedAt: nowIso(),
+  };
+}
+
+function persistStore() {
+  ensureStoreDir();
+  fs.writeFileSync(melStorePath, `${JSON.stringify(snapshotStore(), null, 2)}\n`, "utf8");
+}
+
+function hydratePersistentStore() {
+  const stored = readPersistentStore();
+  if (!stored) {
+    persistStore();
+    return;
+  }
+
+  if (Array.isArray(stored.programs) && stored.programs.length) replaceArray(programs, stored.programs);
+  if (Array.isArray(stored.indicators) && stored.indicators.length) replaceArray(indicators, stored.indicators);
+  replaceArray(reports, Array.isArray(stored.reports) ? stored.reports.map(normalizedReport) : []);
+  replaceArray(reportStatusHistory, Array.isArray(stored.reportStatusHistory) ? stored.reportStatusHistory : []);
+  replaceArray(notifications, Array.isArray(stored.notifications) ? stored.notifications : []);
+  replaceArray(emailOutbox, Array.isArray(stored.emailOutbox) ? stored.emailOutbox : []);
+}
+
 function normalizedReport(input = {}) {
   const timestamp = nowIso();
   return {
@@ -57,6 +117,17 @@ function normalizedReport(input = {}) {
     owner: String(input.owner || ""),
     evidence: String(input.evidence || ""),
     notes: String(input.notes || ""),
+    attachments: Array.isArray(input.attachments)
+      ? input.attachments.map((attachment) => ({
+          id: String(attachment.id || `att-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`),
+          name: String(attachment.name || attachment.fileName || "archivo"),
+          type: String(attachment.type || attachment.mimeType || "application/octet-stream"),
+          size: asNumber(attachment.size),
+          uploadedAt: attachment.uploadedAt || timestamp,
+          uploadedBy: attachment.uploadedBy || input.owner || null,
+          dataUrl: attachment.dataUrl || null,
+        }))
+      : [],
     sourceFormId: input.sourceFormId || null,
     submissionId: input.submissionId || null,
     status: input.status || REPORT_STATUSES.PENDING_COORDINATION,
@@ -155,6 +226,32 @@ function createReviewNotificationsForReport(report) {
   });
 }
 
+function createSupervisorAuditNotification(report, action, actorRole = null) {
+  const indicator = indicators.find((item) => item.id === report.indicatorId);
+  const timestamp = nowIso();
+  const notification = {
+    id: `notif-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+    companyId: report.companyId || DEFAULT_COMPANY_ID,
+    programId: report.programId,
+    program: report.program,
+    reportId: report.id,
+    indicatorId: report.indicatorId,
+    title: `Actividad de reporte: ${report.program}`,
+    message: `${action} para ${indicator?.name || "un indicador"} (${report.period}). Estado actual: ${report.status}.`,
+    type: "report_activity",
+    priority: report.status === REPORT_STATUSES.PENDING_MEL ? "high" : "normal",
+    recipientRole: "Supervision M&E",
+    recipientName: "Supervision M&E",
+    recipientEmail: reviewRecipientsForReport(report)["Supervision M&E"]?.email || "supervision-me@pulso-me.local",
+    status: "unread",
+    actorRole,
+    createdAt: timestamp,
+    readAt: null,
+  };
+  notifications.unshift(notification);
+  return structuredClone(notification);
+}
+
 function normalizeString(value, fallback = "") {
   const normalized = String(value ?? "").trim();
   return normalized || fallback;
@@ -231,6 +328,8 @@ function normalizedIndicator(input = {}, existing = {}) {
   };
 }
 
+hydratePersistentStore();
+
 export function listPrograms() {
   return programs.map((program) => structuredClone(program));
 }
@@ -242,6 +341,7 @@ export function findProgramById(programId) {
 export function createProgram(input) {
   const program = normalizedProgram(input);
   programs.push(program);
+  persistStore();
   return structuredClone(program);
 }
 
@@ -269,6 +369,7 @@ export function updateProgram(programId, input) {
     }
   });
 
+  persistStore();
   return structuredClone(next);
 }
 
@@ -283,6 +384,7 @@ export function deleteProgram(programId) {
   }
 
   programs.splice(index, 1);
+  persistStore();
   return true;
 }
 
@@ -297,6 +399,7 @@ export function findIndicatorById(indicatorId) {
 export function createIndicator(input) {
   const indicator = normalizedIndicator(input);
   indicators.push(indicator);
+  persistStore();
   return structuredClone(indicator);
 }
 
@@ -306,6 +409,7 @@ export function updateIndicator(indicatorId, input) {
 
   const next = normalizedIndicator({ ...indicators[index], ...input, id: indicatorId }, indicators[index]);
   indicators[index] = next;
+  persistStore();
   return structuredClone(next);
 }
 
@@ -319,6 +423,7 @@ export function deleteIndicator(indicatorId) {
   }
 
   indicators.splice(index, 1);
+  persistStore();
   return true;
 }
 
@@ -338,8 +443,20 @@ export function queryReports(filters = {}) {
 export function createReport(input) {
   const report = normalizedReport(input);
   reports.unshift(report);
+  reportStatusHistory.unshift({
+    id: `hist-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+    reportId: report.id,
+    previousStatus: null,
+    status: report.status,
+    actorId: input.actorId || input.createdBy || null,
+    actorRole: input.actorRole || "Facilitador",
+    note: report.notes || "Reporte enviado a cadena de aprobacion.",
+    createdAt: report.createdAt,
+  });
   const reviewNotifications = createReviewNotificationsForReport(report);
-  return { ...structuredClone(report), reviewNotifications };
+  const supervisorNotification = createSupervisorAuditNotification(report, `${report.owner || "Un usuario"} envio un reporte`, "Facilitador");
+  persistStore();
+  return { ...structuredClone(report), reviewNotifications, supervisorNotification };
 }
 
 export function createReportsBulk(items = []) {
@@ -377,10 +494,17 @@ export function saveReportStatusDecision(reportId, decision = {}) {
 
   reportStatusHistory.unshift(historyEntry);
   const followUpNotifications = createReviewNotificationsForReport(report);
+  const supervisorNotification = createSupervisorAuditNotification(
+    report,
+    `${decision.actorRole || "Un revisor"} cambio el estado de ${previousStatus} a ${nextStatus}`,
+    decision.actorRole || null,
+  );
+  persistStore();
   return {
     report: structuredClone(report),
     historyEntry: structuredClone(historyEntry),
     followUpNotifications,
+    supervisorNotification,
   };
 }
 
@@ -410,6 +534,7 @@ export function markNotificationRead(notificationId, actorId = null) {
   notification.status = "read";
   notification.readAt = nowIso();
   notification.readBy = actorId;
+  persistStore();
   return structuredClone(notification);
 }
 
