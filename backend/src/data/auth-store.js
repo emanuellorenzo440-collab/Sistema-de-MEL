@@ -7,7 +7,7 @@ const CURRENT_AUTH_DATA_VERSION = 1;
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const defaultDataDir = path.resolve(dirname, "..", "..", "data");
-const dataDir = process.env.MEL_AUTH_DATA_DIR || defaultDataDir;
+const dataDir = process.env.MEL_AUTH_DATA_DIR || process.env.RAILWAY_VOLUME_MOUNT_PATH || defaultDataDir;
 const authDbPath = process.env.MEL_AUTH_DB_PATH || path.join(dataDir, "auth-store.json");
 
 const SYSTEM_ROLES = {
