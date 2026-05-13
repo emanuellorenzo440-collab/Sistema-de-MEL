@@ -8,6 +8,10 @@ function isLocalRuntime() {
   return ["localhost", "127.0.0.1"].includes(window.location.hostname);
 }
 
+function isPrivateNetworkRuntime() {
+  return /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(window.location.hostname);
+}
+
 export function getApiBaseUrl() {
   const url = new URL(window.location.href);
   const queryBase = url.searchParams.get("apiBase");
@@ -20,7 +24,15 @@ export function getApiBaseUrl() {
     return trimTrailingSlash(storedBase);
   }
 
-  return isLocalRuntime() ? DEFAULT_API_BASE_URL : null;
+  if (isLocalRuntime()) {
+    return DEFAULT_API_BASE_URL;
+  }
+
+  if (isPrivateNetworkRuntime()) {
+    return `http://${window.location.hostname}:8080/api/v1`;
+  }
+
+  return null;
 }
 
 export function isApiConfigured() {

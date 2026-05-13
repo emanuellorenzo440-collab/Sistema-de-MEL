@@ -12,7 +12,7 @@ import {
   getApiBaseUrl,
   isApiConfigured,
   updateApiReportStatus,
-} from "./mel-api.js?v=20260507i";
+} from "./mel-api.js?v=20260513b";
 
 const SYNC_INTERVAL_MS = 6000;
 const CHART_COLORS = ["#14b8a6", "#2563eb", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6"];

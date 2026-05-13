@@ -30,7 +30,7 @@ import {
   markApiNotificationRead,
   updateApiIndicator,
   updateApiProgram,
-} from "../services/mel-api.js?v=20260507i";
+} from "../services/mel-api.js?v=20260513b";
 import {
   currentMonth,
   escapeHtml,
