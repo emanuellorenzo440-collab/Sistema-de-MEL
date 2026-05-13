@@ -1,14 +1,14 @@
-import { STORAGE_KEY } from "../core/config.js?v=20260513j";
-import { $, $$, elements } from "../core/dom.js?v=20260513j";
-import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260513j";
-import { seedState } from "../data/seed-state.js?v=20260513j";
+import { STORAGE_KEY } from "../core/config.js?v=20260513k";
+import { $, $$, elements } from "../core/dom.js?v=20260513k";
+import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260513k";
+import { seedState } from "../data/seed-state.js?v=20260513k";
 import {
   REPORT_STATUSES,
   canReviewReports,
   isApprovedReportStatus,
   isPendingApprovalStatus,
   reviewRoleForStatus,
-} from "../../../shared/contracts/reporting.js?v=20260513j";
+} from "../../../shared/contracts/reporting.js?v=20260513k";
 import {
   SYSTEM_ROLES,
   VIEW_DEFINITIONS,
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260513j";
+} from "../services/auth-service.js?v=20260513k";
 import {
   createApiIndicator,
   createApiProgram,
@@ -36,7 +36,7 @@ import {
   updateApiReportStatus,
   updateApiIndicator,
   updateApiProgram,
-} from "../services/mel-api.js?v=20260513j";
+} from "../services/mel-api.js?v=20260513k";
 import {
   currentMonth,
   escapeHtml,
@@ -48,7 +48,7 @@ import {
   slugify,
   statusForProgress,
   unique,
-} from "../shared/utils.js?v=20260513j";
+} from "../shared/utils.js?v=20260513k";
 
 let state = null;
 const ROLE_STORAGE_KEY = "pulso-me-active-role";
@@ -395,7 +395,7 @@ function renderReports() {
   if (!reports.length) {
     elements.recentReports.innerHTML = `
       <tr>
-        <td colspan="6" class="empty-cell">Todavia no hay reportes cargados.</td>
+        <td colspan="7" class="empty-cell">Todavia no hay reportes cargados.</td>
       </tr>
     `;
     return;
@@ -412,6 +412,13 @@ function renderReports() {
           <td>${report.value.toLocaleString("es-DO")}</td>
           <td>${report.owner}</td>
           <td><span class="status-pill ${classForReportStatus(report.status)}">${report.status}</span></td>
+          <td>
+            ${
+              canDeleteReport(report)
+                ? `<button class="ghost-action danger-action" type="button" data-delete-report="${report.id}">Eliminar</button>`
+                : `<span class="item-meta">-</span>`
+            }
+          </td>
         </tr>
       `;
     })
@@ -485,10 +492,12 @@ function latestCorrectionNote(report) {
     : "";
 }
 
-function canDeleteCorrectableReport(report, role = activeRole()) {
-  if (!report || report.status !== REPORT_STATUSES.NEEDS_CORRECTION) return false;
+function canDeleteReport(report, role = activeRole()) {
+  if (!report) return false;
+  if (isSystemAdminRole(role)) return true;
+  if (report.status !== REPORT_STATUSES.NEEDS_CORRECTION) return false;
   const correctionRole = report.correctionForRole || "Facilitador";
-  return normalizeRoleLabel(role) === correctionRole || isSystemAdminRole(role);
+  return normalizeRoleLabel(role) === correctionRole;
 }
 
 function renderIndicators() {
@@ -795,7 +804,8 @@ function renderReportStatusDetail(report) {
   const indicator = indicatorById(report.indicatorId);
   const correctionNote = latestCorrectionNote(report);
   const nextStage = reviewRoleForStatus(report.status);
-  const deleteAllowed = canDeleteCorrectableReport(report);
+  const deleteAllowed = canDeleteReport(report);
+  const isSupervisorDelete = isSystemAdminRole() && report.status !== REPORT_STATUSES.NEEDS_CORRECTION;
   return `
     <article class="notification-item high">
       <div class="notification-top">
@@ -816,7 +826,7 @@ function renderReportStatusDetail(report) {
       <div class="item-actions">
         ${
           deleteAllowed
-            ? `<button class="ghost-action danger-action" type="button" data-delete-correctable-report="${report.id}">Eliminar y subir corregido</button>`
+            ? `<button class="ghost-action danger-action" type="button" data-delete-report="${report.id}">${isSupervisorDelete ? "Eliminar reporte" : "Eliminar y subir corregido"}</button>`
             : ""
         }
         <button type="button" data-close-report-detail>Ocultar detalle</button>
@@ -1921,26 +1931,34 @@ async function saveReviewDecision(report, nextStatus, note = "") {
   saveState();
 }
 
-async function deleteCorrectableReportFromUi(reportId) {
+async function deleteReportFromUi(reportId) {
   const report = state.reports.find((item) => item.id === reportId);
   if (!report) {
     showToast("No encontre el reporte.");
     return;
   }
-  if (!canDeleteCorrectableReport(report)) {
-    showToast("Solo puedes eliminar reportes que esten asignados a tu rol para correccion.");
+  if (!canDeleteReport(report)) {
+    showToast("No tienes permiso para eliminar este reporte.");
     return;
   }
 
-  const confirmed = window.confirm("Este reporte se eliminara para que puedas subirlo nuevamente corregido. Deseas continuar?");
+  const supervisorDelete = isSystemAdminRole();
+  const confirmed = window.confirm(
+    supervisorDelete
+      ? "Este reporte se eliminara de la lista activa y quedara registrado en auditoria. Deseas continuar?"
+      : "Este reporte se eliminara para que puedas subirlo nuevamente corregido. Deseas continuar?",
+  );
   if (!confirmed) return;
+  const deletionNote = supervisorDelete
+    ? "Reporte eliminado por supervision desde la administracion."
+    : "Reporte eliminado para subir una version corregida.";
 
   try {
     if (isApiConfigured()) {
       await deleteApiReport(reportId, {
         actorId: currentUser?.id || currentUser?.email || `local-${slugify(activeRole())}`,
         actorRole: activeRole(),
-        note: "Reporte eliminado para subir una version corregida.",
+        note: deletionNote,
       });
       await refreshReportsAndNotificationsFromApi();
     } else {
@@ -1950,7 +1968,7 @@ async function deleteCorrectableReportFromUi(reportId) {
     }
     activeStatusReportId = null;
     renderAll();
-    showToast("Reporte eliminado. Ya puedes subirlo nuevamente corregido.");
+    showToast(supervisorDelete ? "Reporte eliminado y registrado en auditoria." : "Reporte eliminado. Ya puedes subirlo nuevamente corregido.");
   } catch (error) {
     console.error(error);
     showToast(error.message || "No pude eliminar el reporte.");
@@ -2828,6 +2846,12 @@ function bindEvents() {
 
   $("#exportButton").addEventListener("click", exportCsv);
 
+  elements.recentReports.addEventListener("click", (event) => {
+    const deleteReportId = event.target.closest("[data-delete-report]")?.dataset.deleteReport;
+    if (!deleteReportId) return;
+    void deleteReportFromUi(deleteReportId);
+  });
+
   [elements.programFilter, elements.provinceFilter, elements.periodFilter].forEach((filter) => {
     filter.addEventListener("change", () => {
       state.filters.program = elements.programFilter.value;
@@ -2843,7 +2867,7 @@ function bindEvents() {
       const reportId = event.target.closest("[data-open-report]")?.dataset.openReport;
       const notificationId = event.target.closest("[data-read-notification]")?.dataset.readNotification;
       const closeDetail = event.target.closest("[data-close-report-detail]");
-      const deleteCorrectableId = event.target.closest("[data-delete-correctable-report]")?.dataset.deleteCorrectableReport;
+      const deleteReportId = event.target.closest("[data-delete-report]")?.dataset.deleteReport;
 
       if (closeDetail) {
         activeStatusReportId = null;
@@ -2851,8 +2875,8 @@ function bindEvents() {
         return;
       }
 
-      if (deleteCorrectableId) {
-        void deleteCorrectableReportFromUi(deleteCorrectableId);
+      if (deleteReportId) {
+        void deleteReportFromUi(deleteReportId);
         return;
       }
 

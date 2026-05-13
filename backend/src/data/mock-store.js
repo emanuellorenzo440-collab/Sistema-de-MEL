@@ -44,6 +44,7 @@ const indicators = seedState.indicators.map((indicator) => ({
 
 const reports = [];
 const reportStatusHistory = [];
+const deletedReports = [];
 const notifications = [];
 const emailOutbox = [];
 const DEFAULT_COMPANY_ID = "org-default";
@@ -73,6 +74,7 @@ function snapshotStore() {
     indicators,
     reports,
     reportStatusHistory,
+    deletedReports,
     notifications,
     emailOutbox,
     updatedAt: nowIso(),
@@ -95,6 +97,7 @@ function hydratePersistentStore() {
   if (Array.isArray(stored.indicators) && stored.indicators.length) replaceArray(indicators, stored.indicators);
   replaceArray(reports, Array.isArray(stored.reports) ? stored.reports.map(normalizedReport) : []);
   replaceArray(reportStatusHistory, Array.isArray(stored.reportStatusHistory) ? stored.reportStatusHistory : []);
+  replaceArray(deletedReports, Array.isArray(stored.deletedReports) ? stored.deletedReports : []);
   replaceArray(notifications, Array.isArray(stored.notifications) ? stored.notifications : []);
   replaceArray(emailOutbox, Array.isArray(stored.emailOutbox) ? stored.emailOutbox : []);
 }
@@ -516,15 +519,16 @@ export function deleteCorrectableReport(reportId, decision = {}) {
   if (index < 0) return null;
 
   const report = reports[index];
-  if (report.status !== REPORT_STATUSES.NEEDS_CORRECTION) {
+  const actorRole = decision.actorRole || null;
+  const isSupervisorDelete = actorRole === "Supervision M&E";
+  if (!isSupervisorDelete && report.status !== REPORT_STATUSES.NEEDS_CORRECTION) {
     const error = new Error("Solo puedes eliminar reportes que estan en correccion.");
     error.status = 409;
     throw error;
   }
 
-  const actorRole = decision.actorRole || null;
   const allowedRole = report.correctionForRole || "Facilitador";
-  if (actorRole !== allowedRole && actorRole !== "Supervision M&E") {
+  if (!isSupervisorDelete && actorRole !== allowedRole) {
     const error = new Error(`Este reporte solo puede eliminarlo ${allowedRole}.`);
     error.status = 403;
     throw error;
@@ -532,15 +536,30 @@ export function deleteCorrectableReport(reportId, decision = {}) {
 
   const [deletedReport] = reports.splice(index, 1);
   const deletedAt = nowIso();
+  const deletionStatus = isSupervisorDelete ? "Eliminado por supervision" : "Eliminado para correccion";
+  const deletionNote =
+    decision.note ||
+    (isSupervisorDelete
+      ? "Reporte eliminado definitivamente por supervision."
+      : "Reporte eliminado para subir una version corregida.");
   reportStatusHistory.unshift({
     id: `hist-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
     reportId,
     previousStatus: deletedReport.status,
-    status: "Eliminado para correccion",
+    status: deletionStatus,
     actorId: decision.actorId || null,
     actorRole,
-    note: decision.note || "Reporte eliminado para subir una version corregida.",
+    note: deletionNote,
     createdAt: deletedAt,
+  });
+  deletedReports.unshift({
+    ...structuredClone(deletedReport),
+    deletedAt,
+    deletedBy: decision.actorId || null,
+    deletedByRole: actorRole,
+    deletionStatus,
+    deletionNote,
+    previousStatus: deletedReport.status,
   });
 
   for (let i = notifications.length - 1; i >= 0; i -= 1) {
@@ -553,6 +572,20 @@ export function deleteCorrectableReport(reportId, decision = {}) {
   persistStore();
 
   return structuredClone(deletedReport);
+}
+
+export function listDeletedReports(filters = {}) {
+  const { program, programId, province, period, actorRole } = filters;
+  return deletedReports
+    .filter((report) => {
+      if (program && report.program !== program) return false;
+      if (programId && report.programId !== programId) return false;
+      if (province && report.province !== province) return false;
+      if (period && report.period !== period) return false;
+      if (actorRole && report.deletedByRole !== actorRole) return false;
+      return true;
+    })
+    .map((report) => structuredClone(report));
 }
 
 export function saveReportStatusDecision(reportId, decision = {}) {

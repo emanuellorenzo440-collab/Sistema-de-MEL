@@ -15,6 +15,7 @@ import {
   listIndicators,
   listNotifications,
   listPrograms,
+  listDeletedReports,
   listReportStatusHistory,
   markNotificationRead,
   queryReports,
@@ -342,6 +343,11 @@ export async function handleReportDelete(request, response, reportId) {
   }
 }
 
+export async function handleDeletedReportsList(_request, response, url) {
+  const filters = parseFilters(url);
+  sendJson(response, 200, { data: listDeletedReports(filters), filters });
+}
+
 export async function handleNotificationsList(_request, response, url) {
   const filters = {
     companyId: url.searchParams.get("companyId") || undefined,
@@ -435,12 +441,13 @@ export async function handleReportStatusUpdate(request, response, reportId) {
 
 export async function handleReportStatusHistory(_request, response, reportId) {
   const report = findReportById(reportId);
-  if (!report) {
+  const history = listReportStatusHistory(reportId);
+  if (!report && !history.length) {
     sendJson(response, 404, { error: "No encontre el reporte solicitado." });
     return;
   }
 
-  sendJson(response, 200, { data: listReportStatusHistory(reportId) });
+  sendJson(response, 200, { data: history });
 }
 
 export async function handleAnalyticsConfig(_request, response) {
@@ -469,6 +476,7 @@ function apiIndex() {
       "programs",
       "indicators",
       "reports",
+      "reports/deleted",
       "notifications",
       "email-outbox",
       "analytics/config",
@@ -641,6 +649,11 @@ async function router(request, response) {
 
   if (request.method === "POST" && pathname === "/api/v1/reports/bulk") {
     await handleReportBulkCreate(request, response, url);
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/v1/reports/deleted") {
+    await handleDeletedReportsList(request, response, url);
     return;
   }
 
