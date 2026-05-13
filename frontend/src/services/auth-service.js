@@ -1,6 +1,10 @@
+import { getApiBaseUrl } from "./mel-api.js?v=20260507i";
+
 const AUTH_STORAGE_KEY = "pulso-me-auth-v1";
 const AUTH_SESSION_KEY = "pulso-me-session-v1";
 const AUTH_EVENT_NAME = "mel:auth-changed";
+const AUTH_API_TIMEOUT_MS = 1800;
+const REMOTE_SESSION_SYNC_INTERVAL_MS = 15000;
 
 export const SYSTEM_ROLES = [
   "Facilitador",
@@ -79,6 +83,142 @@ const LEGACY_USER_PURGE_MATCHERS = [
 let presetAccountTemplatesPromise = null;
 let authStateCache = null;
 let authHydrationPromise = null;
+let remoteUsersSyncPromise = null;
+let lastRemoteSessionSyncAt = 0;
+
+function authApiBaseUrl() {
+  try {
+    return getApiBaseUrl();
+  } catch {
+    return null;
+  }
+}
+
+function isNetworkAuthError(error) {
+  return error?.name === "AbortError" || error?.isNetworkError;
+}
+
+async function requestAuthApi(pathname, options = {}) {
+  const baseUrl = authApiBaseUrl();
+  if (!baseUrl) {
+    const error = new Error("La API de accesos no esta configurada.");
+    error.isNetworkError = true;
+    throw error;
+  }
+
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), AUTH_API_TIMEOUT_MS);
+  const headers = { ...(options.headers || {}) };
+  if (options.body) {
+    headers["content-type"] = headers["content-type"] || "application/json";
+  }
+
+  try {
+    const response = await fetch(`${baseUrl}/auth/${String(pathname || "").replace(/^\//, "")}`, {
+      ...options,
+      headers,
+      signal: controller.signal,
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(body.error || "No pude completar la solicitud de acceso.");
+      error.status = response.status;
+      error.details = body.details || null;
+      throw error;
+    }
+    return body;
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw error;
+    }
+    if (!error.status) {
+      error.isNetworkError = true;
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
+function mapRemoteUser(user = {}) {
+  return normalizeUser({
+    ...user,
+    systemRole: user.systemRole || user.primaryRole || user.requestedRole,
+    requestedRole: user.requestedRole || user.primaryRole || user.systemRole,
+    allowedRoles: user.allowedRoles || user.enabledProfiles,
+    verifiedAt: user.verifiedAt || user.createdAt || nowIso(),
+    passwordUpdatedAt: user.passwordUpdatedAt || user.passwordChangedAt || null,
+    passwordHash: user.passwordHash || "",
+  });
+}
+
+async function upsertRemoteUser(remoteUser, eventType = "remote-user-synced") {
+  const state = await ensureAuthState();
+  const nextUser = mapRemoteUser(remoteUser);
+  const index = state.users.findIndex((user) => user.id === nextUser.id || user.email === nextUser.email);
+  if (index >= 0) {
+    state.users[index] = {
+      ...state.users[index],
+      ...nextUser,
+      passwordHash: state.users[index].passwordHash || nextUser.passwordHash,
+    };
+  } else {
+    state.users.unshift(nextUser);
+  }
+  writeStoredAuthState(state, eventType);
+  return nextUser;
+}
+
+async function replaceLocalManagedUsers(remoteUsers = [], eventType = "remote-users-synced") {
+  const state = await ensureAuthState();
+  const existingPasswordHashes = new Map(state.users.map((user) => [user.email, user.passwordHash || ""]));
+  const nextUsers = remoteUsers.map((remoteUser) => {
+    const nextUser = mapRemoteUser(remoteUser);
+    return {
+      ...nextUser,
+      passwordHash: nextUser.passwordHash || existingPasswordHashes.get(nextUser.email) || "",
+    };
+  });
+  state.users = nextUsers;
+  if (state.session?.userId) {
+    const sessionUser = nextUsers.find((user) => user.id === state.session.userId);
+    if (!sessionUser || sessionUser.status !== "active") {
+      state.session = null;
+    } else {
+      state.session.activeRole = normalizeRoleLabel(state.session.activeRole || sessionUser.systemRole);
+    }
+  }
+  return writeStoredAuthState(state, eventType).users;
+}
+
+async function syncRemoteManagedUsers(eventType = "remote-users-synced") {
+  if (remoteUsersSyncPromise) return remoteUsersSyncPromise;
+  remoteUsersSyncPromise = (async () => {
+    const response = await requestAuthApi("users");
+    return replaceLocalManagedUsers(response.users || [], eventType);
+  })().finally(() => {
+    remoteUsersSyncPromise = null;
+  });
+  return remoteUsersSyncPromise;
+}
+
+async function startRemoteSession(remoteUser, eventType = "signed-in") {
+  const state = await ensureAuthState();
+  const nextUser = mapRemoteUser(remoteUser);
+  const index = state.users.findIndex((user) => user.id === nextUser.id || user.email === nextUser.email);
+  if (index >= 0) {
+    state.users[index] = { ...state.users[index], ...nextUser, passwordHash: state.users[index].passwordHash };
+  } else {
+    state.users.unshift(nextUser);
+  }
+  state.session = {
+    userId: nextUser.id,
+    activeRole: normalizeRoleLabel(nextUser.systemRole),
+    createdAt: nowIso(),
+  };
+  writeStoredAuthState(state, eventType);
+  return nextUser;
+}
 
 function clone(value) {
   return structuredClone(value);
@@ -318,8 +458,9 @@ async function getPresetAccountTemplates() {
 }
 
 function normalizeUser(user = {}) {
-  const systemRole = normalizeRoleLabel(user.systemRole || user.requestedRole || "Facilitador");
-  const allowedRoles = normalizeRoleList(user.allowedRoles?.length ? user.allowedRoles : [systemRole]);
+  const systemRole = normalizeRoleLabel(user.systemRole || user.primaryRole || user.requestedRole || "Facilitador");
+  const allowedRoleSource = user.allowedRoles?.length ? user.allowedRoles : user.enabledProfiles;
+  const allowedRoles = normalizeRoleList(allowedRoleSource?.length ? allowedRoleSource : [systemRole]);
   const viewPermissions = normalizeViewPermissions(
     user.viewPermissions?.length ? user.viewPermissions : defaultPermissionsForRole(systemRole),
   );
@@ -610,7 +751,16 @@ export async function getAuthState() {
 }
 
 export async function getCurrentUser() {
-  const state = await ensureAuthState();
+  let state = await ensureAuthState();
+  if (state.session?.userId && Date.now() - lastRemoteSessionSyncAt > REMOTE_SESSION_SYNC_INTERVAL_MS) {
+    lastRemoteSessionSyncAt = Date.now();
+    try {
+      await syncRemoteManagedUsers("remote-session-validated");
+      state = await ensureAuthState();
+    } catch (error) {
+      if (!isNetworkAuthError(error)) throw error;
+    }
+  }
   if (!state.session?.userId) return null;
   return clone(state.users.find((user) => user.id === state.session.userId) || null);
 }
@@ -643,6 +793,22 @@ export async function listVisibleViews() {
 }
 
 export async function listManagedUsers() {
+  try {
+    const response = await requestAuthApi("users");
+    const syncedUsers = await replaceLocalManagedUsers(response.users || [], "remote-users-listed");
+    return syncedUsers
+      .slice()
+      .sort((left, right) => String(left.fullName || "").localeCompare(String(right.fullName || "")))
+      .map((user) => ({
+        ...clone(user),
+        passwordHash: undefined,
+        verificationCodeHash: undefined,
+        resetCodeHash: undefined,
+      }));
+  } catch (error) {
+    if (!isNetworkAuthError(error)) throw error;
+  }
+
   const state = await ensureAuthState();
   return state.users
     .slice()
@@ -751,6 +917,29 @@ export async function createManagedUser(payload = {}) {
     payload.viewPermissions?.length ? payload.viewPermissions : defaultPermissionsForRole(systemRole),
   );
 
+  try {
+    const response = await requestAuthApi("users", {
+      method: "POST",
+      headers: { "x-mel-actor-id": actor.id },
+      body: JSON.stringify({
+        fullName,
+        email,
+        temporaryPassword: password,
+        primaryRole: systemRole,
+        enabledProfiles: allowedRoles,
+        viewPermissions: viewPermissions.length ? viewPermissions : defaultPermissionsForRole(systemRole),
+        status,
+        accessNote: String(payload.accessNote || "Usuario creado desde Accesos.").trim(),
+      }),
+    });
+    return clone({
+      ...(await upsertRemoteUser(response.user, "managed-user-created-remote")),
+      passwordHash: undefined,
+    });
+  } catch (error) {
+    if (!isNetworkAuthError(error)) throw error;
+  }
+
   const nextUser = normalizeUser({
     id: `usr-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
     fullName,
@@ -846,6 +1035,33 @@ export async function signInUser(payload = {}) {
   const state = await ensureAuthState();
   const email = normalizeEmail(payload.email);
   const password = String(payload.password || "");
+
+  try {
+    const response = await requestAuthApi("sign-in", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    });
+    if (response.passwordChangeRequired) {
+      return clone({
+        passwordChangeRequired: true,
+        user: mapRemoteUser(response.user),
+      });
+    }
+    const user = await startRemoteSession(response.user, "signed-in-remote");
+    return clone({
+      user: {
+        id: user.id,
+        fullName: user.fullName,
+        email: user.email,
+        systemRole: user.systemRole,
+        allowedRoles: user.allowedRoles,
+        viewPermissions: user.viewPermissions,
+      },
+    });
+  } catch (error) {
+    if (!isNetworkAuthError(error)) throw error;
+  }
+
   const user = state.users.find((item) => item.email === email);
   if (!user) {
     throw new Error("No encontre una cuenta con ese correo.");
@@ -911,6 +1127,27 @@ export async function completeRequiredPasswordChange(payload = {}) {
   const email = normalizeEmail(payload.email);
   const currentPassword = String(payload.currentPassword || "");
   const nextPassword = String(payload.password || "").trim();
+
+  try {
+    const response = await requestAuthApi("complete-password-change", {
+      method: "POST",
+      body: JSON.stringify({ email, currentPassword, password: nextPassword }),
+    });
+    const user = await startRemoteSession(response.user, "password-change-completed-remote");
+    return clone({
+      user: {
+        id: user.id,
+        fullName: user.fullName,
+        email: user.email,
+        systemRole: user.systemRole,
+        allowedRoles: user.allowedRoles,
+        viewPermissions: user.viewPermissions,
+      },
+    });
+  } catch (error) {
+    if (!isNetworkAuthError(error)) throw error;
+  }
+
   const user = state.users.find((item) => item.email === email);
   if (!user) {
     throw new Error("No encontre una cuenta con ese correo.");
@@ -1052,6 +1289,28 @@ export async function updateManagedUserAccess(userId, updates = {}) {
     throw new Error("La nueva contrasena debe tener al menos 8 caracteres.");
   }
 
+  try {
+    const response = await requestAuthApi(`users/${encodeURIComponent(userId)}`, {
+      method: "PUT",
+      headers: { "x-mel-actor-id": actor.id },
+      body: JSON.stringify({
+        fullName: nextFullName,
+        email: nextEmail,
+        primaryRole: nextSystemRole,
+        enabledProfiles: nextAllowedRoles.includes(nextSystemRole)
+          ? nextAllowedRoles
+          : [nextSystemRole, ...nextAllowedRoles],
+        viewPermissions: nextViewPermissions.length ? nextViewPermissions : defaultPermissionsForRole(nextSystemRole),
+        status: updates.status || user.status,
+        mustChangePassword,
+        accessNote: String(updates.accessNote || user.accessNote || "").trim(),
+      }),
+    });
+    return clone(await upsertRemoteUser(response.user, "access-updated-remote"));
+  } catch (error) {
+    if (!isNetworkAuthError(error)) throw error;
+  }
+
   user.fullName = nextFullName;
   user.email = nextEmail;
   if (nextPassword) {
@@ -1111,6 +1370,28 @@ export async function deleteManagedUser(userId) {
   const userIndex = state.users.findIndex((item) => item.id === userId);
   if (userIndex === -1) {
     throw new Error("No encontre el usuario solicitado.");
+  }
+  const userPendingDelete = state.users[userIndex];
+
+  try {
+    const response = await requestAuthApi(`users/${encodeURIComponent(userId)}`, {
+      method: "DELETE",
+      headers: { "x-mel-actor-id": actor.id },
+      body: JSON.stringify({ actorId: actor.id }),
+    });
+    if (Array.isArray(response.users)) {
+      await replaceLocalManagedUsers(response.users, "managed-user-deleted-remote");
+    } else {
+      state.users.splice(userIndex, 1);
+      writeStoredAuthState(state, "managed-user-deleted-remote");
+    }
+    return clone(response.deletedUser || {
+      id: userId,
+      email: userPendingDelete.email,
+      fullName: userPendingDelete.fullName,
+    });
+  } catch (error) {
+    if (!isNetworkAuthError(error)) throw error;
   }
 
   const [deletedUser] = state.users.splice(userIndex, 1);

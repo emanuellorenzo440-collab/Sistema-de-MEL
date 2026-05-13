@@ -18,6 +18,14 @@ import {
   updateIndicator,
   updateProgram,
 } from "./data/mock-store.js";
+import {
+  completeRequiredPasswordChange,
+  createManagedAuthUser,
+  deleteManagedAuthUser,
+  listAuthUsers,
+  signInAuthUser,
+  updateManagedAuthUser,
+} from "./data/auth-store.js";
 import { resolveAnalyticsScope, validateReportStatusChange } from "./domain/reporting-rules.js";
 import { buildAnalyticsConfig, buildAnalyticsOverview } from "./services/analytics-service.js";
 
@@ -25,7 +33,7 @@ const PORT = Number(process.env.PORT || 8080);
 const CORS_HEADERS = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
-  "access-control-allow-headers": "content-type",
+  "access-control-allow-headers": "content-type,x-mel-actor-id",
 };
 
 function sendJson(response, status, body) {
@@ -39,6 +47,10 @@ function sendJson(response, status, body) {
 function sendEmpty(response, status = 204) {
   response.writeHead(status, CORS_HEADERS);
   response.end();
+}
+
+function sendApiError(response, error) {
+  sendJson(response, error.status || 500, { error: error.message || "Error interno del servidor." });
 }
 
 async function readJsonBody(request) {
@@ -385,10 +397,68 @@ function apiIndex() {
       "email-outbox",
       "analytics/config",
       "analytics/overview",
+      "auth/sign-in",
+      "auth/complete-password-change",
+      "auth/users",
       "reports/:id/status",
       "reports/:id/status-history",
     ],
   };
+}
+
+function actorIdFrom(request, payload = {}) {
+  return request.headers["x-mel-actor-id"] || payload.actorId || null;
+}
+
+export async function handleAuthSignIn(request, response) {
+  try {
+    const payload = await readJsonBody(request);
+    sendJson(response, 200, signInAuthUser(payload));
+  } catch (error) {
+    sendApiError(response, error);
+  }
+}
+
+export async function handleAuthPasswordChange(request, response) {
+  try {
+    const payload = await readJsonBody(request);
+    sendJson(response, 200, { user: completeRequiredPasswordChange(payload) });
+  } catch (error) {
+    sendApiError(response, error);
+  }
+}
+
+export async function handleAuthUsersList(_request, response) {
+  sendJson(response, 200, { users: listAuthUsers() });
+}
+
+export async function handleAuthUserCreate(request, response) {
+  try {
+    const payload = await readJsonBody(request);
+    sendJson(response, 201, { user: createManagedAuthUser(payload, actorIdFrom(request, payload)) });
+  } catch (error) {
+    sendApiError(response, error);
+  }
+}
+
+export async function handleAuthUserUpdate(request, response, userId) {
+  try {
+    const payload = await readJsonBody(request);
+    sendJson(response, 200, {
+      user: updateManagedAuthUser(userId, payload, actorIdFrom(request, payload)),
+    });
+  } catch (error) {
+    sendApiError(response, error);
+  }
+}
+
+export async function handleAuthUserDelete(request, response, userId) {
+  try {
+    const payload = await readJsonBody(request);
+    sendJson(response, 200, deleteManagedAuthUser(userId, actorIdFrom(request, payload)));
+  } catch (error) {
+    sendApiError(response, error);
+  }
 }
 
 async function router(request, response) {
@@ -407,6 +477,37 @@ async function router(request, response) {
 
   if (request.method === "GET" && pathname === "/api/v1") {
     sendJson(response, 200, apiIndex());
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/v1/auth/sign-in") {
+    await handleAuthSignIn(request, response);
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/v1/auth/complete-password-change") {
+    await handleAuthPasswordChange(request, response);
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/v1/auth/users") {
+    await handleAuthUsersList(request, response);
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/v1/auth/users") {
+    await handleAuthUserCreate(request, response);
+    return;
+  }
+
+  const authUserMatch = pathname.match(/^\/api\/v1\/auth\/users\/([^/]+)$/);
+  if (request.method === "PUT" && authUserMatch) {
+    await handleAuthUserUpdate(request, response, decodeURIComponent(authUserMatch[1]));
+    return;
+  }
+
+  if (request.method === "DELETE" && authUserMatch) {
+    await handleAuthUserDelete(request, response, decodeURIComponent(authUserMatch[1]));
     return;
   }
 

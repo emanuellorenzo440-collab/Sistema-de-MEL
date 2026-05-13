@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260513a";
+} from "../services/auth-service.js?v=20260513b";
 import {
   createApiIndicator,
   createApiProgram,
