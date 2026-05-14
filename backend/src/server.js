@@ -9,6 +9,9 @@ import {
   createProgram,
   createReport,
   createReportsBulk,
+  deleteAttendanceParticipant,
+  deleteAttendanceParticipantsForProgram,
+  deleteAttendanceSession,
   deleteCorrectableReport,
   deleteIndicator,
   deleteProgram,
@@ -340,10 +343,52 @@ export async function handleAttendanceParticipantCreate(request, response) {
   sendJson(response, 201, { data: participant });
 }
 
+export async function handleAttendanceParticipantDelete(request, response, url) {
+  let payload = {};
+  try {
+    payload = await readJsonBody(request);
+  } catch {
+    payload = {};
+  }
+  const participantId = decodeURIComponent(url.pathname.split("/").pop() || "");
+  try {
+    const deleted = deleteAttendanceParticipant(participantId, { actorRole: payload.actorRole });
+    if (!deleted) {
+      sendJson(response, 404, { error: "No encontre ese participante." });
+      return;
+    }
+    sendJson(response, 200, { data: deleted });
+  } catch (error) {
+    sendApiError(response, error);
+  }
+}
+
+export async function handleAttendanceParticipantsDelete(request, response, url) {
+  let payload = {};
+  try {
+    payload = await readJsonBody(request);
+  } catch {
+    payload = {};
+  }
+  const program = url.searchParams.get("program") || payload.program;
+  if (!program) {
+    sendJson(response, 400, { error: "Indica el programa para eliminar los participantes." });
+    return;
+  }
+  try {
+    const result = deleteAttendanceParticipantsForProgram(program, { actorRole: payload.actorRole });
+    sendJson(response, 200, { data: result });
+  } catch (error) {
+    sendApiError(response, error);
+  }
+}
+
 export async function handleAttendanceSessions(_request, response, url) {
   const filters = {
     program: url.searchParams.get("program") || undefined,
     weekStart: url.searchParams.get("weekStart") || undefined,
+    center: url.searchParams.get("center") || undefined,
+    period: url.searchParams.get("period") || undefined,
   };
   sendJson(response, 200, { data: listAttendanceSessions(filters), filters });
 }
@@ -366,6 +411,36 @@ export async function handleAttendanceSessionSave(request, response) {
   try {
     const session = saveAttendanceSession(payload);
     sendJson(response, 200, { data: session });
+  } catch (error) {
+    sendApiError(response, error);
+  }
+}
+
+export async function handleAttendanceSessionDelete(request, response, url) {
+  let payload = {};
+  try {
+    payload = await readJsonBody(request);
+  } catch {
+    payload = {};
+  }
+  const filters = {
+    program: url.searchParams.get("program") || payload.program,
+    weekStart: url.searchParams.get("weekStart") || payload.weekStart,
+    center: url.searchParams.get("center") || payload.center,
+    period: url.searchParams.get("period") || payload.period,
+  };
+  const required = requireFields(filters, ["program", "weekStart"]);
+  if (required) {
+    sendJson(response, 400, required);
+    return;
+  }
+  try {
+    const deleted = deleteAttendanceSession(filters, { actorRole: payload.actorRole });
+    if (!deleted) {
+      sendJson(response, 404, { error: "No encontre esa sesion de asistencia." });
+      return;
+    }
+    sendJson(response, 200, { data: deleted });
   } catch (error) {
     sendApiError(response, error);
   }
@@ -839,6 +914,16 @@ async function router(request, response) {
     return;
   }
 
+  if (request.method === "DELETE" && pathname === "/api/v1/attendance/participants") {
+    await handleAttendanceParticipantsDelete(request, response, url);
+    return;
+  }
+
+  if (request.method === "DELETE" && pathname.startsWith("/api/v1/attendance/participants/")) {
+    await handleAttendanceParticipantDelete(request, response, url);
+    return;
+  }
+
   if (request.method === "GET" && pathname === "/api/v1/attendance/sessions") {
     await handleAttendanceSessions(request, response, url);
     return;
@@ -846,6 +931,11 @@ async function router(request, response) {
 
   if (request.method === "PUT" && pathname === "/api/v1/attendance/sessions") {
     await handleAttendanceSessionSave(request, response, url);
+    return;
+  }
+
+  if (request.method === "DELETE" && pathname === "/api/v1/attendance/sessions") {
+    await handleAttendanceSessionDelete(request, response, url);
     return;
   }
 

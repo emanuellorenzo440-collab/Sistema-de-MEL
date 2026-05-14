@@ -14,6 +14,8 @@ export const seedState = {
   formsProgram: "Girls Empowerment",
   selectedConceptPaper: "cp-ge-2026",
   attendanceProgram: "Girls Empowerment",
+  attendanceCenter: "General",
+  attendancePeriod: "2026-05",
   attendanceWeek: "2026-05-14",
   attendanceParticipants: [],
   attendanceSessions: [],

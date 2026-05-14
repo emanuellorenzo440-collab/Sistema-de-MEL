@@ -141,6 +141,22 @@ export async function createApiAttendanceParticipant(participant) {
   return response.data;
 }
 
+export async function deleteApiAttendanceParticipant(participantId, payload = {}) {
+  const response = await requestJson("attendance/participants/" + encodeURIComponent(participantId), {
+    method: "DELETE",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function deleteApiAttendanceParticipants(filters = {}, payload = {}) {
+  const response = await requestJson("attendance/participants", {
+    method: "DELETE",
+    body: JSON.stringify(payload),
+  }, filters);
+  return response.data;
+}
+
 export async function fetchApiAttendanceSessions(filters = {}) {
   const response = await requestJson("attendance/sessions", {}, filters);
   return response.data || [];
@@ -151,6 +167,14 @@ export async function saveApiAttendanceSession(session) {
     method: "PUT",
     body: JSON.stringify(session),
   });
+  return response.data;
+}
+
+export async function deleteApiAttendanceSession(filters = {}, payload = {}) {
+  const response = await requestJson("attendance/sessions", {
+    method: "DELETE",
+    body: JSON.stringify(payload),
+  }, filters);
   return response.data;
 }
 

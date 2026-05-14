@@ -9,7 +9,7 @@
         display: none !important;
       }
     </style>
-    <link rel="stylesheet" href="styles.css?v=20260514e" />
+    <link rel="stylesheet" href="styles.css?v=20260514f" />
   </head>
   <body>
     <section class="auth-shell" id="authShell">
@@ -683,8 +683,16 @@
               </div>
               <div class="attendance-controls">
                 <label>
-                  Programa
+                  Asistencia por programa
                   <select id="attendanceProgramSelect"></select>
+                </label>
+                <label>
+                  Centro
+                  <input id="attendanceCenterInput" type="text" placeholder="Centro o comunidad" />
+                </label>
+                <label>
+                  Periodo
+                  <input id="attendancePeriodInput" type="month" />
                 </label>
                 <label>
                   Semana
@@ -705,6 +713,8 @@
               </label>
               <div class="form-actions">
                 <button class="primary-action" id="saveAttendanceButton" type="button">Guardar asistencia</button>
+                <button class="ghost-action danger-action admin-only-action" id="deleteAttendanceSessionButton" type="button">Eliminar sesion</button>
+                <button class="ghost-action danger-action admin-only-action" id="clearAttendanceParticipantsButton" type="button">Eliminar nombres del programa</button>
               </div>
             </section>
             <section class="panel">
@@ -848,6 +858,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="src/main.js?v=20260514e"></script>
+    <script type="module" src="src/main.js?v=20260514f"></script>
   </body>
 </html>

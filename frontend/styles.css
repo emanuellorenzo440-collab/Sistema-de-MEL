@@ -476,6 +476,13 @@ h3 {
   color: #9a332c;
 }
 
+.danger-icon {
+  border-color: #f2b8b2;
+  color: #9a332c;
+  min-height: 34px;
+  width: 34px;
+}
+
 .icon-button {
   aspect-ratio: 1;
   font-size: 1.2rem;

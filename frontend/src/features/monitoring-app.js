@@ -1,7 +1,7 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260514a";
+import { $, $$, elements } from "../core/dom.js?v=20260514f";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
-import { seedState } from "../data/seed-state.js?v=20260514a";
+import { seedState } from "../data/seed-state.js?v=20260514f";
 import {
   REPORT_STATUSES,
   canReviewReports,
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260514e";
+} from "../services/auth-service.js?v=20260514f";
 import {
   createApiConceptPaper,
   createApiAttendanceParticipant,
@@ -28,6 +28,9 @@ import {
   createApiProgram,
   createApiReport,
   createApiReportsBulk,
+  deleteApiAttendanceParticipant,
+  deleteApiAttendanceParticipants,
+  deleteApiAttendanceSession,
   deleteApiReport,
   deleteApiIndicator,
   deleteApiProgram,
@@ -42,7 +45,7 @@ import {
   updateApiReportStatus,
   updateApiIndicator,
   updateApiProgram,
-} from "../services/mel-api.js?v=20260514e";
+} from "../services/mel-api.js?v=20260514f";
 import {
   currentMonth,
   escapeHtml,
@@ -196,6 +199,8 @@ function normalizeState(savedState) {
   nextState.attendanceProgram = ATTENDANCE_PROGRAMS.includes(savedState.attendanceProgram)
     ? savedState.attendanceProgram
     : ATTENDANCE_PROGRAMS[0];
+  nextState.attendanceCenter = savedState.attendanceCenter || seedState.attendanceCenter || "General";
+  nextState.attendancePeriod = savedState.attendancePeriod || seedState.attendancePeriod || currentMonth();
   nextState.attendanceWeek = savedState.attendanceWeek || new Date().toISOString().slice(0, 10);
   nextState.chartPreferences = { ...seedState.chartPreferences, ...(savedState.chartPreferences || {}) };
   nextState.filters = { ...seedState.filters, ...(savedState.filters || {}) };
@@ -836,8 +841,29 @@ function attendanceParticipantsForProgram(program = state.attendanceProgram) {
     .sort((left, right) => left.name.localeCompare(right.name));
 }
 
-function attendanceSessionFor(program = state.attendanceProgram, weekStart = state.attendanceWeek) {
-  return (state.attendanceSessions || []).find((session) => session.program === program && session.weekStart === weekStart) || null;
+function attendanceCenterValue() {
+  return String(state.attendanceCenter || "").trim() || "General";
+}
+
+function attendancePeriodValue() {
+  return state.attendancePeriod || String(state.attendanceWeek || "").slice(0, 7) || currentMonth();
+}
+
+function attendanceSessionFor(
+  program = state.attendanceProgram,
+  weekStart = state.attendanceWeek,
+  center = attendanceCenterValue(),
+  period = attendancePeriodValue(),
+) {
+  return (
+    (state.attendanceSessions || []).find(
+      (session) =>
+        session.program === program &&
+        session.weekStart === weekStart &&
+        (session.center || "General") === center &&
+        (session.period || session.weekStart?.slice(0, 7)) === period,
+    ) || null
+  );
 }
 
 function attendanceEntryStatus(entry = {}) {
@@ -870,10 +896,14 @@ function attendanceMonthlyKey(weekStart = state.attendanceWeek) {
 }
 
 function attendanceMonthlyScores() {
-  const monthKey = attendanceMonthlyKey();
+  const monthKey = attendancePeriodValue();
   return attendanceParticipantsForProgram().map((participant) => {
     const sessions = (state.attendanceSessions || []).filter(
-      (session) => session.program === state.attendanceProgram && attendanceMonthlyKey(session.weekStart) === monthKey,
+      (session) =>
+        session.program === state.attendanceProgram &&
+        (session.center || "General") === attendanceCenterValue() &&
+        (session.period || session.weekStart?.slice(0, 7)) === attendancePeriodValue() &&
+        attendanceMonthlyKey(session.weekStart) === monthKey,
     );
     let absences = 0;
     let excuses = 0;
@@ -946,6 +976,7 @@ function renderAttendanceWeekDetail(entries = attendanceEntriesForCurrentSelecti
         <div>
           <p class="eyebrow">Detalle de semana</p>
           <h3>${escapeHtml(state.attendanceWeek)}</h3>
+          <p class="item-meta">${escapeHtml(attendanceCenterValue())} · ${escapeHtml(attendancePeriodValue())}</p>
         </div>
         <span class="status-pill info">${attendanceEffectivePresentCount(entries)}/${entries.length} efectivos</span>
       </div>
@@ -976,7 +1007,8 @@ function renderAttendanceMonthlyChart() {
       <div class="attendance-bar-top">
         <div>
           <p class="eyebrow">Grafica mensual</p>
-          <h3>${escapeHtml(attendanceMonthlyKey())}</h3>
+          <h3>${escapeHtml(attendancePeriodValue())}</h3>
+          <p class="item-meta">${escapeHtml(state.attendanceProgram)} · ${escapeHtml(attendanceCenterValue())}</p>
         </div>
         <span class="status-pill info">4 semanas · 25% cada ausencia</span>
       </div>
@@ -1001,7 +1033,12 @@ function renderAttendanceMonthlyChart() {
 
 function renderAttendanceChart(detailEntries = attendanceEntriesForCurrentSelection()) {
   const sessions = (state.attendanceSessions || [])
-    .filter((session) => session.program === state.attendanceProgram)
+    .filter(
+      (session) =>
+        session.program === state.attendanceProgram &&
+        (session.center || "General") === attendanceCenterValue() &&
+        (session.period || session.weekStart?.slice(0, 7)) === attendancePeriodValue(),
+    )
     .slice()
     .sort((left, right) => String(left.weekStart).localeCompare(String(right.weekStart)))
     .slice(-8);
@@ -1042,12 +1079,15 @@ function renderAttendanceChart(detailEntries = attendanceEntriesForCurrentSelect
 function renderAttendance() {
   if (!elements.attendanceProgramSelect) return;
   setOptions(elements.attendanceProgramSelect, ATTENDANCE_PROGRAMS, state.attendanceProgram);
+  if (elements.attendanceCenterInput) elements.attendanceCenterInput.value = attendanceCenterValue();
+  if (elements.attendancePeriodInput) elements.attendancePeriodInput.value = attendancePeriodValue();
   elements.attendanceWeekInput.value = state.attendanceWeek;
   const entries = attendanceEntriesForCurrentSelection();
   const presentCount = entries.filter((entry) => attendanceEntryStatus(entry) === "present").length;
   const excusedCount = entries.filter((entry) => attendanceEntryStatus(entry) === "excused").length;
   const absentCount = entries.filter((entry) => attendanceEntryStatus(entry) === "absent").length;
   const session = attendanceSessionFor();
+  const isAdmin = isSystemAdminRole();
   const isLockedForUser = Boolean(session?.locked && !attendanceCanEdit(session));
   elements.attendanceSummary.textContent = `${presentCount} presentes · ${excusedCount} excusas · ${absentCount} ausentes`;
   elements.attendanceNotes.value = session?.notes || "";
@@ -1055,6 +1095,14 @@ function renderAttendance() {
   if (elements.saveAttendanceButton) {
     elements.saveAttendanceButton.disabled = isLockedForUser || !entries.length;
     elements.saveAttendanceButton.textContent = session ? "Actualizar asistencia" : "Guardar asistencia";
+  }
+  if (elements.deleteAttendanceSessionButton) {
+    elements.deleteAttendanceSessionButton.hidden = !isAdmin;
+    elements.deleteAttendanceSessionButton.disabled = !session;
+  }
+  if (elements.clearAttendanceParticipantsButton) {
+    elements.clearAttendanceParticipantsButton.hidden = !isAdmin;
+    elements.clearAttendanceParticipantsButton.disabled = !attendanceParticipantsForProgram().length;
   }
   document.querySelectorAll(".attendance-lock-panel").forEach((panel) => panel.remove());
   elements.attendanceList.innerHTML = entries.length
@@ -1080,6 +1128,7 @@ function renderAttendance() {
                   .join("")}
               </div>
               <span class="attendance-state-badge ${status}">${attendanceStatusLabel(status)}</span>
+              ${isAdmin ? `<button class="icon-button danger-icon" type="button" data-delete-attendance-participant="${participantId}" aria-label="Eliminar participante">×</button>` : ""}
             </div>
           `;
           },
@@ -2429,7 +2478,11 @@ async function addAttendanceParticipant(name) {
 
 function upsertAttendanceSession(session) {
   const index = (state.attendanceSessions || []).findIndex(
-    (item) => item.program === session.program && item.weekStart === session.weekStart,
+    (item) =>
+      item.program === session.program &&
+      item.weekStart === session.weekStart &&
+      (item.center || "General") === (session.center || "General") &&
+      (item.period || item.weekStart?.slice(0, 7)) === (session.period || session.weekStart?.slice(0, 7)),
   );
   if (index >= 0) state.attendanceSessions[index] = session;
   else state.attendanceSessions = [session, ...(state.attendanceSessions || [])];
@@ -2444,9 +2497,11 @@ async function saveCurrentAttendance() {
     present: attendanceEntryStatus(entry) === "present",
   }));
   const session = {
-    id: `atts-${slugify(state.attendanceProgram)}-${state.attendanceWeek}`,
+    id: `atts-${slugify(state.attendanceProgram)}-${slugify(attendanceCenterValue())}-${attendancePeriodValue()}-${state.attendanceWeek}`,
     program: state.attendanceProgram,
     weekStart: state.attendanceWeek,
+    center: attendanceCenterValue(),
+    period: attendancePeriodValue(),
     entries,
     notes: elements.attendanceNotes.value,
     recordedBy: currentUser?.email || currentUser?.fullName || activeRole(),
@@ -2465,9 +2520,11 @@ async function requestAttendanceEdit(note) {
     return;
   }
   const payload = {
-    id: `atts-${slugify(state.attendanceProgram)}-${state.attendanceWeek}`,
+    id: `atts-${slugify(state.attendanceProgram)}-${slugify(attendanceCenterValue())}-${attendancePeriodValue()}-${state.attendanceWeek}`,
     program: state.attendanceProgram,
     weekStart: state.attendanceWeek,
+    center: attendanceCenterValue(),
+    period: attendancePeriodValue(),
     editRequest: { note: cleanNote },
     editRequestNote: cleanNote,
     recordedBy: currentUser?.email || currentUser?.fullName || activeRole(),
@@ -2476,6 +2533,79 @@ async function requestAttendanceEdit(note) {
   };
   const saved = isApiConfigured() ? await saveApiAttendanceSession(payload) : { ...attendanceSessionFor(), editRequest: payload.editRequest };
   upsertAttendanceSession(saved);
+  renderAttendance();
+}
+
+function attendanceAdminPayload() {
+  return {
+    actorId: currentUser?.id || currentUser?.email || `local-${slugify(activeRole())}`,
+    actorRole: activeRole(),
+  };
+}
+
+async function deleteAttendanceParticipantById(participantId) {
+  if (!isSystemAdminRole()) {
+    showToast("Solo Supervision M&E puede eliminar participantes.");
+    return;
+  }
+  if (isApiConfigured()) {
+    await deleteApiAttendanceParticipant(participantId, attendanceAdminPayload());
+  }
+  state.attendanceParticipants = (state.attendanceParticipants || []).filter((participant) => participant.id !== participantId);
+  state.attendanceSessions = (state.attendanceSessions || []).map((session) => ({
+    ...session,
+    entries: (session.entries || []).filter((entry) => entry.participantId !== participantId),
+  }));
+  saveState();
+  renderAttendance();
+}
+
+async function clearAttendanceParticipantsForCurrentProgram() {
+  if (!isSystemAdminRole()) {
+    showToast("Solo Supervision M&E puede eliminar participantes.");
+    return;
+  }
+  const program = state.attendanceProgram;
+  if (isApiConfigured()) {
+    await deleteApiAttendanceParticipants({ program }, { ...attendanceAdminPayload(), program });
+  }
+  const deletedIds = new Set(
+    (state.attendanceParticipants || []).filter((participant) => participant.program === program).map((participant) => participant.id),
+  );
+  state.attendanceParticipants = (state.attendanceParticipants || []).filter((participant) => participant.program !== program);
+  state.attendanceSessions = (state.attendanceSessions || []).map((session) =>
+    session.program === program
+      ? { ...session, entries: (session.entries || []).filter((entry) => !deletedIds.has(entry.participantId)) }
+      : session,
+  );
+  saveState();
+  renderAttendance();
+}
+
+async function deleteCurrentAttendanceSession() {
+  if (!isSystemAdminRole()) {
+    showToast("Solo Supervision M&E puede eliminar sesiones.");
+    return;
+  }
+  const filters = {
+    program: state.attendanceProgram,
+    weekStart: state.attendanceWeek,
+    center: attendanceCenterValue(),
+    period: attendancePeriodValue(),
+  };
+  if (isApiConfigured()) {
+    await deleteApiAttendanceSession(filters, attendanceAdminPayload());
+  }
+  state.attendanceSessions = (state.attendanceSessions || []).filter(
+    (session) =>
+      !(
+        session.program === filters.program &&
+        session.weekStart === filters.weekStart &&
+        (session.center || "General") === filters.center &&
+        (session.period || session.weekStart?.slice(0, 7)) === filters.period
+      ),
+  );
+  saveState();
   renderAttendance();
 }
 
@@ -3474,8 +3604,23 @@ function bindEvents() {
     renderAttendance();
   });
 
+  elements.attendanceCenterInput?.addEventListener("change", () => {
+    state.attendanceCenter = elements.attendanceCenterInput.value.trim() || "General";
+    saveState();
+    renderAttendance();
+  });
+
+  elements.attendancePeriodInput?.addEventListener("change", () => {
+    state.attendancePeriod = elements.attendancePeriodInput.value || currentMonth();
+    saveState();
+    renderAttendance();
+  });
+
   elements.attendanceWeekInput?.addEventListener("change", () => {
     state.attendanceWeek = elements.attendanceWeekInput.value || new Date().toISOString().slice(0, 10);
+    if (!elements.attendancePeriodInput?.value) {
+      state.attendancePeriod = state.attendanceWeek.slice(0, 7);
+    }
     saveState();
     renderAttendance();
   });
@@ -3510,6 +3655,20 @@ function bindEvents() {
     const absentCount = entries.filter((entry) => attendanceEntryStatus(entry) === "absent").length;
     elements.attendanceSummary.textContent = `${presentCount} presentes · ${excusedCount} excusas · ${absentCount} ausentes`;
     renderAttendanceChart(entries);
+  });
+
+  elements.attendanceList?.addEventListener("click", (event) => {
+    const participantId = event.target.closest("[data-delete-attendance-participant]")?.dataset.deleteAttendanceParticipant;
+    if (!participantId) return;
+    void (async () => {
+      try {
+        await deleteAttendanceParticipantById(participantId);
+        showToast("Participante eliminado.");
+      } catch (error) {
+        console.error(error);
+        showToast(error.message || "No pude eliminar el participante.");
+      }
+    })();
   });
 
   elements.attendanceChart?.addEventListener("click", (event) => {
@@ -3555,6 +3714,30 @@ function bindEvents() {
       } catch (error) {
         console.error(error);
         showToast(error.message || "No pude guardar la asistencia.");
+      }
+    })();
+  });
+
+  elements.deleteAttendanceSessionButton?.addEventListener("click", () => {
+    void (async () => {
+      try {
+        await deleteCurrentAttendanceSession();
+        showToast("Sesion eliminada.");
+      } catch (error) {
+        console.error(error);
+        showToast(error.message || "No pude eliminar la sesion.");
+      }
+    })();
+  });
+
+  elements.clearAttendanceParticipantsButton?.addEventListener("click", () => {
+    void (async () => {
+      try {
+        await clearAttendanceParticipantsForCurrentProgram();
+        showToast("Nombres eliminados del programa.");
+      } catch (error) {
+        console.error(error);
+        showToast(error.message || "No pude eliminar los nombres.");
       }
     })();
   });

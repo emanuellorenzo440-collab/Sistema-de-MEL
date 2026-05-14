@@ -147,11 +147,15 @@ function normalizedAttendanceSession(input = {}) {
   const timestamp = nowIso();
   const program = ATTENDANCE_PROGRAMS.includes(input.program) ? input.program : ATTENDANCE_PROGRAMS[0];
   const weekStart = normalizeString(input.weekStart || input.date, timestamp.slice(0, 10));
+  const center = normalizeString(input.center, "General");
+  const period = normalizeString(input.period, weekStart.slice(0, 7));
   const actorRole = normalizeString(input.actorRole, "");
   return {
-    id: normalizeString(input.id, `atts-${slugify(program)}-${weekStart}`),
+    id: normalizeString(input.id, `atts-${slugify(program)}-${slugify(center)}-${period}-${weekStart}`),
     program,
     weekStart,
+    center,
+    period,
     entries: Array.isArray(input.entries)
       ? input.entries.map((entry) => {
           const status = ["present", "absent", "excused"].includes(entry.status)
@@ -639,11 +643,13 @@ export function createAttendanceParticipant(input = {}) {
 }
 
 export function listAttendanceSessions(filters = {}) {
-  const { program, weekStart } = filters;
+  const { program, weekStart, center, period } = filters;
   return attendanceSessions
     .filter((session) => {
       if (program && session.program !== program) return false;
       if (weekStart && session.weekStart !== weekStart) return false;
+      if (center && (session.center || "General") !== center) return false;
+      if (period && (session.period || session.weekStart?.slice(0, 7)) !== period) return false;
       return true;
     })
     .sort((left, right) => String(right.weekStart).localeCompare(String(left.weekStart)))
@@ -652,7 +658,13 @@ export function listAttendanceSessions(filters = {}) {
 
 export function saveAttendanceSession(input = {}) {
   const session = normalizedAttendanceSession(input);
-  const index = attendanceSessions.findIndex((item) => item.program === session.program && item.weekStart === session.weekStart);
+  const index = attendanceSessions.findIndex(
+    (item) =>
+      item.program === session.program &&
+      item.weekStart === session.weekStart &&
+      (item.center || "General") === session.center &&
+      (item.period || item.weekStart?.slice(0, 7)) === session.period,
+  );
   const existing = index >= 0 ? attendanceSessions[index] : null;
   const actorRole = normalizeString(input.actorRole || session.actorRole);
   const canEditLocked = ["Coordinador de programa", "Supervision M&E"].includes(actorRole);
@@ -690,6 +702,64 @@ export function saveAttendanceSession(input = {}) {
   }
   persistStore();
   return structuredClone(index >= 0 ? attendanceSessions[index] : session);
+}
+
+function requireAttendanceAdmin(actorRole) {
+  if (normalizeString(actorRole) !== "Supervision M&E") {
+    const error = new Error("Solo Supervision M&E puede eliminar registros de asistencia.");
+    error.status = 403;
+    throw error;
+  }
+}
+
+export function deleteAttendanceParticipant(participantId, options = {}) {
+  requireAttendanceAdmin(options.actorRole);
+  const index = attendanceParticipants.findIndex((participant) => participant.id === participantId);
+  if (index < 0) return null;
+  const [deleted] = attendanceParticipants.splice(index, 1);
+  attendanceSessions.forEach((session) => {
+    session.entries = (session.entries || []).filter((entry) => entry.participantId !== participantId);
+    session.updatedAt = nowIso();
+  });
+  persistStore();
+  return structuredClone(deleted);
+}
+
+export function deleteAttendanceParticipantsForProgram(program, options = {}) {
+  requireAttendanceAdmin(options.actorRole);
+  const deletedIds = new Set();
+  for (let index = attendanceParticipants.length - 1; index >= 0; index -= 1) {
+    if (attendanceParticipants[index].program === program) {
+      deletedIds.add(attendanceParticipants[index].id);
+      attendanceParticipants.splice(index, 1);
+    }
+  }
+  attendanceSessions.forEach((session) => {
+    if (session.program !== program) return;
+    session.entries = (session.entries || []).filter((entry) => !deletedIds.has(entry.participantId));
+    session.updatedAt = nowIso();
+  });
+  persistStore();
+  return { deletedCount: deletedIds.size };
+}
+
+export function deleteAttendanceSession(filters = {}, options = {}) {
+  requireAttendanceAdmin(options.actorRole);
+  const program = normalizeString(filters.program);
+  const weekStart = normalizeString(filters.weekStart);
+  const center = normalizeString(filters.center, "General");
+  const period = normalizeString(filters.period, weekStart.slice(0, 7));
+  const index = attendanceSessions.findIndex(
+    (session) =>
+      session.program === program &&
+      session.weekStart === weekStart &&
+      (session.center || "General") === center &&
+      (session.period || session.weekStart?.slice(0, 7)) === period,
+  );
+  if (index < 0) return null;
+  const [deleted] = attendanceSessions.splice(index, 1);
+  persistStore();
+  return structuredClone(deleted);
 }
 
 export function queryReports(filters = {}) {
