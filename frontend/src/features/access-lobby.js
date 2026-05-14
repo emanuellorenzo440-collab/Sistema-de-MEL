@@ -10,15 +10,16 @@ import {
   signOutUser,
   signUpUser,
   verifyRegisteredUserByLink,
-} from "../services/auth-service.js?v=20260513b";
+} from "../services/auth-service.js?v=20260514c";
 
-const sections = ["signin", "signup", "forgot", "force-password"];
+const sections = ["signin", "signup", "forgot", "force-password", "reset-password"];
 let wired = false;
 let onAuthenticatedCallback = () => {};
 let onSignedOutCallback = () => {};
 let lastSessionUserId = null;
 let sessionReadyPromise = null;
 let pendingPasswordChange = null;
+let pendingPasswordResetToken = null;
 
 function $(selector) {
   return document.querySelector(selector);
@@ -100,6 +101,17 @@ async function consumeVerificationLink() {
     showSection("signin");
     showToastMessage(error.message || "No pude validar el enlace.");
   }
+}
+
+function consumePasswordResetLink() {
+  const url = new URL(window.location.href);
+  const token = url.searchParams.get("resetToken");
+  if (!token) return null;
+
+  pendingPasswordResetToken = token;
+  url.searchParams.delete("resetToken");
+  window.history.replaceState({}, "", url.toString());
+  return "reset-password";
 }
 
 async function updateLobbyVisibility() {
@@ -269,12 +281,22 @@ function bindLobbyEvents() {
         const result = await requestPasswordReset({
           email: formData.get("email"),
         });
-        $("#resetEmail").value = result.email;
-        if (result.code) $("#resetCode").value = result.code;
-        $("#forgotResetBox").hidden = false;
-        showToastMessage("Codigo de recuperacion enviado.");
+        const message = $("#resetRequestMessage");
+        if (message) {
+          message.textContent = `Te enviamos un enlace de recuperacion a ${result.email}. Abre ese enlace para crear tu nueva contrasena.`;
+          if (result.delivery !== "email" && result.previewLink) {
+            message.textContent = "El enlace fue generado. El correo real necesita estar configurado en Railway; mientras tanto puedes abrirlo aqui: ";
+            const link = document.createElement("a");
+            link.href = result.previewLink;
+            link.textContent = "abrir enlace de recuperacion";
+            message.append(link);
+          }
+          message.hidden = false;
+        }
+        $("#forgotResetBox").hidden = true;
+        showToastMessage("Enlace de recuperacion enviado.");
       } catch (error) {
-        showToastMessage(error.message || "No pude enviar el codigo.");
+        showToastMessage(error.message || "No pude enviar el enlace.");
       }
     })();
   });
@@ -293,7 +315,7 @@ function bindLobbyEvents() {
       try {
         await resetPassword({
           email: formData.get("email"),
-          code: formData.get("code"),
+          token: formData.get("code"),
           password,
         });
         showSection("signin");
@@ -304,10 +326,42 @@ function bindLobbyEvents() {
     })();
   });
 
+  $("#linkResetForm")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const password = String(formData.get("password") || "");
+    const confirmPassword = String(formData.get("confirmPassword") || "");
+    if (!pendingPasswordResetToken) {
+      showSection("forgot");
+      showToastMessage("El enlace de recuperacion esta incompleto. Pide uno nuevo.");
+      return;
+    }
+    if (password !== confirmPassword) {
+      showToastMessage("Las contrasenas no coinciden.");
+      return;
+    }
+
+    void (async () => {
+      try {
+        await resetPassword({
+          token: pendingPasswordResetToken,
+          password,
+        });
+        pendingPasswordResetToken = null;
+        event.currentTarget.reset();
+        showSection("signin");
+        showToastMessage("Contrasena actualizada. Ya puedes entrar con tu nueva contrasena.");
+      } catch (error) {
+        showToastMessage(error.message || "No pude cambiar la contrasena.");
+      }
+    })();
+  });
+
   $("#signOutButton")?.addEventListener("click", () => {
     void (async () => {
       await signOutUser();
       pendingPasswordChange = null;
+      pendingPasswordResetToken = null;
       await updateLobbyVisibility();
       showSection("signin");
       showToastMessage("Sesion cerrada.");
@@ -328,10 +382,13 @@ export async function initializeAccessLobby({ onAuthenticated, onSignedOut } = {
 
   await ensureAuthState();
   await consumeVerificationLink();
+  const initialSection = consumePasswordResetLink();
   fillRequestedRoleOptions();
   bindLobbyEvents();
-  showSection("signin");
+  showSection(initialSection || "signin");
   $("#forgotResetBox").hidden = true;
+  const resetRequestMessage = $("#resetRequestMessage");
+  if (resetRequestMessage) resetRequestMessage.hidden = true;
   await updateLobbyVisibility();
 
   onAuthStateChange(async () => {

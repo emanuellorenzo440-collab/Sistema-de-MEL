@@ -120,6 +120,14 @@ function hashPassword(password) {
   return crypto.createHash("sha256").update(String(password || "")).digest("hex");
 }
 
+function hashToken(token) {
+  return hashPassword(token);
+}
+
+function createResetToken() {
+  return crypto.randomBytes(32).toString("hex");
+}
+
 function normalizeList(values, fallback = []) {
   const list = Array.isArray(values) ? values : fallback;
   return [...new Set(list.filter(Boolean))];
@@ -210,6 +218,9 @@ function normalizeUser(user) {
     accessNote: String(user.accessNote || ""),
     mustChangePassword: Boolean(user.mustChangePassword),
     passwordHash: user.passwordHash || "",
+    resetTokenHash: user.resetTokenHash || null,
+    resetExpiresAt: user.resetExpiresAt || null,
+    resetRequestedAt: user.resetRequestedAt || null,
     createdAt: user.createdAt || nowIso(),
     updatedAt: user.updatedAt || nowIso(),
     createdBy: user.createdBy || "system",
@@ -326,6 +337,24 @@ function clearDeletionMarkersForEmail(email) {
   );
 }
 
+function createAuthEmailRecord({ user, type, link, expiresAt }) {
+  const labels = {
+    "password-reset": "Enlace para restablecer contrasena",
+  };
+  return {
+    id: crypto.randomUUID(),
+    type,
+    toEmail: user.email,
+    toName: user.fullName,
+    subject: `${labels[type] || "Notificacion"} - Pulso M&E`,
+    previewLink: link || null,
+    body: `Hola ${user.fullName}, abre este enlace para cambiar tu contrasena: ${link}. Expira el ${expiresAt}. Si no pediste este cambio, puedes ignorar este correo.`,
+    status: "queued",
+    createdAt: nowIso(),
+    expiresAt,
+  };
+}
+
 export function listAuthUsers() {
   return getState().users.map(safeUser);
 }
@@ -382,6 +411,84 @@ export function completeRequiredPasswordChange({ email, currentPassword, passwor
   user.lastLoginAt = timestamp;
   user.updatedAt = timestamp;
   audit("auth.completePasswordChange", { userId: user.id, email: user.email });
+  persist();
+
+  return safeUser(user);
+}
+
+export function requestPasswordResetLink({ email, resetBaseUrl }) {
+  const user = findUserByEmail(email);
+  if (!user) {
+    throw authError(404, "No encontre una cuenta con ese correo.");
+  }
+  if (user.status !== "active") {
+    throw authError(403, "Esta cuenta esta suspendida o eliminada.");
+  }
+
+  const baseUrl = String(resetBaseUrl || "").trim();
+  if (!baseUrl) {
+    throw authError(400, "No pude construir el enlace de recuperacion.");
+  }
+
+  const token = createResetToken();
+  const url = new URL(baseUrl);
+  url.searchParams.set("resetToken", token);
+  const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+  user.resetTokenHash = hashToken(token);
+  user.resetExpiresAt = expiresAt;
+  user.resetRequestedAt = nowIso();
+  user.updatedAt = nowIso();
+
+  const emailRecord = createAuthEmailRecord({
+    user,
+    type: "password-reset",
+    link: url.toString(),
+    expiresAt,
+  });
+  getState().emailOutbox.unshift(emailRecord);
+  audit("auth.passwordResetRequested", { userId: user.id, email: user.email, emailId: emailRecord.id });
+  persist();
+
+  return {
+    email: user.email,
+    expiresAt,
+    delivery: "email-outbox",
+    previewLink: emailRecord.previewLink,
+    emailRecord,
+  };
+}
+
+export function resetPasswordWithToken({ token, password }) {
+  const rawToken = String(token || "").trim();
+  const nextPassword = String(password || "").trim();
+  if (!rawToken) {
+    throw authError(400, "El enlace de recuperacion esta incompleto.");
+  }
+  if (nextPassword.length < 8) {
+    throw authError(400, "La nueva contrasena debe tener al menos 8 caracteres.");
+  }
+
+  const incomingHash = hashToken(rawToken);
+  const user = getState().users.find((candidate) => candidate.resetTokenHash === incomingHash);
+  if (!user) {
+    throw authError(400, "El enlace de recuperacion no es valido.");
+  }
+  if (user.status !== "active") {
+    throw authError(403, "Esta cuenta esta suspendida o eliminada.");
+  }
+  if (user.resetExpiresAt && Date.parse(user.resetExpiresAt) < Date.now()) {
+    throw authError(400, "El enlace de recuperacion ya expiro.");
+  }
+
+  const timestamp = nowIso();
+  user.passwordHash = hashPassword(nextPassword);
+  user.mustChangePassword = false;
+  user.resetTokenHash = null;
+  user.resetExpiresAt = null;
+  user.resetRequestedAt = null;
+  user.passwordChangedAt = timestamp;
+  user.updatedAt = timestamp;
+  audit("auth.passwordResetCompleted", { userId: user.id, email: user.email });
   persist();
 
   return safeUser(user);

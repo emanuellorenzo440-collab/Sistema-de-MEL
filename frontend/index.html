@@ -9,7 +9,7 @@
         display: none !important;
       }
     </style>
-    <link rel="stylesheet" href="styles.css?v=20260514b" />
+    <link rel="stylesheet" href="styles.css?v=20260514c" />
   </head>
   <body>
     <section class="auth-shell" id="authShell">
@@ -103,6 +103,7 @@
             </label>
             <button class="primary-action auth-submit" type="submit">Enviar enlace de recuperacion</button>
           </form>
+          <p class="auth-info" id="resetRequestMessage" role="status" aria-live="polite" hidden></p>
 
           <div class="auth-reset-box" id="forgotResetBox" hidden>
             <form class="auth-form" id="forgotResetForm">
@@ -126,6 +127,25 @@
             </form>
           </div>
 
+          <div class="auth-link-row auth-link-row-single">
+            <button class="auth-link" data-open-auth="signin" type="button">Back to sign in</button>
+          </div>
+        </div>
+
+        <div class="auth-section" data-auth-section="reset-password" hidden>
+          <p class="eyebrow">Nueva contrasena</p>
+          <h2>Crea tu nueva contrasena</h2>
+          <form class="auth-form" id="linkResetForm">
+            <label>
+              Nueva contrasena
+              <input id="linkResetPassword" name="password" type="password" autocomplete="new-password" minlength="8" required />
+            </label>
+            <label>
+              Confirmar contrasena
+              <input id="linkResetConfirmPassword" name="confirmPassword" type="password" autocomplete="new-password" minlength="8" required />
+            </label>
+            <button class="primary-action auth-submit" type="submit">Actualizar contrasena</button>
+          </form>
           <div class="auth-link-row auth-link-row-single">
             <button class="auth-link" data-open-auth="signin" type="button">Back to sign in</button>
           </div>
@@ -828,6 +848,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="src/main.js?v=20260514b"></script>
+    <script type="module" src="src/main.js?v=20260514c"></script>
   </body>
 </html>

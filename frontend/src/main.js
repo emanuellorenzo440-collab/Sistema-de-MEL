@@ -1,4 +1,4 @@
-import { initializeAccessLobby } from "./features/access-lobby.js?v=20260514a";
+import { initializeAccessLobby } from "./features/access-lobby.js?v=20260514c";
 
 let monitoringApp = null;
 let monitoringAppPromise = null;

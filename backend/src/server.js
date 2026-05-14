@@ -34,6 +34,8 @@ import {
   createManagedAuthUser,
   deleteManagedAuthUser,
   listAuthUsers,
+  requestPasswordResetLink,
+  resetPasswordWithToken,
   signInAuthUser,
   updateManagedAuthUser,
 } from "./data/auth-store.js";
@@ -579,6 +581,8 @@ function apiIndex() {
       "analytics/config",
       "analytics/overview",
       "auth/sign-in",
+      "auth/request-password-reset",
+      "auth/reset-password",
       "auth/complete-password-change",
       "auth/users",
       "reports/:id/status",
@@ -591,10 +595,77 @@ function actorIdFrom(request, payload = {}) {
   return request.headers["x-mel-actor-id"] || payload.actorId || null;
 }
 
+function publicBaseUrlFrom(request, payload = {}) {
+  if (payload.resetBaseUrl) {
+    return String(payload.resetBaseUrl);
+  }
+  const host = request.headers["x-forwarded-host"] || request.headers.host || "localhost";
+  const protocol = request.headers["x-forwarded-proto"] || (String(host).includes("localhost") ? "http" : "https");
+  return `${protocol}://${host}/`;
+}
+
+async function deliverAuthEmail(emailRecord) {
+  const apiKey = process.env.RESEND_API_KEY || process.env.MEL_RESEND_API_KEY;
+  const from = process.env.MEL_EMAIL_FROM || process.env.RESEND_FROM_EMAIL;
+  if (!apiKey || !from || !emailRecord?.toEmail) {
+    return { delivery: "email-outbox" };
+  }
+
+  try {
+    const resendResponse = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        from,
+        to: [emailRecord.toEmail],
+        subject: emailRecord.subject,
+        text: emailRecord.body,
+      }),
+    });
+    if (!resendResponse.ok) {
+      const errorText = await resendResponse.text().catch(() => "");
+      console.error("No pude enviar correo transaccional:", errorText || resendResponse.statusText);
+      return { delivery: "email-outbox" };
+    }
+    return { delivery: "email" };
+  } catch (error) {
+    console.error("No pude enviar correo transaccional:", error);
+    return { delivery: "email-outbox" };
+  }
+}
+
 export async function handleAuthSignIn(request, response) {
   try {
     const payload = await readJsonBody(request);
     sendJson(response, 200, signInAuthUser(payload));
+  } catch (error) {
+    sendApiError(response, error);
+  }
+}
+
+export async function handleAuthPasswordResetRequest(request, response) {
+  try {
+    const payload = await readJsonBody(request);
+    const result = requestPasswordResetLink({ ...payload, resetBaseUrl: publicBaseUrlFrom(request, payload) });
+    const delivery = await deliverAuthEmail(result.emailRecord);
+    const { emailRecord, ...publicResult } = result;
+    const responsePayload = { ...publicResult, ...delivery };
+    if (delivery.delivery === "email") {
+      delete responsePayload.previewLink;
+    }
+    sendJson(response, 200, responsePayload);
+  } catch (error) {
+    sendApiError(response, error);
+  }
+}
+
+export async function handleAuthPasswordResetComplete(request, response) {
+  try {
+    const payload = await readJsonBody(request);
+    sendJson(response, 200, { user: resetPasswordWithToken(payload) });
   } catch (error) {
     sendApiError(response, error);
   }
@@ -663,6 +734,16 @@ async function router(request, response) {
 
   if (request.method === "POST" && pathname === "/api/v1/auth/sign-in") {
     await handleAuthSignIn(request, response);
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/v1/auth/request-password-reset") {
+    await handleAuthPasswordResetRequest(request, response);
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/v1/auth/reset-password") {
+    await handleAuthPasswordResetComplete(request, response);
     return;
   }
 

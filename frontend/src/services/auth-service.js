@@ -407,10 +407,25 @@ function buildVerificationLink(token) {
   return url.toString();
 }
 
+function buildPasswordResetLink(token) {
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.hash = "";
+  url.searchParams.set("resetToken", token);
+  return url.toString();
+}
+
+function passwordResetBaseUrl() {
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+
 function createEmailRecord({ user, type, code, link, expiresAt }) {
   const labels = {
     verification: "Enlace de verificacion",
-    reset: "Codigo para restablecer contrasena",
+    reset: "Enlace para restablecer contrasena",
     "temporary-password": "Credenciales provisionales",
   };
   const body =
@@ -418,7 +433,7 @@ function createEmailRecord({ user, type, code, link, expiresAt }) {
       ? `Hola ${user.fullName}, abre este enlace para verificar tu cuenta: ${link}. Expira el ${expiresAt}.`
       : type === "temporary-password"
         ? `Hola ${user.fullName}, tu cuenta de Pulso M&E fue creada. Correo: ${user.email}. Clave provisional: ${code}. El sistema te pedira cambiarla al entrar.`
-        : `Hola ${user.fullName}, tu codigo es ${code}. Expira el ${expiresAt}.`;
+        : `Hola ${user.fullName}, abre este enlace para cambiar tu contrasena: ${link}. Expira el ${expiresAt}.`;
   return {
     id: `mail-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
     type,
@@ -508,6 +523,7 @@ function normalizeUser(user = {}) {
     verificationTokenHash: user.verificationTokenHash || user.verificationCodeHash || null,
     verificationCodeHash: user.verificationCodeHash || null,
     verificationExpiresAt: user.verificationExpiresAt || null,
+    resetTokenHash: user.resetTokenHash || null,
     resetCodeHash: user.resetCodeHash || null,
     resetExpiresAt: user.resetExpiresAt || null,
     mustChangePassword: Boolean(user.mustChangePassword),
@@ -1242,53 +1258,92 @@ export async function completeRequiredPasswordChange(payload = {}) {
 export async function requestPasswordReset(payload = {}) {
   const state = await ensureAuthState();
   const email = normalizeEmail(payload.email);
+
+  try {
+    const response = await requestAuthApi("request-password-reset", {
+      method: "POST",
+      body: JSON.stringify({ email, resetBaseUrl: passwordResetBaseUrl() }),
+    });
+    return {
+      email: response.email || email,
+      delivery: response.delivery || "email",
+      previewLink: response.previewLink || null,
+    };
+  } catch (error) {
+    if (!shouldUseLocalAuthFallback(error)) throw sharedAuthApiError(error);
+  }
+
   const user = state.users.find((item) => item.email === email);
   if (!user) {
     throw new Error("No encontre una cuenta con ese correo.");
   }
+  if (user.status === "suspended") {
+    throw new Error("Tu acceso al sistema esta suspendido.");
+  }
 
-  const code = createCode();
-  const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-  user.resetCodeHash = await sha256(code);
+  const token = createToken();
+  const link = buildPasswordResetLink(token);
+  const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+  user.resetTokenHash = await sha256(token);
+  user.resetCodeHash = null;
   user.resetExpiresAt = expiresAt;
   user.updatedAt = nowIso();
-  state.emailOutbox.unshift(createEmailRecord({ user, type: "reset", code, expiresAt }));
+  state.emailOutbox.unshift(createEmailRecord({ user, type: "reset", link, expiresAt }));
   writeStoredAuthState(state, "reset-requested");
   return {
     email,
     delivery: "demo-email-outbox",
-    code,
+    previewLink: link,
   };
 }
 
 export async function resetPassword(payload = {}) {
   const state = await ensureAuthState();
   const email = normalizeEmail(payload.email);
-  const code = String(payload.code || "").trim();
+  const token = String(payload.token || payload.code || "").trim();
   const nextPassword = String(payload.password || "").trim();
-  const user = state.users.find((item) => item.email === email);
+
+  try {
+    const response = await requestAuthApi("reset-password", {
+      method: "POST",
+      body: JSON.stringify({ token, password: nextPassword }),
+    });
+    return {
+      email: response.user?.email || email,
+    };
+  } catch (error) {
+    if (!shouldUseLocalAuthFallback(error)) throw sharedAuthApiError(error);
+  }
+
+  const incomingHash = await sha256(token);
+  const user = email
+    ? state.users.find((item) => item.email === email)
+    : state.users.find((item) => item.resetTokenHash === incomingHash || item.resetCodeHash === incomingHash);
   if (!user) {
     throw new Error("No encontre una cuenta con ese correo.");
   }
-  if (!user.resetCodeHash || !code) {
-    throw new Error("Debes ingresar el codigo de recuperacion.");
+  if (user.status === "suspended") {
+    throw new Error("Tu acceso al sistema esta suspendido.");
+  }
+  if ((!user.resetTokenHash && !user.resetCodeHash) || !token) {
+    throw new Error("Debes abrir el enlace de recuperacion enviado a tu correo.");
   }
   if (!nextPassword || nextPassword.length < 8) {
     throw new Error("La nueva contrasena debe tener al menos 8 caracteres.");
   }
   if (user.resetExpiresAt && Date.parse(user.resetExpiresAt) < Date.now()) {
-    throw new Error("El codigo de recuperacion ya expiro.");
+    throw new Error("El enlace de recuperacion ya expiro.");
   }
 
-  const incomingHash = await sha256(code);
-  if (incomingHash !== user.resetCodeHash) {
-    throw new Error("El codigo de recuperacion no coincide.");
+  if (incomingHash !== user.resetTokenHash && incomingHash !== user.resetCodeHash) {
+    throw new Error("El enlace de recuperacion no coincide.");
   }
 
   user.passwordHash = await sha256(nextPassword);
   user.mustChangePassword = false;
   user.passwordUpdatedAt = nowIso();
   user.temporaryPasswordIssuedAt = null;
+  user.resetTokenHash = null;
   user.resetCodeHash = null;
   user.resetExpiresAt = null;
   user.updatedAt = nowIso();
