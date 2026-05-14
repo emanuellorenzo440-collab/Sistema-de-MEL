@@ -1,14 +1,14 @@
-import { STORAGE_KEY } from "../core/config.js?v=20260513n";
-import { $, $$, elements } from "../core/dom.js?v=20260513n";
-import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260513n";
-import { seedState } from "../data/seed-state.js?v=20260513n";
+import { STORAGE_KEY } from "../core/config.js?v=20260514a";
+import { $, $$, elements } from "../core/dom.js?v=20260514a";
+import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
+import { seedState } from "../data/seed-state.js?v=20260514a";
 import {
   REPORT_STATUSES,
   canReviewReports,
   isApprovedReportStatus,
   isPendingApprovalStatus,
   reviewRoleForStatus,
-} from "../../../shared/contracts/reporting.js?v=20260513n";
+} from "../../../shared/contracts/reporting.js?v=20260514a";
 import {
   SYSTEM_ROLES,
   VIEW_DEFINITIONS,
@@ -20,9 +20,10 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260513n";
+} from "../services/auth-service.js?v=20260514a";
 import {
   createApiConceptPaper,
+  createApiAttendanceParticipant,
   createApiIndicator,
   createApiProgram,
   createApiReport,
@@ -31,14 +32,17 @@ import {
   deleteApiIndicator,
   deleteApiProgram,
   fetchApiConceptPapers,
+  fetchApiAttendanceParticipants,
+  fetchApiAttendanceSessions,
   fetchApiNotifications,
   fetchApiReports,
   isApiConfigured,
   markApiNotificationRead,
+  saveApiAttendanceSession,
   updateApiReportStatus,
   updateApiIndicator,
   updateApiProgram,
-} from "../services/mel-api.js?v=20260513n";
+} from "../services/mel-api.js?v=20260514a";
 import {
   currentMonth,
   escapeHtml,
@@ -50,12 +54,13 @@ import {
   slugify,
   statusForProgress,
   unique,
-} from "../shared/utils.js?v=20260513n";
+} from "../shared/utils.js?v=20260514a";
 
 let state = null;
 const ROLE_STORAGE_KEY = "pulso-me-active-role";
 const MAX_REPORT_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 const MAX_CONCEPT_PAPER_BYTES = 15 * 1024 * 1024;
+const ATTENDANCE_PROGRAMS = ["Girls Empowerment", "Club de Chicos", "IGA"];
 let currentUser = null;
 let currentUserRoles = SYSTEM_ROLES.slice();
 let currentUserViews = VIEW_DEFINITIONS.map((view) => view.id);
@@ -186,6 +191,12 @@ function normalizeState(savedState) {
   nextState.reportDrafts = Array.isArray(savedState.reportDrafts) ? savedState.reportDrafts.slice() : [];
   nextState.actions = Array.isArray(savedState.actions) ? savedState.actions.slice() : [];
   nextState.formSubmissions = Array.isArray(savedState.formSubmissions) ? savedState.formSubmissions.slice() : [];
+  nextState.attendanceParticipants = Array.isArray(savedState.attendanceParticipants) ? savedState.attendanceParticipants.slice() : [];
+  nextState.attendanceSessions = Array.isArray(savedState.attendanceSessions) ? savedState.attendanceSessions.slice() : [];
+  nextState.attendanceProgram = ATTENDANCE_PROGRAMS.includes(savedState.attendanceProgram)
+    ? savedState.attendanceProgram
+    : ATTENDANCE_PROGRAMS[0];
+  nextState.attendanceWeek = savedState.attendanceWeek || new Date().toISOString().slice(0, 10);
   nextState.chartPreferences = { ...seedState.chartPreferences, ...(savedState.chartPreferences || {}) };
   nextState.filters = { ...seedState.filters, ...(savedState.filters || {}) };
   nextState.role = normalizeRoleLabel(nextState.role || seedState.role);
@@ -218,6 +229,20 @@ function saveState() {
       latest.formSubmissions.length
         ? latest.formSubmissions
         : state.formSubmissions,
+    attendanceParticipants:
+      Array.isArray(state?.attendanceParticipants) &&
+      state.attendanceParticipants.length === 0 &&
+      Array.isArray(latest?.attendanceParticipants) &&
+      latest.attendanceParticipants.length
+        ? latest.attendanceParticipants
+        : state.attendanceParticipants,
+    attendanceSessions:
+      Array.isArray(state?.attendanceSessions) &&
+      state.attendanceSessions.length === 0 &&
+      Array.isArray(latest?.attendanceSessions) &&
+      latest.attendanceSessions.length
+        ? latest.attendanceSessions
+        : state.attendanceSessions,
   });
   state = nextState;
   saveStoredState(STORAGE_KEY, state);
@@ -600,9 +625,15 @@ async function conceptPaperDocumentFromFile(file, formData) {
   const program = String(formData.get("program") || "").trim();
   const title = String(formData.get("title") || file.name || "").trim();
   const uploadedBy = currentUser?.email || currentUser?.fullName || activeRole();
+  const normalizedProgram = conceptProgramFromContent({ program, title, fileName: file.name });
+  const programInfo = state.programs.find((item) => item.name === normalizedProgram) || {};
+  const indicatorNames = Array.isArray(programInfo.indicatorBlueprints)
+    ? programInfo.indicatorBlueprints.map((item) => item.name).filter(Boolean)
+    : [];
+  const expectedResults = Array.isArray(programInfo.expectedResults) ? programInfo.expectedResults.filter(Boolean) : [];
   return {
     id: `cp-${slugify(program || title || file.name)}-${Date.now()}`,
-    program: conceptProgramFromContent({ program, title, fileName: file.name }),
+    program: normalizedProgram,
     title: title.replace(/\bCFA\b/g, "CFI"),
     presenter: String(formData.get("presenter") || uploadedBy || "Equipo M&E").trim(),
     fileName: file.name,
@@ -615,14 +646,15 @@ async function conceptPaperDocumentFromFile(file, formData) {
     status: "Cargado",
     objective:
       String(formData.get("objective") || "").trim() ||
+      programInfo.focus ||
       "Documento cargado por administracion para alimentar la biblioteca de Concept Papers.",
-    beneficiaries: "Pendiente de completar desde el documento cargado.",
-    budget: "Pendiente",
-    methodology: ["Revisar metodologia dentro del documento adjunto."],
-    expectedImpact: ["Revisar impacto esperado dentro del documento adjunto."],
-    measurableResults: ["Revisar resultados medibles dentro del documento adjunto."],
+    beneficiaries: programInfo.primaryPopulation || "Pendiente de completar desde el documento cargado.",
+    budget: programInfo.budget || "Pendiente",
+    methodology: expectedResults.length ? expectedResults : ["Revisar metodologia dentro del documento adjunto."],
+    expectedImpact: expectedResults.length ? expectedResults : ["Revisar impacto esperado dentro del documento adjunto."],
+    measurableResults: indicatorNames.length ? indicatorNames : ["Revisar resultados medibles dentro del documento adjunto."],
     recommendedForms: ["Monitoreo semanal", "Evaluacion final"],
-    achievementIndicators: ["Indicadores pendientes de definir desde el Concept Paper."],
+    achievementIndicators: indicatorNames.length ? indicatorNames : ["Indicadores pendientes de definir desde el Concept Paper."],
   };
 }
 
@@ -732,8 +764,9 @@ function renderConceptPapers() {
     .map(
       (paper) => {
         const documentHref = paper.dataUrl || (paper.path ? localFileUrl(paper.path) : "");
+        const openLabel = /pdf/i.test(`${paper.mimeType || ""} ${paper.fileName || ""}`) ? "Abrir PDF" : "Abrir documento";
         const openDocument = documentHref
-          ? `<a class="ghost-link" href="${escapeHtml(documentHref)}" target="_blank" rel="noreferrer">Abrir documento</a>`
+          ? `<a class="ghost-link" href="${escapeHtml(documentHref)}" target="_blank" rel="noreferrer">${openLabel}</a>`
           : `<span class="item-meta">Sin archivo</span>`;
         return `
         <article class="concept-card ${paper.id === activePaper?.id ? "active" : ""}">
@@ -795,6 +828,80 @@ function renderConceptPapers() {
       </article>
     </div>
   `;
+}
+
+function attendanceParticipantsForProgram(program = state.attendanceProgram) {
+  return (state.attendanceParticipants || [])
+    .filter((participant) => participant.program === program && participant.status !== "inactive")
+    .sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function attendanceSessionFor(program = state.attendanceProgram, weekStart = state.attendanceWeek) {
+  return (state.attendanceSessions || []).find((session) => session.program === program && session.weekStart === weekStart) || null;
+}
+
+function attendanceEntriesForCurrentSelection() {
+  const session = attendanceSessionFor();
+  const presentById = new Map((session?.entries || []).map((entry) => [entry.participantId, Boolean(entry.present)]));
+  return attendanceParticipantsForProgram().map((participant) => ({
+    participantId: participant.id,
+    name: participant.name,
+    present: presentById.get(participant.id) || false,
+  }));
+}
+
+function renderAttendanceChart() {
+  const sessions = (state.attendanceSessions || [])
+    .filter((session) => session.program === state.attendanceProgram)
+    .slice()
+    .sort((left, right) => String(left.weekStart).localeCompare(String(right.weekStart)))
+    .slice(-8);
+
+  if (!sessions.length) {
+    elements.attendanceChart.innerHTML = `<p class="item-meta">Todavia no hay asistencia guardada para este programa.</p>`;
+    return;
+  }
+
+  elements.attendanceChart.innerHTML = sessions
+    .map((session) => {
+      const total = session.entries?.length || 0;
+      const present = (session.entries || []).filter((entry) => entry.present).length;
+      const rate = total ? Math.round((present / total) * 100) : 0;
+      return `
+        <article class="attendance-bar">
+          <div class="attendance-bar-top">
+            <strong>${escapeHtml(session.weekStart)}</strong>
+            <span>${present}/${total} · ${rate}%</span>
+          </div>
+          <div class="bar-track"><span style="width: ${rate}%"></span></div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function renderAttendance() {
+  if (!elements.attendanceProgramSelect) return;
+  setOptions(elements.attendanceProgramSelect, ATTENDANCE_PROGRAMS, state.attendanceProgram);
+  elements.attendanceWeekInput.value = state.attendanceWeek;
+  const entries = attendanceEntriesForCurrentSelection();
+  const presentCount = entries.filter((entry) => entry.present).length;
+  const session = attendanceSessionFor();
+  elements.attendanceSummary.textContent = `${presentCount}/${entries.length} presentes`;
+  elements.attendanceNotes.value = session?.notes || "";
+  elements.attendanceList.innerHTML = entries.length
+    ? entries
+        .map(
+          (entry) => `
+            <label class="attendance-row">
+              <input type="checkbox" data-attendance-participant="${escapeHtml(entry.participantId)}" ${entry.present ? "checked" : ""} />
+              <span>${escapeHtml(entry.name)}</span>
+            </label>
+          `,
+        )
+        .join("")
+    : `<p class="item-meta">Agrega participantes para pasar lista semanal en este programa.</p>`;
+  renderAttendanceChart();
 }
 
 function renderDesignStudio() {
@@ -1964,6 +2071,7 @@ function renderAll() {
   renderDesignStudio();
   renderForms();
   renderCharts();
+  renderAttendance();
   renderConceptPapers();
   renderNotifications();
   renderReviewQueue();
@@ -1982,6 +2090,7 @@ function switchView(viewName, options = {}) {
     design: "Diseno de monitoreo y evaluacion",
     forms: "Formularios descargables",
     charts: "Graficas automaticas",
+    attendance: "Asistencia semanal",
     concepts: "Concept papers",
     supervision: "Supervision y validacion",
     programs: "Programas",
@@ -2071,6 +2180,62 @@ async function refreshReportsAndNotificationsFromApi() {
   state.notifications = remoteNotifications;
   recomputeIndicatorValues();
   saveState();
+}
+
+async function refreshAttendanceFromApi() {
+  if (!isApiConfigured()) return;
+  const [participants, sessions] = await Promise.all([
+    fetchApiAttendanceParticipants(),
+    fetchApiAttendanceSessions(),
+  ]);
+  state.attendanceParticipants = participants;
+  state.attendanceSessions = sessions;
+  saveState();
+}
+
+async function addAttendanceParticipant(name) {
+  const participant = {
+    id: `attp-${slugify(state.attendanceProgram)}-${Date.now()}`,
+    program: state.attendanceProgram,
+    name: String(name || "").trim(),
+    status: "active",
+  };
+  if (!participant.name) {
+    showToast("Escribe el nombre del participante.");
+    return;
+  }
+
+  const saved = isApiConfigured() ? await createApiAttendanceParticipant(participant) : participant;
+  state.attendanceParticipants = [...(state.attendanceParticipants || []), saved];
+  saveState();
+  renderAttendance();
+}
+
+async function saveCurrentAttendance() {
+  const entries = Array.from(elements.attendanceList.querySelectorAll("[data-attendance-participant]")).map((checkbox) => {
+    const participant = (state.attendanceParticipants || []).find((item) => item.id === checkbox.dataset.attendanceParticipant);
+    return {
+      participantId: checkbox.dataset.attendanceParticipant,
+      name: participant?.name || "Participante",
+      present: checkbox.checked,
+    };
+  });
+  const session = {
+    id: `atts-${slugify(state.attendanceProgram)}-${state.attendanceWeek}`,
+    program: state.attendanceProgram,
+    weekStart: state.attendanceWeek,
+    entries,
+    notes: elements.attendanceNotes.value,
+    recordedBy: currentUser?.email || activeRole(),
+  };
+  const saved = isApiConfigured() ? await saveApiAttendanceSession(session) : session;
+  const index = (state.attendanceSessions || []).findIndex(
+    (item) => item.program === saved.program && item.weekStart === saved.weekStart,
+  );
+  if (index >= 0) state.attendanceSessions[index] = saved;
+  else state.attendanceSessions = [saved, ...(state.attendanceSessions || [])];
+  saveState();
+  renderAttendance();
 }
 
 function correctionRoleForReport(report) {
@@ -3062,6 +3227,53 @@ function bindEvents() {
     void deleteReportFromUi(deleteReportId);
   });
 
+  elements.attendanceProgramSelect?.addEventListener("change", () => {
+    state.attendanceProgram = elements.attendanceProgramSelect.value;
+    saveState();
+    renderAttendance();
+  });
+
+  elements.attendanceWeekInput?.addEventListener("change", () => {
+    state.attendanceWeek = elements.attendanceWeekInput.value || new Date().toISOString().slice(0, 10);
+    saveState();
+    renderAttendance();
+  });
+
+  elements.participantForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void (async () => {
+      try {
+        await addAttendanceParticipant(elements.participantNameInput.value);
+        elements.participantNameInput.value = "";
+        showToast("Participante agregado.");
+      } catch (error) {
+        console.error(error);
+        showToast(error.message || "No pude agregar el participante.");
+      }
+    })();
+  });
+
+  elements.attendanceList?.addEventListener("change", (event) => {
+    if (!event.target.closest("[data-attendance-participant]")) return;
+    const presentCount = Array.from(elements.attendanceList.querySelectorAll("[data-attendance-participant]")).filter(
+      (checkbox) => checkbox.checked,
+    ).length;
+    const total = attendanceParticipantsForProgram().length;
+    elements.attendanceSummary.textContent = `${presentCount}/${total} presentes`;
+  });
+
+  elements.saveAttendanceButton?.addEventListener("click", () => {
+    void (async () => {
+      try {
+        await saveCurrentAttendance();
+        showToast("Asistencia guardada.");
+      } catch (error) {
+        console.error(error);
+        showToast(error.message || "No pude guardar la asistencia.");
+      }
+    })();
+  });
+
   [elements.programFilter, elements.provinceFilter, elements.periodFilter].forEach((filter) => {
     filter.addEventListener("change", () => {
       state.filters.program = elements.programFilter.value;
@@ -3463,6 +3675,7 @@ export function createMonitoringApp() {
     async start(authenticatedUser = null) {
       hydrateState();
       await syncAuthenticatedAccess(authenticatedUser);
+      await refreshAttendanceFromApi();
       renderAll();
       bindEvents();
       window.addEventListener("mel:state-synced", () => {
@@ -3473,6 +3686,7 @@ export function createMonitoringApp() {
     async syncAccess(authenticatedUser = null) {
       hydrateState();
       await syncAuthenticatedAccess(authenticatedUser);
+      await refreshAttendanceFromApi();
       renderAll();
     },
     lock() {

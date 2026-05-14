@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from "./mel-api.js?v=20260513n";
+import { getApiBaseUrl } from "./mel-api.js?v=20260514a";
 
 const AUTH_STORAGE_KEY = "pulso-me-auth-v1";
 const AUTH_SESSION_KEY = "pulso-me-session-v1";
@@ -22,6 +22,7 @@ export const VIEW_DEFINITIONS = [
   { id: "design", label: "Diseno M&E" },
   { id: "forms", label: "Formularios" },
   { id: "charts", label: "Graficas" },
+  { id: "attendance", label: "Asistencia" },
   { id: "concepts", label: "Concept Papers" },
   { id: "supervision", label: "Supervision" },
   { id: "programs", label: "Programas" },
@@ -40,10 +41,10 @@ const ROLE_LABELS = {
 };
 
 const DEFAULT_VIEW_PERMISSIONS = {
-  Facilitador: ["dashboard", "report", "forms", "charts"],
-  "Coordinador de programa": ["dashboard", "report", "forms", "charts", "supervision"],
-  "Program Manager": ["dashboard", "charts", "supervision", "programs", "concepts"],
-  "Director Nacional": ["dashboard", "charts", "programs", "concepts"],
+  Facilitador: ["dashboard", "report", "forms", "attendance", "charts"],
+  "Coordinador de programa": ["dashboard", "report", "forms", "attendance", "charts", "supervision"],
+  "Program Manager": ["dashboard", "attendance", "charts", "supervision", "programs", "concepts"],
+  "Director Nacional": ["dashboard", "attendance", "charts", "programs", "concepts"],
   "Supervision M&E": VIEW_DEFINITIONS.map((view) => view.id),
 };
 

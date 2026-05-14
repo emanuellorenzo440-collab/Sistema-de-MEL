@@ -128,6 +128,32 @@ export async function createApiConceptPaper(conceptPaper) {
   return response.data;
 }
 
+export async function fetchApiAttendanceParticipants(filters = {}) {
+  const response = await requestJson("attendance/participants", {}, filters);
+  return response.data || [];
+}
+
+export async function createApiAttendanceParticipant(participant) {
+  const response = await requestJson("attendance/participants", {
+    method: "POST",
+    body: JSON.stringify(participant),
+  });
+  return response.data;
+}
+
+export async function fetchApiAttendanceSessions(filters = {}) {
+  const response = await requestJson("attendance/sessions", {}, filters);
+  return response.data || [];
+}
+
+export async function saveApiAttendanceSession(session) {
+  const response = await requestJson("attendance/sessions", {
+    method: "PUT",
+    body: JSON.stringify(session),
+  });
+  return response.data;
+}
+
 export async function createApiIndicator(indicator) {
   const response = await requestJson("indicators", {
     method: "POST",

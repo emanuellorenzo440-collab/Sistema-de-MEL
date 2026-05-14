@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const CURRENT_AUTH_DATA_VERSION = 1;
-const PRESET_ACCOUNT_VERSION = 3;
+const PRESET_ACCOUNT_VERSION = 4;
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const defaultDataDir = path.resolve(dirname, "..", "..", "data");
@@ -26,6 +26,7 @@ const VIEW_KEYS = [
   "design",
   "forms",
   "charts",
+  "attendance",
   "concepts",
   "supervision",
   "programs",
@@ -33,12 +34,13 @@ const VIEW_KEYS = [
 ];
 
 const DEFAULT_ROLE_PERMISSIONS = {
-  [SYSTEM_ROLES.facilitator]: ["dashboard", "report", "forms", "charts"],
+  [SYSTEM_ROLES.facilitator]: ["dashboard", "report", "forms", "attendance", "charts"],
   [SYSTEM_ROLES.programCoordinator]: [
     "dashboard",
     "report",
     "indicators",
     "forms",
+    "attendance",
     "charts",
     "concepts",
     "programs",
@@ -49,6 +51,7 @@ const DEFAULT_ROLE_PERMISSIONS = {
     "indicators",
     "design",
     "forms",
+    "attendance",
     "charts",
     "concepts",
     "supervision",
@@ -60,6 +63,7 @@ const DEFAULT_ROLE_PERMISSIONS = {
     "indicators",
     "design",
     "forms",
+    "attendance",
     "charts",
     "concepts",
     "supervision",

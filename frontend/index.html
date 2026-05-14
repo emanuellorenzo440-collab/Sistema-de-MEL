@@ -9,7 +9,7 @@
         display: none !important;
       }
     </style>
-    <link rel="stylesheet" href="styles.css?v=20260513c" />
+    <link rel="stylesheet" href="styles.css?v=20260514a" />
   </head>
   <body>
     <section class="auth-shell" id="authShell">
@@ -167,6 +167,10 @@
           <button class="nav-item" data-view="charts" type="button">
             <span aria-hidden="true">▥</span>
             Graficas
+          </button>
+          <button class="nav-item" data-view="attendance" type="button">
+            <span aria-hidden="true">A</span>
+            Asistencia
           </button>
           <button class="nav-item" data-view="concepts" type="button">
             <span aria-hidden="true">◇</span>
@@ -647,6 +651,53 @@
           </section>
         </section>
 
+        <section class="view" id="attendanceView" data-view-panel="attendance">
+          <div class="attendance-layout">
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <p class="eyebrow">Lista semanal</p>
+                  <h2>Asistencia por programa</h2>
+                </div>
+                <span class="status-pill info" id="attendanceSummary">0 presentes</span>
+              </div>
+              <div class="attendance-controls">
+                <label>
+                  Programa
+                  <select id="attendanceProgramSelect"></select>
+                </label>
+                <label>
+                  Semana
+                  <input id="attendanceWeekInput" type="date" />
+                </label>
+              </div>
+              <form class="participant-form" id="participantForm">
+                <label>
+                  Nombre del participante
+                  <input id="participantNameInput" name="name" type="text" placeholder="Nombre y apellido" required />
+                </label>
+                <button class="primary-action" type="submit">Agregar participante</button>
+              </form>
+              <div class="attendance-list" id="attendanceList"></div>
+              <label>
+                Nota de asistencia
+                <textarea id="attendanceNotes" rows="3" placeholder="Observaciones de la semana"></textarea>
+              </label>
+              <div class="form-actions">
+                <button class="primary-action" id="saveAttendanceButton" type="button">Guardar asistencia</button>
+              </div>
+            </section>
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <p class="eyebrow">Grafica</p>
+                  <h2>Asistencia semanal</h2>
+                </div>
+              </div>
+              <div class="attendance-chart" id="attendanceChart"></div>
+            </section>
+          </div>
+        </section>
         <section class="view" id="conceptsView" data-view-panel="concepts">
           <div class="concept-layout">
             <section class="panel">
@@ -777,6 +828,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="src/main.js?v=20260513n"></script>
+    <script type="module" src="src/main.js?v=20260514a"></script>
   </body>
 </html>

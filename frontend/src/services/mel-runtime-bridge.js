@@ -1,10 +1,12 @@
-import { STORAGE_KEY } from "../core/config.js?v=20260513n";
-import { seedState } from "../data/seed-state.js?v=20260513n";
-import { REPORT_STATUSES, isApprovedReportStatus, isPendingApprovalStatus } from "../../../shared/contracts/reporting.js?v=20260513n";
+import { STORAGE_KEY } from "../core/config.js?v=20260514a";
+import { seedState } from "../data/seed-state.js?v=20260514a";
+import { REPORT_STATUSES, isApprovedReportStatus, isPendingApprovalStatus } from "../../../shared/contracts/reporting.js?v=20260514a";
 import {
   createApiReport,
   createApiReportsBulk,
   fetchApiAnalyticsOverview,
+  fetchApiAttendanceParticipants,
+  fetchApiAttendanceSessions,
   fetchApiConceptPapers,
   fetchApiDeletedReports,
   fetchApiIndicators,
@@ -14,7 +16,7 @@ import {
   getApiBaseUrl,
   isApiConfigured,
   updateApiReportStatus,
-} from "./mel-api.js?v=20260513n";
+} from "./mel-api.js?v=20260514a";
 
 const CHART_COLORS = ["#14b8a6", "#2563eb", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6"];
 let syncInFlight = false;
@@ -110,6 +112,8 @@ function normalizeState(savedState = {}) {
   nextState.reportDrafts = Array.isArray(savedState.reportDrafts) ? savedState.reportDrafts.slice() : [];
   nextState.actions = Array.isArray(savedState.actions) ? savedState.actions.slice() : [];
   nextState.formSubmissions = Array.isArray(savedState.formSubmissions) ? savedState.formSubmissions.slice() : [];
+  nextState.attendanceParticipants = Array.isArray(savedState.attendanceParticipants) ? savedState.attendanceParticipants.slice() : [];
+  nextState.attendanceSessions = Array.isArray(savedState.attendanceSessions) ? savedState.attendanceSessions.slice() : [];
   nextState.chartPreferences = { ...seedState.chartPreferences, ...(savedState.chartPreferences || {}) };
   nextState.filters = { ...seedState.filters, ...(savedState.filters || {}) };
   nextState.role = savedState.role || seedState.role;
@@ -559,6 +563,21 @@ async function pullRemotePlanningData() {
   return nextState;
 }
 
+async function pullRemoteAttendance() {
+  const [attendanceParticipants, attendanceSessions] = await Promise.all([
+    fetchApiAttendanceParticipants(),
+    fetchApiAttendanceSessions(),
+  ]);
+  const currentState = normalizeState(readStoredState());
+  const nextState = recomputeIndicators({
+    ...currentState,
+    attendanceParticipants,
+    attendanceSessions,
+  });
+  commitStoredState(nextState, { source: "pullRemoteAttendance" });
+  return nextState;
+}
+
 async function pushMissingReports() {
   const state = normalizeState(readStoredState());
   const [remoteReports, deletedReports] = await Promise.all([
@@ -638,6 +657,7 @@ async function runSyncPass() {
     await pushMissingReports();
     await pullRemoteReports();
     await pullRemoteNotifications();
+    await pullRemoteAttendance();
     await refreshAnalyticsOverview();
     updateConnectionBadge(true);
   } catch (error) {
@@ -689,6 +709,7 @@ export async function bootstrapApiBridge() {
     await pullRemotePlanningData();
     await pullRemoteReports();
     await pullRemoteNotifications();
+    await pullRemoteAttendance();
     updateConnectionBadge(true);
     return { connected: true, baseUrl: getApiBaseUrl() };
   } catch (error) {

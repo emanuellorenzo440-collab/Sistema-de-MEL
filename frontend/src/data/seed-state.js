@@ -13,6 +13,10 @@ export const seedState = {
   designProgram: "Girls Empowerment",
   formsProgram: "Girls Empowerment",
   selectedConceptPaper: "cp-ge-2026",
+  attendanceProgram: "Girls Empowerment",
+  attendanceWeek: "2026-05-14",
+  attendanceParticipants: [],
+  attendanceSessions: [],
   programs: [
     {
       name: "Girls Empowerment",

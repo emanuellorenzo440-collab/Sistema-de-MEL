@@ -60,8 +60,13 @@ function normalizedConceptPaper(input = {}) {
   const timestamp = nowIso();
   const inputProgram = String(input.program || "");
   const program = conceptProgramFromContent(input, inputProgram);
+  const programInfo = programs.find((item) => item.name === program) || {};
   const fileName = String(input.fileName || input.name || "documento");
   const title = String(input.title || fileName || "Concept paper").replace(/\bCFA\b/g, "CFI");
+  const blueprintNames = Array.isArray(programInfo.indicatorBlueprints)
+    ? programInfo.indicatorBlueprints.map((item) => item.name).filter(Boolean)
+    : [];
+  const expectedResults = Array.isArray(programInfo.expectedResults) ? programInfo.expectedResults.filter(Boolean) : [];
   return {
     id: String(input.id || `cp-${slugify(program || fileName)}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`),
     program,
@@ -76,14 +81,14 @@ function normalizedConceptPaper(input = {}) {
     uploadedBy: input.uploadedBy || null,
     year: String(input.year || timestamp.slice(0, 4)),
     status: String(input.status || "Cargado"),
-    objective: String(input.objective || "Documento cargado por administracion para alimentar la biblioteca de Concept Papers."),
-    beneficiaries: String(input.beneficiaries || "Pendiente de completar desde el documento cargado."),
-    budget: String(input.budget || "Pendiente"),
-    methodology: asList(input.methodology, ["Revisar metodologia dentro del documento adjunto."]),
-    expectedImpact: asList(input.expectedImpact, ["Revisar impacto esperado dentro del documento adjunto."]),
-    measurableResults: asList(input.measurableResults, ["Revisar resultados medibles dentro del documento adjunto."]),
+    objective: String(input.objective || programInfo.focus || "Documento cargado por administracion para alimentar la biblioteca de Concept Papers."),
+    beneficiaries: String(input.beneficiaries || programInfo.primaryPopulation || "Pendiente de completar desde el documento cargado."),
+    budget: String(input.budget || programInfo.budget || "Pendiente"),
+    methodology: asList(input.methodology, expectedResults.length ? expectedResults : ["Revisar metodologia dentro del documento adjunto."]),
+    expectedImpact: asList(input.expectedImpact, expectedResults.length ? expectedResults : ["Revisar impacto esperado dentro del documento adjunto."]),
+    measurableResults: asList(input.measurableResults, blueprintNames.length ? blueprintNames : ["Revisar resultados medibles dentro del documento adjunto."]),
     recommendedForms: asList(input.recommendedForms, ["Monitoreo semanal", "Evaluacion final"]),
-    achievementIndicators: asList(input.achievementIndicators, ["Indicadores pendientes de definir desde el Concept Paper."]),
+    achievementIndicators: asList(input.achievementIndicators, blueprintNames.length ? blueprintNames : ["Indicadores pendientes de definir desde el Concept Paper."]),
   };
 }
 
@@ -91,9 +96,12 @@ const conceptPapers = seedState.conceptPapers.map(normalizedConceptPaper);
 const reports = [];
 const reportStatusHistory = [];
 const deletedReports = [];
+const attendanceParticipants = [];
+const attendanceSessions = [];
 const notifications = [];
 const emailOutbox = [];
 const DEFAULT_COMPANY_ID = "org-default";
+const ATTENDANCE_PROGRAMS = ["Girls Empowerment", "Club de Chicos", "IGA"];
 
 function ensureStoreDir() {
   fs.mkdirSync(path.dirname(melStorePath), { recursive: true });
@@ -122,6 +130,41 @@ function mergeMissingByKey(target, source, keyFn) {
   });
 }
 
+function normalizedAttendanceParticipant(input = {}) {
+  const timestamp = nowIso();
+  const program = ATTENDANCE_PROGRAMS.includes(input.program) ? input.program : ATTENDANCE_PROGRAMS[0];
+  return {
+    id: normalizeString(input.id, `attp-${slugify(program)}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`),
+    program,
+    name: normalizeString(input.name, "Participante"),
+    status: normalizeString(input.status, "active"),
+    createdAt: input.createdAt || timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+function normalizedAttendanceSession(input = {}) {
+  const timestamp = nowIso();
+  const program = ATTENDANCE_PROGRAMS.includes(input.program) ? input.program : ATTENDANCE_PROGRAMS[0];
+  const weekStart = normalizeString(input.weekStart || input.date, timestamp.slice(0, 10));
+  return {
+    id: normalizeString(input.id, `atts-${slugify(program)}-${weekStart}`),
+    program,
+    weekStart,
+    entries: Array.isArray(input.entries)
+      ? input.entries.map((entry) => ({
+          participantId: normalizeString(entry.participantId || entry.id),
+          name: normalizeString(entry.name, "Participante"),
+          present: Boolean(entry.present),
+        }))
+      : [],
+    notes: normalizeString(input.notes, ""),
+    recordedBy: normalizeString(input.recordedBy, ""),
+    createdAt: input.createdAt || timestamp,
+    updatedAt: timestamp,
+  };
+}
+
 function snapshotStore() {
   return {
     storeVersion: STORE_VERSION,
@@ -131,6 +174,8 @@ function snapshotStore() {
     reports,
     reportStatusHistory,
     deletedReports,
+    attendanceParticipants,
+    attendanceSessions,
     notifications,
     emailOutbox,
     updatedAt: nowIso(),
@@ -159,6 +204,14 @@ function hydratePersistentStore() {
   replaceArray(reports, Array.isArray(stored.reports) ? stored.reports.map(normalizedReport) : []);
   replaceArray(reportStatusHistory, Array.isArray(stored.reportStatusHistory) ? stored.reportStatusHistory : []);
   replaceArray(deletedReports, Array.isArray(stored.deletedReports) ? stored.deletedReports : []);
+  replaceArray(
+    attendanceParticipants,
+    Array.isArray(stored.attendanceParticipants) ? stored.attendanceParticipants.map(normalizedAttendanceParticipant) : [],
+  );
+  replaceArray(
+    attendanceSessions,
+    Array.isArray(stored.attendanceSessions) ? stored.attendanceSessions.map(normalizedAttendanceSession) : [],
+  );
   replaceArray(notifications, Array.isArray(stored.notifications) ? stored.notifications : []);
   replaceArray(emailOutbox, Array.isArray(stored.emailOutbox) ? stored.emailOutbox : []);
 }
@@ -552,6 +605,48 @@ export function createConceptPaper(input = {}) {
   conceptPapers.unshift(paper);
   persistStore();
   return structuredClone(paper);
+}
+
+export function listAttendanceParticipants(filters = {}) {
+  const { program, status } = filters;
+  return attendanceParticipants
+    .filter((participant) => {
+      if (program && participant.program !== program) return false;
+      if (status && participant.status !== status) return false;
+      return true;
+    })
+    .map((participant) => structuredClone(participant));
+}
+
+export function createAttendanceParticipant(input = {}) {
+  const participant = normalizedAttendanceParticipant(input);
+  attendanceParticipants.push(participant);
+  persistStore();
+  return structuredClone(participant);
+}
+
+export function listAttendanceSessions(filters = {}) {
+  const { program, weekStart } = filters;
+  return attendanceSessions
+    .filter((session) => {
+      if (program && session.program !== program) return false;
+      if (weekStart && session.weekStart !== weekStart) return false;
+      return true;
+    })
+    .sort((left, right) => String(right.weekStart).localeCompare(String(left.weekStart)))
+    .map((session) => structuredClone(session));
+}
+
+export function saveAttendanceSession(input = {}) {
+  const session = normalizedAttendanceSession(input);
+  const index = attendanceSessions.findIndex((item) => item.program === session.program && item.weekStart === session.weekStart);
+  if (index >= 0) {
+    attendanceSessions[index] = { ...attendanceSessions[index], ...session, createdAt: attendanceSessions[index].createdAt };
+  } else {
+    attendanceSessions.unshift(session);
+  }
+  persistStore();
+  return structuredClone(index >= 0 ? attendanceSessions[index] : session);
 }
 
 export function queryReports(filters = {}) {

@@ -546,6 +546,12 @@ h3 {
   grid-template-columns: minmax(0, 1.55fr) minmax(320px, 0.9fr);
 }
 
+.attendance-layout {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+}
+
 .panel {
   box-shadow: var(--shadow);
   padding: 18px;
@@ -1033,6 +1039,68 @@ textarea {
   grid-template-columns: repeat(2, minmax(180px, 1fr));
 }
 
+.attendance-controls,
+.participant-form {
+  align-items: end;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+}
+
+.participant-form {
+  grid-template-columns: minmax(220px, 1fr) auto;
+}
+
+.attendance-list,
+.attendance-chart {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.attendance-row {
+  align-items: center;
+  background: #f8faf9;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+.attendance-row input {
+  min-height: auto;
+  width: auto;
+}
+
+.attendance-bar {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.attendance-bar-top {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.bar-track {
+  background: #e8efed;
+  border-radius: 999px;
+  height: 10px;
+  overflow: hidden;
+}
+
+.bar-track span {
+  background: var(--teal);
+  display: block;
+  height: 100%;
+}
+
 .access-chip-list {
   display: flex;
   flex-wrap: wrap;
@@ -1150,6 +1218,7 @@ textarea {
 
   .metric-grid,
   .access-summary-grid,
+  .attendance-layout,
   .dashboard-grid,
   .supervision-grid,
   .design-grid,
@@ -1199,6 +1268,8 @@ textarea {
   .filters,
   .metric-grid,
   .access-summary-grid,
+  .attendance-controls,
+  .attendance-layout,
   .dashboard-grid,
   .supervision-grid,
   .design-grid,
@@ -1209,6 +1280,7 @@ textarea {
   .indicator-board,
   .form-template-grid,
   .upload-grid,
+  .participant-form,
   .program-grid,
   .user-access-group-grid,
   .chart-filter-grid,
