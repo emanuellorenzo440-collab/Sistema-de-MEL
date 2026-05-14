@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260514a";
+} from "../services/auth-service.js?v=20260514d";
 import {
   createApiConceptPaper,
   createApiAttendanceParticipant,
@@ -1539,6 +1539,14 @@ function renderAccessWorkspace() {
                                 Correo electronico
                                 <input name="email" type="email" value="${escapeHtml(user.email || "")}" required />
                               </label>
+                              ${
+                                user.status === "active"
+                                  ? `<label>
+                                      Nueva contrasena
+                                      <input name="password" type="password" minlength="8" autocomplete="new-password" placeholder="Dejar vacio para no cambiar" />
+                                    </label>`
+                                  : ""
+                              }
                               <label class="access-chip access-wide">
                                 <input name="mustChangePassword" type="checkbox" ${user.mustChangePassword ? "checked" : ""} />
                                 <span>Requerir cambio de clave al entrar</span>
@@ -3698,6 +3706,7 @@ function bindEvents() {
         await updateManagedUserAccess(userId, {
           fullName: formData.get("fullName"),
           email: formData.get("email"),
+          password: String(formData.get("password") || "").trim() || undefined,
           systemRole: formData.get("systemRole"),
           status: formData.get("status"),
           allowedRoles,

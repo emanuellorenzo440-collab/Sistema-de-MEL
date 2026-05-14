@@ -555,6 +555,11 @@ export function updateManagedAuthUser(id, updates, actorId) {
   }
 
   const primaryRole = updates.primaryRole || user.primaryRole || SYSTEM_ROLES.facilitator;
+  const nextPassword = String(updates.password || updates.temporaryPassword || "").trim();
+  if (nextPassword && nextPassword.length < 8) {
+    throw authError(400, "La nueva contrasena debe tener al menos 8 caracteres.");
+  }
+
   user.fullName = String(updates.fullName ?? user.fullName).trim() || user.fullName;
   user.email = nextEmail;
   user.primaryRole = primaryRole;
@@ -562,6 +567,13 @@ export function updateManagedAuthUser(id, updates, actorId) {
   user.viewPermissions = normalizeList(updates.viewPermissions, rolePermissions(primaryRole));
   user.status = updates.status === "suspended" ? "suspended" : "active";
   user.accessNote = String(updates.accessNote ?? user.accessNote ?? "");
+  if (nextPassword) {
+    user.passwordHash = hashPassword(nextPassword);
+    user.passwordChangedAt = nowIso();
+    user.resetTokenHash = null;
+    user.resetExpiresAt = null;
+    user.resetRequestedAt = null;
+  }
   if (typeof updates.mustChangePassword === "boolean") {
     user.mustChangePassword = updates.mustChangePassword;
   }

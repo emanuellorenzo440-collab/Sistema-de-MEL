@@ -1393,6 +1393,7 @@ export async function updateManagedUserAccess(userId, updates = {}) {
       body: JSON.stringify({
         fullName: nextFullName,
         email: nextEmail,
+        password: nextPassword || undefined,
         primaryRole: nextSystemRole,
         enabledProfiles: nextAllowedRoles.includes(nextSystemRole)
           ? nextAllowedRoles
