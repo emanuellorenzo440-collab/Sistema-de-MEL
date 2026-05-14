@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260514d";
+} from "../services/auth-service.js?v=20260514e";
 import {
   createApiConceptPaper,
   createApiAttendanceParticipant,
@@ -42,7 +42,7 @@ import {
   updateApiReportStatus,
   updateApiIndicator,
   updateApiProgram,
-} from "../services/mel-api.js?v=20260514a";
+} from "../services/mel-api.js?v=20260514e";
 import {
   currentMonth,
   escapeHtml,
@@ -840,34 +840,93 @@ function attendanceSessionFor(program = state.attendanceProgram, weekStart = sta
   return (state.attendanceSessions || []).find((session) => session.program === program && session.weekStart === weekStart) || null;
 }
 
+function attendanceEntryStatus(entry = {}) {
+  if (["present", "absent", "excused"].includes(entry.status)) return entry.status;
+  return entry.present ? "present" : "absent";
+}
+
+function attendanceIsPrivilegedEditor(role = activeRole()) {
+  return ["Coordinador de programa", "Supervision M&E"].includes(normalizeRoleLabel(role));
+}
+
+function attendanceCanEdit(session = attendanceSessionFor()) {
+  return !session?.locked || attendanceIsPrivilegedEditor();
+}
+
+function attendanceEffectivePresentCount(entries = []) {
+  return entries.filter((entry) => ["present", "excused"].includes(attendanceEntryStatus(entry))).length;
+}
+
+function attendanceStatusLabel(status) {
+  return {
+    present: "Presente",
+    absent: "Ausente",
+    excused: "Excusa",
+  }[status] || "Ausente";
+}
+
+function attendanceMonthlyKey(weekStart = state.attendanceWeek) {
+  return String(weekStart || "").slice(0, 7);
+}
+
+function attendanceMonthlyScores() {
+  const monthKey = attendanceMonthlyKey();
+  return attendanceParticipantsForProgram().map((participant) => {
+    const sessions = (state.attendanceSessions || []).filter(
+      (session) => session.program === state.attendanceProgram && attendanceMonthlyKey(session.weekStart) === monthKey,
+    );
+    let absences = 0;
+    let excuses = 0;
+    sessions.forEach((session) => {
+      const entry = (session.entries || []).find((item) => item.participantId === participant.id);
+      const status = attendanceEntryStatus(entry || { status: "absent" });
+      if (status === "absent") absences += 1;
+      if (status === "excused") excuses += 1;
+    });
+    const score = Math.max(0, 100 - (absences + Math.max(0, excuses - 1)) * 25);
+    return { participantId: participant.id, name: participant.name, absences, excuses, score };
+  });
+}
+
 function attendanceEntriesForCurrentSelection() {
   const session = attendanceSessionFor();
-  const presentById = new Map((session?.entries || []).map((entry) => [entry.participantId, Boolean(entry.present)]));
+  const entryById = new Map((session?.entries || []).map((entry) => [entry.participantId, entry]));
   return attendanceParticipantsForProgram().map((participant) => ({
     participantId: participant.id,
     name: participant.name,
-    present: presentById.get(participant.id) || false,
+    status: attendanceEntryStatus(entryById.get(participant.id) || {}),
+    present: attendanceEntryStatus(entryById.get(participant.id) || {}) === "present",
+    excuseNote: entryById.get(participant.id)?.excuseNote || "",
   }));
 }
 
 function attendanceEntriesFromChecklist() {
   if (!elements.attendanceList) return attendanceEntriesForCurrentSelection();
-  const checkboxes = Array.from(elements.attendanceList.querySelectorAll("[data-attendance-participant]"));
-  if (!checkboxes.length) return attendanceEntriesForCurrentSelection();
-  return checkboxes.map((checkbox) => {
-    const participant = (state.attendanceParticipants || []).find((item) => item.id === checkbox.dataset.attendanceParticipant);
+  const rows = Array.from(elements.attendanceList.querySelectorAll("[data-attendance-row]"));
+  if (!rows.length) return attendanceEntriesForCurrentSelection();
+  return rows.map((row) => {
+    const participantId = row.dataset.attendanceRow;
+    const selected = row.querySelector("[data-attendance-status]:checked");
+    const status = selected?.value || "absent";
+    const participant = (state.attendanceParticipants || []).find((item) => item.id === participantId);
     return {
-      participantId: checkbox.dataset.attendanceParticipant,
+      participantId,
       name: participant?.name || "Participante",
-      present: checkbox.checked,
+      status,
+      present: status === "present",
     };
   });
 }
 
-function attendanceNameListMarkup(entries, present) {
-  const filtered = entries.filter((entry) => entry.present === present);
+function attendanceNameListMarkup(entries, status) {
+  const filtered = entries.filter((entry) => attendanceEntryStatus(entry) === status);
   if (!filtered.length) {
-    return `<p class="item-meta">${present ? "Nadie marcado presente." : "No hay ausencias marcadas."}</p>`;
+    const emptyText = {
+      present: "Nadie marcado presente.",
+      absent: "No hay ausencias marcadas.",
+      excused: "No hay excusas registradas.",
+    }[status];
+    return `<p class="item-meta">${emptyText}</p>`;
   }
   return `
     <ul class="attendance-name-list">
@@ -877,8 +936,9 @@ function attendanceNameListMarkup(entries, present) {
 }
 
 function renderAttendanceWeekDetail(entries = attendanceEntriesForCurrentSelection()) {
-  const presentCount = entries.filter((entry) => entry.present).length;
-  const absentCount = entries.length - presentCount;
+  const presentCount = entries.filter((entry) => attendanceEntryStatus(entry) === "present").length;
+  const excusedCount = entries.filter((entry) => attendanceEntryStatus(entry) === "excused").length;
+  const absentCount = entries.filter((entry) => attendanceEntryStatus(entry) === "absent").length;
   const session = attendanceSessionFor();
   return `
     <section class="attendance-week-detail">
@@ -887,18 +947,53 @@ function renderAttendanceWeekDetail(entries = attendanceEntriesForCurrentSelecti
           <p class="eyebrow">Detalle de semana</p>
           <h3>${escapeHtml(state.attendanceWeek)}</h3>
         </div>
-        <span class="status-pill info">${presentCount}/${entries.length} presentes</span>
+        <span class="status-pill info">${attendanceEffectivePresentCount(entries)}/${entries.length} efectivos</span>
       </div>
       ${session?.notes ? `<p class="item-meta">${escapeHtml(session.notes)}</p>` : ""}
       <div class="attendance-status-grid">
         <article class="attendance-status-card present">
           <strong>Presentes (${presentCount})</strong>
-          ${attendanceNameListMarkup(entries, true)}
+          ${attendanceNameListMarkup(entries, "present")}
+        </article>
+        <article class="attendance-status-card excused">
+          <strong>Excusas (${excusedCount})</strong>
+          ${attendanceNameListMarkup(entries, "excused")}
         </article>
         <article class="attendance-status-card absent">
           <strong>Ausentes (${absentCount})</strong>
-          ${attendanceNameListMarkup(entries, false)}
+          ${attendanceNameListMarkup(entries, "absent")}
         </article>
+      </div>
+    </section>
+  `;
+}
+
+function renderAttendanceMonthlyChart() {
+  const scores = attendanceMonthlyScores();
+  if (!scores.length) return "";
+  return `
+    <section class="attendance-week-detail">
+      <div class="attendance-bar-top">
+        <div>
+          <p class="eyebrow">Grafica mensual</p>
+          <h3>${escapeHtml(attendanceMonthlyKey())}</h3>
+        </div>
+        <span class="status-pill info">4 semanas · 25% cada ausencia</span>
+      </div>
+      <div class="attendance-monthly-grid">
+        ${scores
+          .map(
+            (item) => `
+              <article class="attendance-monthly-card ${item.score <= 50 ? "danger" : ""}">
+                <div>
+                  <strong>${escapeHtml(item.name)}</strong>
+                  <p class="item-meta">${item.absences} ausencias · ${item.excuses} excusas</p>
+                </div>
+                <span class="attendance-score">${item.score}%</span>
+              </article>
+            `,
+          )
+          .join("")}
       </div>
     </section>
   `;
@@ -915,6 +1010,7 @@ function renderAttendanceChart(detailEntries = attendanceEntriesForCurrentSelect
     elements.attendanceChart.innerHTML = `
       <p class="item-meta">Todavia no hay asistencia guardada para este programa.</p>
       ${renderAttendanceWeekDetail(detailEntries)}
+      ${renderAttendanceMonthlyChart()}
     `;
     return;
   }
@@ -924,7 +1020,7 @@ function renderAttendanceChart(detailEntries = attendanceEntriesForCurrentSelect
       ${sessions
         .map((session) => {
           const total = session.entries?.length || 0;
-          const present = (session.entries || []).filter((entry) => entry.present).length;
+          const present = attendanceEffectivePresentCount(session.entries || []);
           const rate = total ? Math.round((present / total) * 100) : 0;
           return `
             <button class="attendance-bar ${session.weekStart === state.attendanceWeek ? "active" : ""}" type="button" data-attendance-week="${escapeHtml(session.weekStart)}">
@@ -939,6 +1035,7 @@ function renderAttendanceChart(detailEntries = attendanceEntriesForCurrentSelect
         .join("")}
     </div>
     ${renderAttendanceWeekDetail(detailEntries)}
+    ${renderAttendanceMonthlyChart()}
   `;
 }
 
@@ -947,23 +1044,71 @@ function renderAttendance() {
   setOptions(elements.attendanceProgramSelect, ATTENDANCE_PROGRAMS, state.attendanceProgram);
   elements.attendanceWeekInput.value = state.attendanceWeek;
   const entries = attendanceEntriesForCurrentSelection();
-  const presentCount = entries.filter((entry) => entry.present).length;
+  const presentCount = entries.filter((entry) => attendanceEntryStatus(entry) === "present").length;
+  const excusedCount = entries.filter((entry) => attendanceEntryStatus(entry) === "excused").length;
+  const absentCount = entries.filter((entry) => attendanceEntryStatus(entry) === "absent").length;
   const session = attendanceSessionFor();
-  elements.attendanceSummary.textContent = `${presentCount}/${entries.length} presentes`;
+  const isLockedForUser = Boolean(session?.locked && !attendanceCanEdit(session));
+  elements.attendanceSummary.textContent = `${presentCount} presentes · ${excusedCount} excusas · ${absentCount} ausentes`;
   elements.attendanceNotes.value = session?.notes || "";
+  elements.attendanceNotes.disabled = isLockedForUser;
+  if (elements.saveAttendanceButton) {
+    elements.saveAttendanceButton.disabled = isLockedForUser || !entries.length;
+    elements.saveAttendanceButton.textContent = session ? "Actualizar asistencia" : "Guardar asistencia";
+  }
+  document.querySelectorAll(".attendance-lock-panel").forEach((panel) => panel.remove());
   elements.attendanceList.innerHTML = entries.length
     ? entries
         .map(
-          (entry) => `
-            <label class="attendance-row">
-              <input type="checkbox" data-attendance-participant="${escapeHtml(entry.participantId)}" ${entry.present ? "checked" : ""} />
+          (entry) => {
+            const status = attendanceEntryStatus(entry);
+            const participantId = escapeHtml(entry.participantId);
+            const radioName = `attendance-${participantId}`;
+            return `
+            <div class="attendance-row" data-attendance-row="${participantId}">
               <span>${escapeHtml(entry.name)}</span>
-              <span class="attendance-state-badge ${entry.present ? "present" : "absent"}">${entry.present ? "Presente" : "Ausente"}</span>
-            </label>
-          `,
+              <div class="attendance-choice-group" role="radiogroup" aria-label="Asistencia de ${escapeHtml(entry.name)}">
+                ${["present", "absent", "excused"]
+                  .map(
+                    (option) => `
+                      <label class="attendance-choice ${status === option ? "active" : ""}">
+                        <input type="radio" name="${radioName}" value="${option}" data-attendance-status data-attendance-participant="${participantId}" ${status === option ? "checked" : ""} ${isLockedForUser ? "disabled" : ""} />
+                        <span>${attendanceStatusLabel(option)}</span>
+                      </label>
+                    `,
+                  )
+                  .join("")}
+              </div>
+              <span class="attendance-state-badge ${status}">${attendanceStatusLabel(status)}</span>
+            </div>
+          `;
+          },
         )
         .join("")
     : `<p class="item-meta">Agrega participantes para pasar lista semanal en este programa.</p>`;
+  const editRequest = session?.editRequest;
+  const lockMarkup =
+    session?.locked && !attendanceIsPrivilegedEditor()
+      ? `
+        <section class="attendance-lock-panel">
+          <strong>Asistencia bloqueada despues de guardar</strong>
+          <p class="item-meta">${
+            editRequest?.status === "pending"
+              ? `Solicitud pendiente: ${escapeHtml(editRequest.note || "")}`
+              : "Para cambiar esta semana, solicita autorizacion al coordinador o a Supervision M&E."
+          }</p>
+          <textarea id="attendanceEditRequestNote" rows="3" placeholder="Explica que necesitas corregir">${escapeHtml(editRequest?.note || "")}</textarea>
+          <button type="button" class="secondary-button" data-request-attendance-edit>Solicitar editar asistencia</button>
+        </section>
+      `
+      : session?.locked
+        ? `<section class="attendance-lock-panel"><p class="item-meta">${
+            editRequest?.status === "pending"
+              ? `Solicitud pendiente de edicion: ${escapeHtml(editRequest.note || "")}`
+              : "Esta semana ya esta guardada. Tu perfil puede editarla directamente."
+          }</p></section>`
+        : "";
+  if (lockMarkup) elements.attendanceList.insertAdjacentHTML("afterend", lockMarkup);
   renderAttendanceChart();
 }
 
@@ -2282,30 +2427,55 @@ async function addAttendanceParticipant(name) {
   renderAttendance();
 }
 
+function upsertAttendanceSession(session) {
+  const index = (state.attendanceSessions || []).findIndex(
+    (item) => item.program === session.program && item.weekStart === session.weekStart,
+  );
+  if (index >= 0) state.attendanceSessions[index] = session;
+  else state.attendanceSessions = [session, ...(state.attendanceSessions || [])];
+  saveState();
+}
+
 async function saveCurrentAttendance() {
-  const entries = Array.from(elements.attendanceList.querySelectorAll("[data-attendance-participant]")).map((checkbox) => {
-    const participant = (state.attendanceParticipants || []).find((item) => item.id === checkbox.dataset.attendanceParticipant);
-    return {
-      participantId: checkbox.dataset.attendanceParticipant,
-      name: participant?.name || "Participante",
-      present: checkbox.checked,
-    };
-  });
+  const entries = attendanceEntriesFromChecklist().map((entry) => ({
+    participantId: entry.participantId,
+    name: entry.name,
+    status: attendanceEntryStatus(entry),
+    present: attendanceEntryStatus(entry) === "present",
+  }));
   const session = {
     id: `atts-${slugify(state.attendanceProgram)}-${state.attendanceWeek}`,
     program: state.attendanceProgram,
     weekStart: state.attendanceWeek,
     entries,
     notes: elements.attendanceNotes.value,
-    recordedBy: currentUser?.email || activeRole(),
+    recordedBy: currentUser?.email || currentUser?.fullName || activeRole(),
+    actorId: currentUser?.id || currentUser?.email || `local-${slugify(activeRole())}`,
+    actorRole: activeRole(),
   };
   const saved = isApiConfigured() ? await saveApiAttendanceSession(session) : session;
-  const index = (state.attendanceSessions || []).findIndex(
-    (item) => item.program === saved.program && item.weekStart === saved.weekStart,
-  );
-  if (index >= 0) state.attendanceSessions[index] = saved;
-  else state.attendanceSessions = [saved, ...(state.attendanceSessions || [])];
-  saveState();
+  upsertAttendanceSession({ ...saved, locked: saved.locked ?? true });
+  renderAttendance();
+}
+
+async function requestAttendanceEdit(note) {
+  const cleanNote = String(note || "").trim();
+  if (!cleanNote) {
+    showToast("Escribe la razon de la correccion.");
+    return;
+  }
+  const payload = {
+    id: `atts-${slugify(state.attendanceProgram)}-${state.attendanceWeek}`,
+    program: state.attendanceProgram,
+    weekStart: state.attendanceWeek,
+    editRequest: { note: cleanNote },
+    editRequestNote: cleanNote,
+    recordedBy: currentUser?.email || currentUser?.fullName || activeRole(),
+    actorId: currentUser?.id || currentUser?.email || `local-${slugify(activeRole())}`,
+    actorRole: activeRole(),
+  };
+  const saved = isApiConfigured() ? await saveApiAttendanceSession(payload) : { ...attendanceSessionFor(), editRequest: payload.editRequest };
+  upsertAttendanceSession(saved);
   renderAttendance();
 }
 
@@ -3325,26 +3495,56 @@ function bindEvents() {
   });
 
   elements.attendanceList?.addEventListener("change", (event) => {
-    const checkbox = event.target.closest("[data-attendance-participant]");
-    if (!checkbox) return;
-    const badge = checkbox.closest(".attendance-row")?.querySelector(".attendance-state-badge");
+    const input = event.target.closest("[data-attendance-status]");
+    if (!input) return;
+    const row = input.closest(".attendance-row");
+    row?.querySelectorAll(".attendance-choice").forEach((choice) => choice.classList.toggle("active", choice.contains(input)));
+    const badge = row?.querySelector(".attendance-state-badge");
     if (badge) {
-      badge.textContent = checkbox.checked ? "Presente" : "Ausente";
-      badge.className = `attendance-state-badge ${checkbox.checked ? "present" : "absent"}`;
+      badge.textContent = attendanceStatusLabel(input.value);
+      badge.className = `attendance-state-badge ${input.value}`;
     }
     const entries = attendanceEntriesFromChecklist();
-    const presentCount = entries.filter((entry) => entry.present).length;
-    const total = entries.length;
-    elements.attendanceSummary.textContent = `${presentCount}/${total} presentes`;
+    const presentCount = entries.filter((entry) => attendanceEntryStatus(entry) === "present").length;
+    const excusedCount = entries.filter((entry) => attendanceEntryStatus(entry) === "excused").length;
+    const absentCount = entries.filter((entry) => attendanceEntryStatus(entry) === "absent").length;
+    elements.attendanceSummary.textContent = `${presentCount} presentes · ${excusedCount} excusas · ${absentCount} ausentes`;
     renderAttendanceChart(entries);
   });
 
   elements.attendanceChart?.addEventListener("click", (event) => {
+    const requestButton = event.target.closest("[data-request-attendance-edit]");
+    if (requestButton) {
+      void (async () => {
+        try {
+          await requestAttendanceEdit($("#attendanceEditRequestNote")?.value || "");
+          showToast("Solicitud enviada.");
+        } catch (error) {
+          console.error(error);
+          showToast(error.message || "No pude enviar la solicitud.");
+        }
+      })();
+      return;
+    }
     const week = event.target.closest("[data-attendance-week]")?.dataset.attendanceWeek;
     if (!week) return;
     state.attendanceWeek = week;
     saveState();
     renderAttendance();
+  });
+
+  elements.attendanceList?.parentElement?.addEventListener("click", (event) => {
+    const requestButton = event.target.closest("[data-request-attendance-edit]");
+    if (!requestButton) return;
+    void (async () => {
+      try {
+        await requestAttendanceEdit($("#attendanceEditRequestNote")?.value || "");
+        showToast("Solicitud enviada.");
+      } catch (error) {
+        console.error(error);
+        showToast(error.message || "No pude enviar la solicitud.");
+      }
+    })();
   });
 
   elements.saveAttendanceButton?.addEventListener("click", () => {

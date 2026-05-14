@@ -147,19 +147,32 @@ function normalizedAttendanceSession(input = {}) {
   const timestamp = nowIso();
   const program = ATTENDANCE_PROGRAMS.includes(input.program) ? input.program : ATTENDANCE_PROGRAMS[0];
   const weekStart = normalizeString(input.weekStart || input.date, timestamp.slice(0, 10));
+  const actorRole = normalizeString(input.actorRole, "");
   return {
     id: normalizeString(input.id, `atts-${slugify(program)}-${weekStart}`),
     program,
     weekStart,
     entries: Array.isArray(input.entries)
-      ? input.entries.map((entry) => ({
-          participantId: normalizeString(entry.participantId || entry.id),
-          name: normalizeString(entry.name, "Participante"),
-          present: Boolean(entry.present),
-        }))
+      ? input.entries.map((entry) => {
+          const status = ["present", "absent", "excused"].includes(entry.status)
+            ? entry.status
+            : Boolean(entry.present)
+              ? "present"
+              : "absent";
+          return {
+            participantId: normalizeString(entry.participantId || entry.id),
+            name: normalizeString(entry.name, "Participante"),
+            status,
+            present: status === "present",
+            excuseNote: normalizeString(entry.excuseNote, ""),
+          };
+        })
       : [],
     notes: normalizeString(input.notes, ""),
     recordedBy: normalizeString(input.recordedBy, ""),
+    actorRole,
+    locked: input.locked !== undefined ? Boolean(input.locked) : true,
+    editRequest: input.editRequest || null,
     createdAt: input.createdAt || timestamp,
     updatedAt: timestamp,
   };
@@ -640,10 +653,40 @@ export function listAttendanceSessions(filters = {}) {
 export function saveAttendanceSession(input = {}) {
   const session = normalizedAttendanceSession(input);
   const index = attendanceSessions.findIndex((item) => item.program === session.program && item.weekStart === session.weekStart);
+  const existing = index >= 0 ? attendanceSessions[index] : null;
+  const actorRole = normalizeString(input.actorRole || session.actorRole);
+  const canEditLocked = ["Coordinador de programa", "Supervision M&E"].includes(actorRole);
+  if (existing?.locked && !canEditLocked) {
+    const note = normalizeString(input.editRequest?.note || input.editRequestNote);
+    if (!note) {
+      const error = new Error("Esta asistencia ya fue guardada. Solicita autorizacion para editarla.");
+      error.status = 403;
+      throw error;
+    }
+    attendanceSessions[index] = {
+      ...existing,
+      editRequest: {
+        status: "pending",
+        note,
+        requestedBy: normalizeString(input.recordedBy || input.actorId, "Usuario"),
+        requestedRole: actorRole || "Facilitador",
+        requestedAt: nowIso(),
+      },
+      updatedAt: nowIso(),
+    };
+    persistStore();
+    return structuredClone(attendanceSessions[index]);
+  }
   if (index >= 0) {
-    attendanceSessions[index] = { ...attendanceSessions[index], ...session, createdAt: attendanceSessions[index].createdAt };
+    attendanceSessions[index] = {
+      ...attendanceSessions[index],
+      ...session,
+      editRequest: canEditLocked ? null : session.editRequest,
+      createdAt: attendanceSessions[index].createdAt,
+      locked: true,
+    };
   } else {
-    attendanceSessions.unshift(session);
+    attendanceSessions.unshift({ ...session, locked: true });
   }
   persistStore();
   return structuredClone(index >= 0 ? attendanceSessions[index] : session);

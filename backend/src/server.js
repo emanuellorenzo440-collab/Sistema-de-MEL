@@ -363,8 +363,12 @@ export async function handleAttendanceSessionSave(request, response) {
     return;
   }
 
-  const session = saveAttendanceSession(payload);
-  sendJson(response, 200, { data: session });
+  try {
+    const session = saveAttendanceSession(payload);
+    sendJson(response, 200, { data: session });
+  } catch (error) {
+    sendApiError(response, error);
+  }
 }
 
 export async function handleReportsList(request, response, url) {

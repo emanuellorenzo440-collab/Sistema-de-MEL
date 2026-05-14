@@ -1090,11 +1090,43 @@ textarea {
   padding: 10px 12px;
 }
 
+.attendance-choice-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.attendance-choice {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 6px;
+  padding: 6px 9px;
+}
+
+.attendance-choice.active {
+  border-color: var(--teal);
+  box-shadow: 0 0 0 2px rgba(26, 127, 118, 0.1);
+}
+
+.attendance-choice input {
+  min-height: auto;
+  width: auto;
+}
+
+.attendance-choice:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
 .attendance-state-badge {
   border-radius: 999px;
   font-size: 0.78rem;
   font-weight: 800;
-  margin-left: auto;
   padding: 4px 9px;
 }
 
@@ -1106,6 +1138,11 @@ textarea {
 .attendance-state-badge.absent {
   background: #fee2e2;
   color: #991b1b;
+}
+
+.attendance-state-badge.excused {
+  background: #fef3c7;
+  color: #92400e;
 }
 
 .attendance-row input {
@@ -1160,7 +1197,7 @@ textarea {
 }
 
 .attendance-status-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .attendance-status-card {
@@ -1178,6 +1215,52 @@ textarea {
 
 .attendance-status-card.absent {
   border-color: rgba(239, 68, 68, 0.35);
+}
+
+.attendance-status-card.excused {
+  border-color: rgba(245, 158, 11, 0.4);
+}
+
+.attendance-monthly-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.attendance-monthly-card {
+  align-items: center;
+  background: #f8faf9;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+}
+
+.attendance-monthly-card.danger {
+  background: #fff1f2;
+  border-color: rgba(225, 29, 72, 0.35);
+}
+
+.attendance-score {
+  color: var(--teal-dark);
+  font-size: 1.1rem;
+  font-weight: 900;
+}
+
+.attendance-monthly-card.danger .attendance-score {
+  color: #b91c1c;
+}
+
+.attendance-lock-panel {
+  background: #fff7ed;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  margin: 8px 0 14px;
+  padding: 12px;
 }
 
 .attendance-name-list {
@@ -1367,6 +1450,7 @@ textarea {
   .access-summary-grid,
   .attendance-controls,
   .attendance-layout,
+  .attendance-monthly-grid,
   .attendance-status-grid,
   .dashboard-grid,
   .supervision-grid,
