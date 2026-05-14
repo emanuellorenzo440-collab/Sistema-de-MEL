@@ -850,7 +850,61 @@ function attendanceEntriesForCurrentSelection() {
   }));
 }
 
-function renderAttendanceChart() {
+function attendanceEntriesFromChecklist() {
+  if (!elements.attendanceList) return attendanceEntriesForCurrentSelection();
+  const checkboxes = Array.from(elements.attendanceList.querySelectorAll("[data-attendance-participant]"));
+  if (!checkboxes.length) return attendanceEntriesForCurrentSelection();
+  return checkboxes.map((checkbox) => {
+    const participant = (state.attendanceParticipants || []).find((item) => item.id === checkbox.dataset.attendanceParticipant);
+    return {
+      participantId: checkbox.dataset.attendanceParticipant,
+      name: participant?.name || "Participante",
+      present: checkbox.checked,
+    };
+  });
+}
+
+function attendanceNameListMarkup(entries, present) {
+  const filtered = entries.filter((entry) => entry.present === present);
+  if (!filtered.length) {
+    return `<p class="item-meta">${present ? "Nadie marcado presente." : "No hay ausencias marcadas."}</p>`;
+  }
+  return `
+    <ul class="attendance-name-list">
+      ${filtered.map((entry) => `<li>${escapeHtml(entry.name)}</li>`).join("")}
+    </ul>
+  `;
+}
+
+function renderAttendanceWeekDetail(entries = attendanceEntriesForCurrentSelection()) {
+  const presentCount = entries.filter((entry) => entry.present).length;
+  const absentCount = entries.length - presentCount;
+  const session = attendanceSessionFor();
+  return `
+    <section class="attendance-week-detail">
+      <div class="attendance-bar-top">
+        <div>
+          <p class="eyebrow">Detalle de semana</p>
+          <h3>${escapeHtml(state.attendanceWeek)}</h3>
+        </div>
+        <span class="status-pill info">${presentCount}/${entries.length} presentes</span>
+      </div>
+      ${session?.notes ? `<p class="item-meta">${escapeHtml(session.notes)}</p>` : ""}
+      <div class="attendance-status-grid">
+        <article class="attendance-status-card present">
+          <strong>Presentes (${presentCount})</strong>
+          ${attendanceNameListMarkup(entries, true)}
+        </article>
+        <article class="attendance-status-card absent">
+          <strong>Ausentes (${absentCount})</strong>
+          ${attendanceNameListMarkup(entries, false)}
+        </article>
+      </div>
+    </section>
+  `;
+}
+
+function renderAttendanceChart(detailEntries = attendanceEntriesForCurrentSelection()) {
   const sessions = (state.attendanceSessions || [])
     .filter((session) => session.program === state.attendanceProgram)
     .slice()
@@ -858,26 +912,34 @@ function renderAttendanceChart() {
     .slice(-8);
 
   if (!sessions.length) {
-    elements.attendanceChart.innerHTML = `<p class="item-meta">Todavia no hay asistencia guardada para este programa.</p>`;
+    elements.attendanceChart.innerHTML = `
+      <p class="item-meta">Todavia no hay asistencia guardada para este programa.</p>
+      ${renderAttendanceWeekDetail(detailEntries)}
+    `;
     return;
   }
 
-  elements.attendanceChart.innerHTML = sessions
-    .map((session) => {
-      const total = session.entries?.length || 0;
-      const present = (session.entries || []).filter((entry) => entry.present).length;
-      const rate = total ? Math.round((present / total) * 100) : 0;
-      return `
-        <article class="attendance-bar">
-          <div class="attendance-bar-top">
-            <strong>${escapeHtml(session.weekStart)}</strong>
-            <span>${present}/${total} · ${rate}%</span>
-          </div>
-          <div class="bar-track"><span style="width: ${rate}%"></span></div>
-        </article>
-      `;
-    })
-    .join("");
+  elements.attendanceChart.innerHTML = `
+    <div class="attendance-chart-bars">
+      ${sessions
+        .map((session) => {
+          const total = session.entries?.length || 0;
+          const present = (session.entries || []).filter((entry) => entry.present).length;
+          const rate = total ? Math.round((present / total) * 100) : 0;
+          return `
+            <button class="attendance-bar ${session.weekStart === state.attendanceWeek ? "active" : ""}" type="button" data-attendance-week="${escapeHtml(session.weekStart)}">
+              <span class="attendance-bar-top">
+                <strong>${escapeHtml(session.weekStart)}</strong>
+                <span>${present}/${total} · ${rate}%</span>
+              </span>
+              <span class="bar-track"><span style="width: ${rate}%"></span></span>
+            </button>
+          `;
+        })
+        .join("")}
+    </div>
+    ${renderAttendanceWeekDetail(detailEntries)}
+  `;
 }
 
 function renderAttendance() {
@@ -896,6 +958,7 @@ function renderAttendance() {
             <label class="attendance-row">
               <input type="checkbox" data-attendance-participant="${escapeHtml(entry.participantId)}" ${entry.present ? "checked" : ""} />
               <span>${escapeHtml(entry.name)}</span>
+              <span class="attendance-state-badge ${entry.present ? "present" : "absent"}">${entry.present ? "Presente" : "Ausente"}</span>
             </label>
           `,
         )
@@ -3254,12 +3317,26 @@ function bindEvents() {
   });
 
   elements.attendanceList?.addEventListener("change", (event) => {
-    if (!event.target.closest("[data-attendance-participant]")) return;
-    const presentCount = Array.from(elements.attendanceList.querySelectorAll("[data-attendance-participant]")).filter(
-      (checkbox) => checkbox.checked,
-    ).length;
-    const total = attendanceParticipantsForProgram().length;
+    const checkbox = event.target.closest("[data-attendance-participant]");
+    if (!checkbox) return;
+    const badge = checkbox.closest(".attendance-row")?.querySelector(".attendance-state-badge");
+    if (badge) {
+      badge.textContent = checkbox.checked ? "Presente" : "Ausente";
+      badge.className = `attendance-state-badge ${checkbox.checked ? "present" : "absent"}`;
+    }
+    const entries = attendanceEntriesFromChecklist();
+    const presentCount = entries.filter((entry) => entry.present).length;
+    const total = entries.length;
     elements.attendanceSummary.textContent = `${presentCount}/${total} presentes`;
+    renderAttendanceChart(entries);
+  });
+
+  elements.attendanceChart?.addEventListener("click", (event) => {
+    const week = event.target.closest("[data-attendance-week]")?.dataset.attendanceWeek;
+    if (!week) return;
+    state.attendanceWeek = week;
+    saveState();
+    renderAttendance();
   });
 
   elements.saveAttendanceButton?.addEventListener("click", () => {

@@ -1058,6 +1058,12 @@ textarea {
   margin: 14px 0;
 }
 
+.attendance-chart-bars,
+.attendance-status-grid {
+  display: grid;
+  gap: 10px;
+}
+
 .attendance-row {
   align-items: center;
   background: #f8faf9;
@@ -1068,18 +1074,46 @@ textarea {
   padding: 10px 12px;
 }
 
+.attendance-state-badge {
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  margin-left: auto;
+  padding: 4px 9px;
+}
+
+.attendance-state-badge.present {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.attendance-state-badge.absent {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
 .attendance-row input {
   min-height: auto;
   width: auto;
 }
 
 .attendance-bar {
+  appearance: none;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 8px;
+  color: inherit;
+  cursor: pointer;
   display: grid;
   gap: 8px;
   padding: 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.attendance-bar.active {
+  border-color: var(--teal);
+  box-shadow: 0 0 0 2px rgba(26, 127, 118, 0.12);
 }
 
 .attendance-bar-top {
@@ -1099,6 +1133,53 @@ textarea {
   background: var(--teal);
   display: block;
   height: 100%;
+}
+
+.attendance-week-detail {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 12px;
+  margin-top: 8px;
+  padding-top: 14px;
+}
+
+.attendance-status-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.attendance-status-card {
+  background: #f8faf9;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.attendance-status-card.present {
+  border-color: rgba(34, 197, 94, 0.35);
+}
+
+.attendance-status-card.absent {
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.attendance-name-list {
+  display: grid;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.attendance-name-list li {
+  border-bottom: 1px solid rgba(91, 107, 105, 0.16);
+  padding-bottom: 6px;
+}
+
+.attendance-name-list li:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
 }
 
 .access-chip-list {
@@ -1270,6 +1351,7 @@ textarea {
   .access-summary-grid,
   .attendance-controls,
   .attendance-layout,
+  .attendance-status-grid,
   .dashboard-grid,
   .supervision-grid,
   .design-grid,

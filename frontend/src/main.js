@@ -10,7 +10,7 @@ async function loadMonitoringApp(authenticatedUser = null) {
 
   monitoringAppPromise = (async () => {
     const [{ createMonitoringApp }, { bootstrapApiBridge, startRuntimeBridge }] = await Promise.all([
-      import("./features/monitoring-app.js?v=20260514a"),
+      import("./features/monitoring-app.js?v=20260514b"),
       import("./services/mel-runtime-bridge.js?v=20260514a"),
     ]);
 
