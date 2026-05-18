@@ -1,7 +1,7 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260518c";
+import { $, $$, elements } from "../core/dom.js?v=20260518d";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
-import { seedState } from "../data/seed-state.js?v=20260518c";
+import { seedState } from "../data/seed-state.js?v=20260518d";
 import {
   REPORT_STATUSES,
   canReviewReports,
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260518c";
+} from "../services/auth-service.js?v=20260518d";
 import {
   createApiConceptPaper,
   createApiAttendanceParticipant,
@@ -46,7 +46,7 @@ import {
   updateApiReportStatus,
   updateApiIndicator,
   updateApiProgram,
-} from "../services/mel-api.js?v=20260518c";
+} from "../services/mel-api.js?v=20260518d";
 import {
   currentMonth,
   escapeHtml,
@@ -2317,17 +2317,20 @@ function activeViewName() {
   return $(".nav-item.active")?.dataset.view || "dashboard";
 }
 
+function updateQuickReportButtonVisibility(viewName = activeViewName()) {
+  const quickReportButton = $("#quickReportButton");
+  if (quickReportButton) {
+    quickReportButton.hidden = viewName !== "report" || !viewIsEnabled("report");
+  }
+}
+
 function applyAccessControl() {
   $$(".nav-item").forEach((button) => {
     button.hidden = !viewIsEnabled(button.dataset.view);
   });
 
-  const quickReportButton = $("#quickReportButton");
-  if (quickReportButton) {
-    quickReportButton.hidden = !viewIsEnabled("report");
-  }
-
   const currentView = activeViewName();
+  updateQuickReportButtonVisibility(currentView);
   if (!viewIsEnabled(currentView)) {
     switchView(firstAllowedView());
   }
@@ -2383,6 +2386,7 @@ function switchView(viewName, options = {}) {
   if (elements.globalFilters) {
     elements.globalFilters.hidden = ["access", "attendance"].includes(viewName);
   }
+  updateQuickReportButtonVisibility(viewName);
   elements.pageTitle.textContent = titles[viewName];
   if (persist && state) {
     saveState();
