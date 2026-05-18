@@ -1,7 +1,7 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260518a";
+import { $, $$, elements } from "../core/dom.js?v=20260518b";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
-import { seedState } from "../data/seed-state.js?v=20260518a";
+import { seedState } from "../data/seed-state.js?v=20260518b";
 import {
   REPORT_STATUSES,
   canReviewReports,
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260518a";
+} from "../services/auth-service.js?v=20260518b";
 import {
   createApiConceptPaper,
   createApiAttendanceParticipant,
@@ -46,7 +46,7 @@ import {
   updateApiReportStatus,
   updateApiIndicator,
   updateApiProgram,
-} from "../services/mel-api.js?v=20260518a";
+} from "../services/mel-api.js?v=20260518b";
 import {
   currentMonth,
   escapeHtml,
@@ -214,7 +214,8 @@ function normalizeState(savedState) {
   return nextState;
 }
 
-function saveState() {
+function saveState(options = {}) {
+  const preserveAttendanceSnapshot = Boolean(options.preserveAttendanceSnapshot);
   const latest = loadState();
   const nextState = normalizeState({
     ...state,
@@ -237,6 +238,7 @@ function saveState() {
         ? latest.formSubmissions
         : state.formSubmissions,
     attendanceParticipants:
+      !preserveAttendanceSnapshot &&
       Array.isArray(state?.attendanceParticipants) &&
       state.attendanceParticipants.length === 0 &&
       Array.isArray(latest?.attendanceParticipants) &&
@@ -244,6 +246,7 @@ function saveState() {
         ? latest.attendanceParticipants
         : state.attendanceParticipants,
     attendanceSessions:
+      !preserveAttendanceSnapshot &&
       Array.isArray(state?.attendanceSessions) &&
       state.attendanceSessions.length === 0 &&
       Array.isArray(latest?.attendanceSessions) &&
@@ -2463,7 +2466,7 @@ async function refreshAttendanceFromApi() {
   ]);
   state.attendanceParticipants = participants;
   state.attendanceSessions = sessions;
-  saveState();
+  saveState({ preserveAttendanceSnapshot: true });
 }
 
 async function addAttendanceParticipant(name) {
@@ -2480,7 +2483,7 @@ async function addAttendanceParticipant(name) {
 
   const saved = isApiConfigured() ? await createApiAttendanceParticipant(participant) : participant;
   state.attendanceParticipants = [...(state.attendanceParticipants || []), saved];
-  saveState();
+  saveState({ preserveAttendanceSnapshot: true });
   renderAttendance();
 }
 
@@ -2588,7 +2591,7 @@ async function deleteAttendanceParticipantById(participantId) {
     ...session,
     entries: (session.entries || []).filter((entry) => entry.participantId !== participantId),
   }));
-  saveState();
+  saveState({ preserveAttendanceSnapshot: true });
   renderAttendance();
 }
 
@@ -2615,7 +2618,7 @@ async function clearAttendanceParticipantsForCurrentProgram() {
       ? { ...session, entries: (session.entries || []).filter((entry) => !deletedIds.has(entry.participantId)) }
       : session,
   );
-  saveState();
+  saveState({ preserveAttendanceSnapshot: true });
   renderAttendance();
 }
 
@@ -2644,7 +2647,7 @@ async function deleteCurrentAttendanceSession() {
         (session.period || session.weekStart?.slice(0, 7)) === filters.period
       ),
   );
-  saveState();
+  saveState({ preserveAttendanceSnapshot: true });
   renderAttendance();
 }
 
@@ -2666,7 +2669,7 @@ async function resetCurrentAttendanceProgram() {
   );
   state.attendanceParticipants = (state.attendanceParticipants || []).filter((participant) => participant.program !== program);
   state.attendanceSessions = (state.attendanceSessions || []).filter((session) => session.program !== program);
-  saveState();
+  saveState({ preserveAttendanceSnapshot: true });
   renderAttendance();
 }
 
