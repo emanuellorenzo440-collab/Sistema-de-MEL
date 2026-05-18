@@ -1,7 +1,7 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260518d";
+import { $, $$, elements } from "../core/dom.js?v=20260518e";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
-import { seedState } from "../data/seed-state.js?v=20260518d";
+import { seedState } from "../data/seed-state.js?v=20260518e";
 import {
   REPORT_STATUSES,
   canReviewReports,
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260518d";
+} from "../services/auth-service.js?v=20260518e";
 import {
   createApiConceptPaper,
   createApiAttendanceParticipant,
@@ -46,7 +46,7 @@ import {
   updateApiReportStatus,
   updateApiIndicator,
   updateApiProgram,
-} from "../services/mel-api.js?v=20260518d";
+} from "../services/mel-api.js?v=20260518e";
 import {
   currentMonth,
   escapeHtml,
@@ -190,6 +190,13 @@ function normalizeState(savedState) {
   nextState.conceptPapers = mergeByKey(savedState.conceptPapers || [], seedState.conceptPapers, (item) => item.id).map(
     normalizeConceptPaperState,
   );
+  nextState.programCenters = mergeByKey(savedState.programCenters || [], seedState.programCenters || [], (item) =>
+    [item.program, item.province, item.name].join("|"),
+  ).map((center) => ({
+    program: String(center.program || ""),
+    province: String(center.province || ""),
+    name: String(center.name || ""),
+  }));
   nextState.reports = Array.isArray(savedState.reports) ? savedState.reports.slice() : [];
   nextState.notifications = Array.isArray(savedState.notifications) ? savedState.notifications.slice() : [];
   nextState.reportDrafts = Array.isArray(savedState.reportDrafts) ? savedState.reportDrafts.slice() : [];
@@ -321,22 +328,77 @@ function getAnalyticsReports() {
   return reports.filter((report) => isApprovedReportStatus(report.status));
 }
 
+function registeredCenters() {
+  return (state.programCenters || []).filter((center) => center.program && center.province && center.name);
+}
+
+function provincesForProgram(programName) {
+  const centerProvinces = unique(
+    registeredCenters()
+      .filter((center) => !programName || center.program === programName)
+      .map((center) => center.province),
+  );
+  if (centerProvinces.length) return centerProvinces;
+
+  const program = state.programs.find((item) => item.name === programName);
+  const programProvinces = Array.isArray(program?.provinces) ? program.provinces.filter(Boolean) : [];
+  if (programProvinces.length) return unique(programProvinces);
+
+  return unique(registeredCenters().map((center) => center.province));
+}
+
+function centersForProgramProvince(programName, province) {
+  const centers = unique(
+    registeredCenters()
+      .filter((center) => center.program === programName && center.province === province)
+      .map((center) => center.name),
+  );
+  return centers.length ? centers : ["Centro por definir"];
+}
+
+function syncReportCaptureOptions() {
+  const programName = elements.reportProgram?.value || state.programs[0]?.name || "";
+  const selectedProvince = elements.reportProvince?.value || "";
+  const selectedCenter = elements.reportCenter?.value || "";
+  const selectedIndicator = elements.reportIndicator?.value || "";
+  const provinces = provincesForProgram(programName);
+  const nextProvince = provinces.includes(selectedProvince) ? selectedProvince : provinces[0] || "";
+  const centers = centersForProgramProvince(programName, nextProvince);
+  const nextCenter = centers.includes(selectedCenter) ? selectedCenter : centers[0] || "";
+  const indicators = state.indicators.filter((indicator) => indicator.program === programName);
+  const indicatorNames = indicators.map((indicator) => indicator.name);
+  const nextIndicator = indicatorNames.includes(selectedIndicator) ? selectedIndicator : indicatorNames[0] || "";
+
+  setOptions(elements.reportProvince, provinces, nextProvince);
+  setOptions(elements.reportCenter, centers, nextCenter);
+  setOptions(elements.reportIndicator, indicatorNames, nextIndicator);
+}
+
+function reportLocation(report) {
+  return [report.period, report.province, report.center].filter(Boolean).join(" · ");
+}
+
 function renderFilters() {
   const programs = ["Todos", ...state.programs.map((program) => program.name)];
-  const provinces = ["Todas", ...unique(state.programs.flatMap((program) => program.provinces))];
+  const provinces = [
+    "Todas",
+    ...unique([
+      ...registeredCenters().map((center) => center.province),
+      ...state.programs.flatMap((program) => program.provinces || []),
+    ].filter(Boolean)),
+  ];
   const periods = ["Todos", ...unique(state.reports.map((report) => report.period)).reverse()];
   const programNames = state.programs.map((program) => program.name);
-  const provinceNames = unique(state.programs.flatMap((program) => program.provinces));
   const selectedProgram = state.programs[0]?.name || "";
-  const selectedProvince = provinceNames[0] || "";
-  const selectedIndicator = state.indicators[0]?.name || "";
+  const currentReportProgram = programNames.includes(elements.reportProgram?.value)
+    ? elements.reportProgram.value
+    : selectedProgram;
 
   setOptions(elements.programFilter, programs, state.filters.program);
   setOptions(elements.provinceFilter, provinces, state.filters.province);
   setOptions(elements.periodFilter, periods, state.filters.period);
-  setOptions(elements.reportProgram, programNames, selectedProgram);
-  setOptions(elements.reportProvince, provinceNames, selectedProvince);
-  setOptions(elements.reportIndicator, state.indicators.map((indicator) => indicator.name), selectedIndicator);
+  setOptions(elements.reportProgram, programNames, currentReportProgram);
+  syncReportCaptureOptions();
   setOptions(elements.indicatorProgramInput, programNames, elements.indicatorProgramInput?.value || selectedProgram);
   setOptions(elements.designProgramSelect, programNames, state.designProgram || selectedProgram);
   setOptions(elements.formsProgramSelect, programNames, state.formsProgram || state.designProgram || selectedProgram);
@@ -1271,7 +1333,7 @@ function renderReviewQueue() {
               <div class="review-top">
                 <div>
                   <h3>${report.program}</h3>
-                  <p class="item-meta">${indicator?.name ?? "Indicador eliminado"} · ${report.province}</p>
+                  <p class="item-meta">${indicator?.name ?? "Indicador eliminado"} · ${[report.province, report.center].filter(Boolean).join(" · ")}</p>
                 </div>
                 <span class="status-pill ${classForReportStatus(report.status)}">${report.status}</span>
               </div>
@@ -1333,7 +1395,7 @@ function renderReportStatusDetail(report) {
         <div>
           <p class="eyebrow">Detalle del reporte</p>
           <h3>${report.program}</h3>
-          <p class="item-meta">${indicator?.name ?? "Indicador eliminado"} · ${report.period} · ${report.province}</p>
+          <p class="item-meta">${indicator?.name ?? "Indicador eliminado"} · ${reportLocation(report)}</p>
         </div>
         <span class="status-pill ${classForReportStatus(report.status)}">${report.status}</span>
       </div>
@@ -1374,7 +1436,7 @@ function renderReportInboxCard(report, role) {
       <div class="notification-top">
         <div>
           <h3>${report.program}</h3>
-          <p class="item-meta">${indicator?.name ?? "Indicador eliminado"} · ${report.period} · ${report.province}</p>
+          <p class="item-meta">${indicator?.name ?? "Indicador eliminado"} · ${reportLocation(report)}</p>
         </div>
         <span class="status-pill warning">${report.status}</span>
       </div>
@@ -2384,7 +2446,7 @@ function switchView(viewName, options = {}) {
   $$(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.view === viewName));
   $$(".view").forEach((panel) => panel.classList.toggle("active", panel.dataset.viewPanel === viewName));
   if (elements.globalFilters) {
-    elements.globalFilters.hidden = ["access", "attendance"].includes(viewName);
+    elements.globalFilters.hidden = ["access", "attendance", "report"].includes(viewName);
   }
   updateQuickReportButtonVisibility(viewName);
   elements.pageTitle.textContent = titles[viewName];
@@ -2790,6 +2852,10 @@ function applyDraftToReportForm(draft) {
   const indicators = state.indicators.filter((item) => item.program === draft.program);
   setOptions(elements.reportIndicator, indicators.map((item) => item.name), indicator?.name || indicators[0]?.name);
   elements.reportProvince.value = draft.province || "Centros de programa";
+  syncReportCaptureOptions();
+  if (draft.center) {
+    elements.reportCenter.value = draft.center;
+  }
   elements.reportPeriod.value = draft.period || currentMonth();
   document.querySelector("#reportOwner").value = draft.owner || "";
   document.querySelector("#reportValue").value = draft.value || 0;
@@ -2818,7 +2884,7 @@ function renderReportDrafts() {
               <div class="coverage">
                 <span>Valor ${Number(draft.value || 0).toLocaleString("es-DO")}</span>
                 <span>${draft.owner || "Sin responsable"}</span>
-                <span>${draft.province || "Centros de programa"}</span>
+                <span>${[draft.province || "Centros de programa", draft.center].filter(Boolean).join(" · ")}</span>
               </div>
               <div class="item-actions">
                 <button type="button" data-apply-draft="${index}">Cargar en captura</button>
@@ -2966,6 +3032,7 @@ async function addReport(formData) {
     program: formData.get("program"),
     programId: state.programs.find((program) => program.name === formData.get("program"))?.id || null,
     province: formData.get("province"),
+    center: formData.get("center"),
     indicatorId: indicator.id,
     value,
     women: Number(formData.get("women") || 0),
@@ -2998,12 +3065,13 @@ async function addReport(formData) {
 
 function exportCsv() {
   const rows = [
-    ["fecha", "periodo", "programa", "provincia", "indicador", "valor", "mujeres", "hombres", "jovenes", "responsable", "estado"],
+    ["fecha", "periodo", "programa", "provincia", "centro", "indicador", "valor", "mujeres", "hombres", "jovenes", "responsable", "estado"],
     ...state.reports.map((report) => [
       report.date,
       report.period,
       report.program,
       report.province,
+      report.center || "",
       indicatorById(report.indicatorId)?.name ?? "",
       report.value,
       report.women,
@@ -3243,6 +3311,7 @@ function rowsToReports(rows, fileName) {
         period: record.periodo || currentMonth(),
         program: form.program,
         province: record.provincia || "Centros de programa",
+        center: record.centro || "",
         indicatorId: indicator.id,
         value,
         women: indicator.unit === "chicas" ? value : 0,
@@ -3884,8 +3953,11 @@ function bindEvents() {
   });
 
   elements.reportProgram.addEventListener("change", () => {
-    const indicators = state.indicators.filter((indicator) => indicator.program === elements.reportProgram.value);
-    setOptions(elements.reportIndicator, indicators.map((indicator) => indicator.name), indicators[0]?.name);
+    syncReportCaptureOptions();
+  });
+
+  elements.reportProvince.addEventListener("change", () => {
+    syncReportCaptureOptions();
   });
 
   elements.designProgramSelect.addEventListener("change", () => {
@@ -3987,6 +4059,7 @@ function bindEvents() {
       const saved = await addReport(new FormData(elements.reportForm));
       if (!saved) return;
       elements.reportForm.reset();
+      syncReportCaptureOptions();
       elements.reportPeriod.value = state.filters.period === "Todos" ? currentMonth() : state.filters.period;
       elements.reportUploadStatus.textContent = "Sin archivo";
       elements.reportUploadStatus.className = "status-pill neutral";

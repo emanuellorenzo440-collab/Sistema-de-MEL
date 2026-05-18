@@ -140,6 +140,7 @@ function parseFilters(url) {
     program: url.searchParams.get("program") || undefined,
     programId: url.searchParams.get("programId") || undefined,
     province: url.searchParams.get("province") || undefined,
+    center: url.searchParams.get("center") || undefined,
     period: url.searchParams.get("period") || undefined,
     scope: resolveAnalyticsScope(url.searchParams.get("scope") || undefined),
   };

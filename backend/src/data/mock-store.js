@@ -246,6 +246,7 @@ function normalizedReport(input = {}) {
     program: String(input.program || ""),
     programId: input.programId || programIdByName().get(input.program) || null,
     province: String(input.province || "Centros de programa"),
+    center: String(input.center || input.centre || ""),
     indicatorId: String(input.indicatorId || ""),
     value: asNumber(input.value),
     women: asNumber(input.women),
@@ -835,12 +836,13 @@ export function listAttendanceArchive(filters = {}) {
 }
 
 export function queryReports(filters = {}) {
-  const { program, programId, province, period } = filters;
+  const { program, programId, province, center, period } = filters;
   return reports
     .filter((report) => {
       if (program && report.program !== program) return false;
       if (programId && report.programId !== programId) return false;
       if (province && report.province !== province) return false;
+      if (center && report.center !== center) return false;
       if (period && report.period !== period) return false;
       return true;
     })

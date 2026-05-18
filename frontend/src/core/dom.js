@@ -20,6 +20,7 @@ export const elements = {
   reportForm: $("#reportForm"),
   reportProgram: $("#reportProgram"),
   reportProvince: $("#reportProvince"),
+  reportCenter: $("#reportCenter"),
   reportIndicator: $("#reportIndicator"),
   reportPeriod: $("#reportPeriod"),
   reportUploadStatus: $("#reportUploadStatus"),

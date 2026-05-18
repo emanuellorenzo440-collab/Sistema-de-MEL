@@ -20,6 +20,22 @@ export const seedState = {
   attendanceParticipants: [],
   attendanceSessions: [],
   attendanceArchive: [],
+  programCenters: [
+    { program: "Girls Empowerment", province: "Santo Domingo", name: "Centro Santo Domingo" },
+    { program: "Girls Empowerment", province: "Santiago", name: "Centro Santiago" },
+    { program: "Girls Empowerment", province: "San Pedro de Macoris", name: "Centro San Pedro" },
+    { program: "Club de Chicos", province: "Santo Domingo", name: "Centro Santo Domingo" },
+    { program: "Club de Chicos", province: "Santiago", name: "Centro Santiago" },
+    { program: "Club de Chicos", province: "La Romana", name: "Centro La Romana" },
+    { program: "Programa CFI", province: "Santo Domingo", name: "Centro CFI Santo Domingo" },
+    { program: "Programa CFI", province: "Santiago", name: "Centro CFI Santiago" },
+    { program: "Agricultura", province: "Azua", name: "Centro Agricola Azua" },
+    { program: "Agricultura", province: "San Juan", name: "Centro Agricola San Juan" },
+    { program: "Agricultura", province: "Monte Plata", name: "Centro Agricola Monte Plata" },
+    { program: "IGA", province: "Santo Domingo", name: "Centro IGA Santo Domingo" },
+    { program: "IGA", province: "Santiago", name: "Centro IGA Santiago" },
+    { program: "IGA", province: "La Vega", name: "Centro IGA La Vega" },
+  ],
   programs: [
     {
       name: "Girls Empowerment",
