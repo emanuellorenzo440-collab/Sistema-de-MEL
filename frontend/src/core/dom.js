@@ -71,6 +71,7 @@ export const elements = {
   saveAttendanceButton: $("#saveAttendanceButton"),
   deleteAttendanceSessionButton: $("#deleteAttendanceSessionButton"),
   clearAttendanceParticipantsButton: $("#clearAttendanceParticipantsButton"),
+  resetAttendanceProgramButton: $("#resetAttendanceProgramButton"),
   attendanceChart: $("#attendanceChart"),
   conceptCount: $("#conceptCount"),
   conceptPaperList: $("#conceptPaperList"),

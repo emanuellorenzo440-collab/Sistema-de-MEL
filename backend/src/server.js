@@ -16,6 +16,7 @@ import {
   deleteIndicator,
   deleteProgram,
   findReportById,
+  listAttendanceArchive,
   listAttendanceParticipants,
   listAttendanceSessions,
   listConceptPapers,
@@ -27,6 +28,7 @@ import {
   listReportStatusHistory,
   markNotificationRead,
   queryReports,
+  resetAttendanceProgram,
   saveAttendanceSession,
   saveReportStatusDecision,
   updateIndicator,
@@ -324,6 +326,14 @@ export async function handleAttendanceParticipants(_request, response, url) {
   sendJson(response, 200, { data: listAttendanceParticipants(filters), filters });
 }
 
+export async function handleAttendanceArchive(_request, response, url) {
+  const filters = {
+    program: url.searchParams.get("program") || undefined,
+    type: url.searchParams.get("type") || undefined,
+  };
+  sendJson(response, 200, { data: listAttendanceArchive(filters), filters });
+}
+
 export async function handleAttendanceParticipantCreate(request, response) {
   let payload;
   try {
@@ -352,7 +362,11 @@ export async function handleAttendanceParticipantDelete(request, response, url) 
   }
   const participantId = decodeURIComponent(url.pathname.split("/").pop() || "");
   try {
-    const deleted = deleteAttendanceParticipant(participantId, { actorRole: payload.actorRole });
+    const deleted = deleteAttendanceParticipant(participantId, {
+      actorId: payload.actorId,
+      actorRole: payload.actorRole,
+      reason: payload.reason,
+    });
     if (!deleted) {
       sendJson(response, 404, { error: "No encontre ese participante." });
       return;
@@ -376,7 +390,35 @@ export async function handleAttendanceParticipantsDelete(request, response, url)
     return;
   }
   try {
-    const result = deleteAttendanceParticipantsForProgram(program, { actorRole: payload.actorRole });
+    const result = deleteAttendanceParticipantsForProgram(program, {
+      actorId: payload.actorId,
+      actorRole: payload.actorRole,
+      reason: payload.reason,
+    });
+    sendJson(response, 200, { data: result });
+  } catch (error) {
+    sendApiError(response, error);
+  }
+}
+
+export async function handleAttendanceProgramReset(request, response, url) {
+  let payload = {};
+  try {
+    payload = await readJsonBody(request);
+  } catch {
+    payload = {};
+  }
+  const program = url.searchParams.get("program") || payload.program;
+  if (!program) {
+    sendJson(response, 400, { error: "Indica el programa para reiniciar la asistencia." });
+    return;
+  }
+  try {
+    const result = resetAttendanceProgram(program, {
+      actorId: payload.actorId,
+      actorRole: payload.actorRole,
+      reason: payload.reason,
+    });
     sendJson(response, 200, { data: result });
   } catch (error) {
     sendApiError(response, error);
@@ -435,7 +477,11 @@ export async function handleAttendanceSessionDelete(request, response, url) {
     return;
   }
   try {
-    const deleted = deleteAttendanceSession(filters, { actorRole: payload.actorRole });
+    const deleted = deleteAttendanceSession(filters, {
+      actorId: payload.actorId,
+      actorRole: payload.actorRole,
+      reason: payload.reason,
+    });
     if (!deleted) {
       sendJson(response, 404, { error: "No encontre esa sesion de asistencia." });
       return;
@@ -653,6 +699,7 @@ function apiIndex() {
       "concept-papers",
       "attendance/participants",
       "attendance/sessions",
+      "attendance/archive",
       "reports",
       "reports/deleted",
       "notifications",
@@ -909,8 +956,18 @@ async function router(request, response) {
     return;
   }
 
+  if (request.method === "GET" && pathname === "/api/v1/attendance/archive") {
+    await handleAttendanceArchive(request, response, url);
+    return;
+  }
+
   if (request.method === "POST" && pathname === "/api/v1/attendance/participants") {
     await handleAttendanceParticipantCreate(request, response, url);
+    return;
+  }
+
+  if (request.method === "DELETE" && pathname === "/api/v1/attendance/reset") {
+    await handleAttendanceProgramReset(request, response, url);
     return;
   }
 

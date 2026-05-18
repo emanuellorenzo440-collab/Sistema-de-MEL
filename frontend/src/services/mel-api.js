@@ -157,6 +157,19 @@ export async function deleteApiAttendanceParticipants(filters = {}, payload = {}
   return response.data;
 }
 
+export async function resetApiAttendanceProgram(filters = {}, payload = {}) {
+  const response = await requestJson("attendance/reset", {
+    method: "DELETE",
+    body: JSON.stringify(payload),
+  }, filters);
+  return response.data;
+}
+
+export async function fetchApiAttendanceArchive(filters = {}) {
+  const response = await requestJson("attendance/archive", {}, filters);
+  return response.data || [];
+}
+
 export async function fetchApiAttendanceSessions(filters = {}) {
   const response = await requestJson("attendance/sessions", {}, filters);
   return response.data || [];

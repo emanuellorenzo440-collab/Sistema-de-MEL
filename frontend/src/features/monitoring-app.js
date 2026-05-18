@@ -1,7 +1,7 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260514f";
+import { $, $$, elements } from "../core/dom.js?v=20260518a";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
-import { seedState } from "../data/seed-state.js?v=20260514f";
+import { seedState } from "../data/seed-state.js?v=20260518a";
 import {
   REPORT_STATUSES,
   canReviewReports,
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260514f";
+} from "../services/auth-service.js?v=20260518a";
 import {
   createApiConceptPaper,
   createApiAttendanceParticipant,
@@ -41,11 +41,12 @@ import {
   fetchApiReports,
   isApiConfigured,
   markApiNotificationRead,
+  resetApiAttendanceProgram,
   saveApiAttendanceSession,
   updateApiReportStatus,
   updateApiIndicator,
   updateApiProgram,
-} from "../services/mel-api.js?v=20260514f";
+} from "../services/mel-api.js?v=20260518a";
 import {
   currentMonth,
   escapeHtml,
@@ -202,6 +203,7 @@ function normalizeState(savedState) {
   nextState.attendanceCenter = savedState.attendanceCenter || seedState.attendanceCenter || "General";
   nextState.attendancePeriod = savedState.attendancePeriod || seedState.attendancePeriod || currentMonth();
   nextState.attendanceWeek = savedState.attendanceWeek || new Date().toISOString().slice(0, 10);
+  nextState.attendanceArchive = Array.isArray(savedState.attendanceArchive) ? savedState.attendanceArchive.slice() : [];
   nextState.chartPreferences = { ...seedState.chartPreferences, ...(savedState.chartPreferences || {}) };
   nextState.filters = { ...seedState.filters, ...(savedState.filters || {}) };
   nextState.role = normalizeRoleLabel(nextState.role || seedState.role);
@@ -1103,6 +1105,12 @@ function renderAttendance() {
   if (elements.clearAttendanceParticipantsButton) {
     elements.clearAttendanceParticipantsButton.hidden = !isAdmin;
     elements.clearAttendanceParticipantsButton.disabled = !attendanceParticipantsForProgram().length;
+  }
+  if (elements.resetAttendanceProgramButton) {
+    elements.resetAttendanceProgramButton.hidden = !isAdmin;
+    elements.resetAttendanceProgramButton.disabled =
+      !attendanceParticipantsForProgram().length &&
+      !(state.attendanceSessions || []).some((session) => session.program === state.attendanceProgram);
   }
   document.querySelectorAll(".attendance-lock-panel").forEach((panel) => panel.remove());
   elements.attendanceList.innerHTML = entries.length
@@ -2543,6 +2551,25 @@ function attendanceAdminPayload() {
   };
 }
 
+function archiveAttendanceLocally(type, data, reason = "") {
+  state.attendanceArchive = [
+    {
+      id: `local-atta-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+      type,
+      program: data?.program || data?.participant?.program || state.attendanceProgram,
+      center: data?.center || attendanceCenterValue(),
+      period: data?.period || attendancePeriodValue(),
+      weekStart: data?.weekStart || null,
+      deletedAt: new Date().toISOString(),
+      deletedBy: currentUser?.email || currentUser?.fullName || activeRole(),
+      deletedByRole: activeRole(),
+      reason,
+      data,
+    },
+    ...(state.attendanceArchive || []),
+  ];
+}
+
 async function deleteAttendanceParticipantById(participantId) {
   if (!isSystemAdminRole()) {
     showToast("Solo Supervision M&E puede eliminar participantes.");
@@ -2551,6 +2578,11 @@ async function deleteAttendanceParticipantById(participantId) {
   if (isApiConfigured()) {
     await deleteApiAttendanceParticipant(participantId, attendanceAdminPayload());
   }
+  const participant = (state.attendanceParticipants || []).find((item) => item.id === participantId);
+  const affectedSessions = (state.attendanceSessions || [])
+    .map((session) => ({ ...session, entries: (session.entries || []).filter((entry) => entry.participantId === participantId) }))
+    .filter((session) => session.entries.length);
+  archiveAttendanceLocally("participant", { participant, affectedSessions }, "Eliminado desde la interfaz de asistencia.");
   state.attendanceParticipants = (state.attendanceParticipants || []).filter((participant) => participant.id !== participantId);
   state.attendanceSessions = (state.attendanceSessions || []).map((session) => ({
     ...session,
@@ -2569,6 +2601,11 @@ async function clearAttendanceParticipantsForCurrentProgram() {
   if (isApiConfigured()) {
     await deleteApiAttendanceParticipants({ program }, { ...attendanceAdminPayload(), program });
   }
+  const deletedParticipants = (state.attendanceParticipants || []).filter((participant) => participant.program === program);
+  const affectedSessions = (state.attendanceSessions || []).filter(
+    (session) => session.program === program && (session.entries || []).some((entry) => deletedParticipants.some((participant) => participant.id === entry.participantId)),
+  );
+  archiveAttendanceLocally("program-participants", { program, participants: deletedParticipants, affectedSessions }, "Nombres del programa eliminados.");
   const deletedIds = new Set(
     (state.attendanceParticipants || []).filter((participant) => participant.program === program).map((participant) => participant.id),
   );
@@ -2596,6 +2633,8 @@ async function deleteCurrentAttendanceSession() {
   if (isApiConfigured()) {
     await deleteApiAttendanceSession(filters, attendanceAdminPayload());
   }
+  const sessionToDelete = attendanceSessionFor(filters.program, filters.weekStart, filters.center, filters.period);
+  archiveAttendanceLocally("session", sessionToDelete, "Sesion eliminada desde la interfaz de asistencia.");
   state.attendanceSessions = (state.attendanceSessions || []).filter(
     (session) =>
       !(
@@ -2605,6 +2644,28 @@ async function deleteCurrentAttendanceSession() {
         (session.period || session.weekStart?.slice(0, 7)) === filters.period
       ),
   );
+  saveState();
+  renderAttendance();
+}
+
+async function resetCurrentAttendanceProgram() {
+  if (!isSystemAdminRole()) {
+    showToast("Solo Supervision M&E puede reiniciar asistencia.");
+    return;
+  }
+  const program = state.attendanceProgram;
+  if (isApiConfigured()) {
+    await resetApiAttendanceProgram({ program }, { ...attendanceAdminPayload(), program, reason: "Reinicio operativo del programa." });
+  }
+  const deletedParticipants = (state.attendanceParticipants || []).filter((participant) => participant.program === program);
+  const deletedSessions = (state.attendanceSessions || []).filter((session) => session.program === program);
+  archiveAttendanceLocally(
+    "program-reset",
+    { program, participants: deletedParticipants, sessions: deletedSessions },
+    "Reinicio operativo del programa.",
+  );
+  state.attendanceParticipants = (state.attendanceParticipants || []).filter((participant) => participant.program !== program);
+  state.attendanceSessions = (state.attendanceSessions || []).filter((session) => session.program !== program);
   saveState();
   renderAttendance();
 }
@@ -3738,6 +3799,22 @@ function bindEvents() {
       } catch (error) {
         console.error(error);
         showToast(error.message || "No pude eliminar los nombres.");
+      }
+    })();
+  });
+
+  elements.resetAttendanceProgramButton?.addEventListener("click", () => {
+    const confirmed = window.confirm(
+      `Esto quitara todos los nombres y todas las sesiones de asistencia de ${state.attendanceProgram}. La auditoria quedara guardada. ¿Quieres continuar?`,
+    );
+    if (!confirmed) return;
+    void (async () => {
+      try {
+        await resetCurrentAttendanceProgram();
+        showToast("Asistencia reiniciada desde cero.");
+      } catch (error) {
+        console.error(error);
+        showToast(error.message || "No pude reiniciar la asistencia.");
       }
     })();
   });

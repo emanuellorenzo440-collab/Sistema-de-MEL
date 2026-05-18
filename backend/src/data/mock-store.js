@@ -98,6 +98,7 @@ const reportStatusHistory = [];
 const deletedReports = [];
 const attendanceParticipants = [];
 const attendanceSessions = [];
+const attendanceArchive = [];
 const notifications = [];
 const emailOutbox = [];
 const DEFAULT_COMPANY_ID = "org-default";
@@ -193,6 +194,7 @@ function snapshotStore() {
     deletedReports,
     attendanceParticipants,
     attendanceSessions,
+    attendanceArchive,
     notifications,
     emailOutbox,
     updatedAt: nowIso(),
@@ -229,6 +231,7 @@ function hydratePersistentStore() {
     attendanceSessions,
     Array.isArray(stored.attendanceSessions) ? stored.attendanceSessions.map(normalizedAttendanceSession) : [],
   );
+  replaceArray(attendanceArchive, Array.isArray(stored.attendanceArchive) ? stored.attendanceArchive : []);
   replaceArray(notifications, Array.isArray(stored.notifications) ? stored.notifications : []);
   replaceArray(emailOutbox, Array.isArray(stored.emailOutbox) ? stored.emailOutbox : []);
 }
@@ -712,15 +715,38 @@ function requireAttendanceAdmin(actorRole) {
   }
 }
 
+function archiveAttendanceRecord(type, data, options = {}) {
+  const archivedAt = nowIso();
+  const record = {
+    id: `atta-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+    type,
+    program: data?.program || options.program || null,
+    center: data?.center || options.center || null,
+    period: data?.period || options.period || null,
+    weekStart: data?.weekStart || options.weekStart || null,
+    deletedAt: archivedAt,
+    deletedBy: normalizeString(options.actorId || options.deletedBy, ""),
+    deletedByRole: normalizeString(options.actorRole, ""),
+    reason: normalizeString(options.reason, ""),
+    data: structuredClone(data),
+  };
+  attendanceArchive.unshift(record);
+  return record;
+}
+
 export function deleteAttendanceParticipant(participantId, options = {}) {
   requireAttendanceAdmin(options.actorRole);
   const index = attendanceParticipants.findIndex((participant) => participant.id === participantId);
   if (index < 0) return null;
   const [deleted] = attendanceParticipants.splice(index, 1);
+  const affectedSessions = [];
   attendanceSessions.forEach((session) => {
+    const entries = (session.entries || []).filter((entry) => entry.participantId === participantId);
+    if (entries.length) affectedSessions.push({ ...structuredClone(session), entries });
     session.entries = (session.entries || []).filter((entry) => entry.participantId !== participantId);
     session.updatedAt = nowIso();
   });
+  archiveAttendanceRecord("participant", { participant: deleted, affectedSessions }, options);
   persistStore();
   return structuredClone(deleted);
 }
@@ -728,17 +754,23 @@ export function deleteAttendanceParticipant(participantId, options = {}) {
 export function deleteAttendanceParticipantsForProgram(program, options = {}) {
   requireAttendanceAdmin(options.actorRole);
   const deletedIds = new Set();
+  const deletedParticipants = [];
   for (let index = attendanceParticipants.length - 1; index >= 0; index -= 1) {
     if (attendanceParticipants[index].program === program) {
       deletedIds.add(attendanceParticipants[index].id);
+      deletedParticipants.push(attendanceParticipants[index]);
       attendanceParticipants.splice(index, 1);
     }
   }
+  const affectedSessions = [];
   attendanceSessions.forEach((session) => {
     if (session.program !== program) return;
+    const entries = (session.entries || []).filter((entry) => deletedIds.has(entry.participantId));
+    if (entries.length) affectedSessions.push({ ...structuredClone(session), entries });
     session.entries = (session.entries || []).filter((entry) => !deletedIds.has(entry.participantId));
     session.updatedAt = nowIso();
   });
+  archiveAttendanceRecord("program-participants", { program, participants: deletedParticipants, affectedSessions }, { ...options, program });
   persistStore();
   return { deletedCount: deletedIds.size };
 }
@@ -758,8 +790,48 @@ export function deleteAttendanceSession(filters = {}, options = {}) {
   );
   if (index < 0) return null;
   const [deleted] = attendanceSessions.splice(index, 1);
+  archiveAttendanceRecord("session", deleted, { ...options, ...filters });
   persistStore();
   return structuredClone(deleted);
+}
+
+export function resetAttendanceProgram(program, options = {}) {
+  requireAttendanceAdmin(options.actorRole);
+  const deletedParticipants = [];
+  const deletedSessions = [];
+  for (let index = attendanceParticipants.length - 1; index >= 0; index -= 1) {
+    if (attendanceParticipants[index].program === program) {
+      deletedParticipants.push(attendanceParticipants[index]);
+      attendanceParticipants.splice(index, 1);
+    }
+  }
+  for (let index = attendanceSessions.length - 1; index >= 0; index -= 1) {
+    if (attendanceSessions[index].program === program) {
+      deletedSessions.push(attendanceSessions[index]);
+      attendanceSessions.splice(index, 1);
+    }
+  }
+  archiveAttendanceRecord(
+    "program-reset",
+    { program, participants: deletedParticipants, sessions: deletedSessions },
+    { ...options, program },
+  );
+  persistStore();
+  return {
+    deletedParticipants: deletedParticipants.length,
+    deletedSessions: deletedSessions.length,
+  };
+}
+
+export function listAttendanceArchive(filters = {}) {
+  const { program, type } = filters;
+  return attendanceArchive
+    .filter((record) => {
+      if (program && record.program !== program) return false;
+      if (type && record.type !== type) return false;
+      return true;
+    })
+    .map((record) => structuredClone(record));
 }
 
 export function queryReports(filters = {}) {

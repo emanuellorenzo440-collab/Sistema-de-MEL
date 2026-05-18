@@ -19,6 +19,7 @@ export const seedState = {
   attendanceWeek: "2026-05-14",
   attendanceParticipants: [],
   attendanceSessions: [],
+  attendanceArchive: [],
   programs: [
     {
       name: "Girls Empowerment",
