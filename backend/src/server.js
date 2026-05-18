@@ -159,6 +159,24 @@ function requireFields(payload, fields) {
   };
 }
 
+function requireActorRole(response, payload = {}, allowedRoles = [], action = "realizar esta accion") {
+  const actorRole = String(payload.actorRole || "").trim();
+  if (allowedRoles.includes(actorRole)) return true;
+  sendJson(response, 403, {
+    error: `No tienes permiso para ${action}.`,
+    details: { actorRole: actorRole || null, allowedRoles },
+  });
+  return false;
+}
+
+async function readOptionalJsonBody(request) {
+  try {
+    return await readJsonBody(request);
+  } catch {
+    return {};
+  }
+}
+
 function filterReportsByScope(reports, scope) {
   if (scope === "all") return reports;
   return reports.filter((report) => report.status === "Aprobado");
@@ -190,6 +208,7 @@ export async function handleProgramCenterCreate(request, response) {
     sendJson(response, 400, required);
     return;
   }
+  if (!requireActorRole(response, payload, ["Supervision M&E", "Coordinador de programa"], "crear centros")) return;
 
   sendJson(response, 201, { data: createProgramCenter(payload) });
 }
@@ -202,6 +221,7 @@ export async function handleProgramCenterUpdate(request, response, centerId) {
     sendJson(response, 400, { error: "El cuerpo del centro no es JSON valido." });
     return;
   }
+  if (!requireActorRole(response, payload, ["Supervision M&E", "Coordinador de programa"], "editar centros")) return;
 
   const center = updateProgramCenter(centerId, payload);
   if (!center) {
@@ -211,7 +231,9 @@ export async function handleProgramCenterUpdate(request, response, centerId) {
   sendJson(response, 200, { data: center });
 }
 
-export async function handleProgramCenterDelete(_request, response, centerId) {
+export async function handleProgramCenterDelete(request, response, centerId) {
+  const payload = await readOptionalJsonBody(request);
+  if (!requireActorRole(response, payload, ["Supervision M&E", "Coordinador de programa"], "eliminar centros")) return;
   if (!deleteProgramCenter(centerId)) {
     sendJson(response, 404, { error: "No encontre el centro solicitado." });
     return;
@@ -233,6 +255,7 @@ export async function handleProgramCreate(request, response) {
     sendJson(response, 400, required);
     return;
   }
+  if (!requireActorRole(response, payload, ["Supervision M&E", "Program Manager"], "crear programas")) return;
 
   const program = createProgram(payload);
   sendJson(response, 201, { data: program });
@@ -246,6 +269,7 @@ export async function handleProgramUpdate(request, response, programId) {
     sendJson(response, 400, { error: "El cuerpo del programa no es JSON valido." });
     return;
   }
+  if (!requireActorRole(response, payload, ["Supervision M&E", "Program Manager"], "editar programas")) return;
 
   const program = updateProgram(programId, payload);
   if (!program) {
@@ -256,7 +280,9 @@ export async function handleProgramUpdate(request, response, programId) {
   sendJson(response, 200, { data: program });
 }
 
-export async function handleProgramDelete(_request, response, programId) {
+export async function handleProgramDelete(request, response, programId) {
+  const payload = await readOptionalJsonBody(request);
+  if (!requireActorRole(response, payload, ["Supervision M&E", "Program Manager"], "eliminar programas")) return;
   const result = deleteProgram(programId);
   if (!result) {
     sendJson(response, 404, { error: "No encontre el programa solicitado." });
@@ -299,6 +325,7 @@ export async function handleIndicatorCreate(request, response) {
     sendJson(response, 400, required);
     return;
   }
+  if (!requireActorRole(response, payload, ["Supervision M&E", "Program Manager", "Coordinador de programa"], "crear indicadores")) return;
 
   const indicator = createIndicator(payload);
   sendJson(response, 201, { data: indicator });
@@ -312,6 +339,7 @@ export async function handleIndicatorUpdate(request, response, indicatorId) {
     sendJson(response, 400, { error: "El cuerpo del indicador no es JSON valido." });
     return;
   }
+  if (!requireActorRole(response, payload, ["Supervision M&E", "Program Manager", "Coordinador de programa"], "editar indicadores")) return;
 
   const indicator = updateIndicator(indicatorId, payload);
   if (!indicator) {
@@ -322,7 +350,9 @@ export async function handleIndicatorUpdate(request, response, indicatorId) {
   sendJson(response, 200, { data: indicator });
 }
 
-export async function handleIndicatorDelete(_request, response, indicatorId) {
+export async function handleIndicatorDelete(request, response, indicatorId) {
+  const payload = await readOptionalJsonBody(request);
+  if (!requireActorRole(response, payload, ["Supervision M&E", "Program Manager"], "eliminar indicadores")) return;
   const result = deleteIndicator(indicatorId);
   if (!result) {
     sendJson(response, 404, { error: "No encontre el indicador solicitado." });
@@ -369,6 +399,7 @@ export async function handleConceptPaperCreate(request, response) {
     });
     return;
   }
+  if (!requireActorRole(response, payload, ["Supervision M&E", "Program Manager", "Coordinador de programa"], "cargar Concept Papers")) return;
 
   const conceptPaper = createConceptPaper(payload);
   sendJson(response, 201, { data: conceptPaper });

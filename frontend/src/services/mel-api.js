@@ -104,9 +104,10 @@ export async function updateApiProgram(programId, program) {
   return response.data;
 }
 
-export async function deleteApiProgram(programId) {
+export async function deleteApiProgram(programId, payload = {}) {
   await requestJson("programs/" + encodeURIComponent(programId), {
     method: "DELETE",
+    body: JSON.stringify(payload),
   });
 }
 
@@ -131,9 +132,10 @@ export async function updateApiProgramCenter(centerId, center) {
   return response.data;
 }
 
-export async function deleteApiProgramCenter(centerId) {
+export async function deleteApiProgramCenter(centerId, payload = {}) {
   await requestJson("program-centers/" + encodeURIComponent(centerId), {
     method: "DELETE",
+    body: JSON.stringify(payload),
   });
 }
 
@@ -234,9 +236,10 @@ export async function updateApiIndicator(indicatorId, indicator) {
   return response.data;
 }
 
-export async function deleteApiIndicator(indicatorId) {
+export async function deleteApiIndicator(indicatorId, payload = {}) {
   await requestJson("indicators/" + encodeURIComponent(indicatorId), {
     method: "DELETE",
+    body: JSON.stringify(payload),
   });
 }
 

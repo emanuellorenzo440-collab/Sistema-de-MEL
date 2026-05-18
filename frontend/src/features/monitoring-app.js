@@ -1,7 +1,7 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260518g";
+import { $, $$, elements } from "../core/dom.js?v=20260518h";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
-import { seedState } from "../data/seed-state.js?v=20260518g";
+import { seedState } from "../data/seed-state.js?v=20260518h";
 import {
   REPORT_STATUSES,
   canReviewReports,
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260518g";
+} from "../services/auth-service.js?v=20260518h";
 import {
   createApiConceptPaper,
   createApiAttendanceParticipant,
@@ -50,7 +50,7 @@ import {
   updateApiIndicator,
   updateApiProgram,
   updateApiProgramCenter,
-} from "../services/mel-api.js?v=20260518g";
+} from "../services/mel-api.js?v=20260518h";
 import {
   currentMonth,
   escapeHtml,
@@ -465,6 +465,13 @@ function canValidate() {
 function canManageProgramCenters(role = activeRole()) {
   const normalizedRole = normalizeRoleLabel(role);
   return ["Supervision M&E", "Coordinador de programa"].includes(normalizedRole);
+}
+
+function actorPayload() {
+  return {
+    actorId: currentUser?.id || currentUser?.email || `local-${slugify(activeRole())}`,
+    actorRole: activeRole(),
+  };
 }
 
 function isSystemAdminRole(role = activeRole()) {
@@ -2693,10 +2700,7 @@ async function requestAttendanceEdit(note) {
 }
 
 function attendanceAdminPayload() {
-  return {
-    actorId: currentUser?.id || currentUser?.email || `local-${slugify(activeRole())}`,
-    actorRole: activeRole(),
-  };
+  return actorPayload();
 }
 
 function archiveAttendanceLocally(type, data, reason = "") {
@@ -3573,10 +3577,11 @@ async function createIndicatorsFromProgram() {
       target: indicator.target,
       value: 0,
       unit: indicator.unit,
-      owner: indicator.owner,
-      due: indicator.due,
-      type: "Logro",
-    };
+    owner: indicator.owner,
+    due: indicator.due,
+    type: "Logro",
+    ...actorPayload(),
+  };
     const saved = isApiConfigured() ? await createApiIndicator(payload) : payload;
     upsertById(state.indicators, saved);
   }
@@ -3665,6 +3670,7 @@ async function saveIndicatorFromForm(formData) {
     owner: formData.get("owner") || currentUser?.fullName || "Usuario del sistema",
     due: formData.get("due"),
     type: "Logro",
+    ...actorPayload(),
   };
 
   try {
@@ -3744,6 +3750,7 @@ async function saveProgramFromForm(formData) {
     focus: formData.get("focus"),
     primaryPopulation: formData.get("primaryPopulation"),
     expectedResults: programId ? state.programs.find((program) => program.id === programId)?.expectedResults || [] : [],
+    ...actorPayload(),
   };
 
   try {
@@ -3787,6 +3794,7 @@ async function saveProgramCenterFromForm(formData) {
     program: String(formData.get("program") || "").trim(),
     province: String(formData.get("province") || "").trim(),
     name: String(formData.get("name") || "").trim(),
+    ...actorPayload(),
   };
 
   if (!payload.program || !payload.province || !payload.name) {
@@ -4268,7 +4276,7 @@ function bindEvents() {
       void (async () => {
         try {
           if (isApiConfigured()) {
-            await deleteApiIndicator(deleteId);
+            await deleteApiIndicator(deleteId, actorPayload());
           }
           removeById(state.indicators, deleteId);
           saveState();
@@ -4301,7 +4309,7 @@ function bindEvents() {
       void (async () => {
         try {
           if (isApiConfigured()) {
-            await deleteApiProgram(deleteId);
+            await deleteApiProgram(deleteId, actorPayload());
           }
           removeById(state.programs, deleteId);
           saveState();
@@ -4332,7 +4340,7 @@ function bindEvents() {
       void (async () => {
         try {
           if (isApiConfigured()) {
-            await deleteApiProgramCenter(deleteId);
+            await deleteApiProgramCenter(deleteId, actorPayload());
           }
           removeById(state.programCenters, deleteId);
           saveState();
@@ -4365,7 +4373,7 @@ function bindEvents() {
       void (async () => {
         try {
           const conceptPaper = await conceptPaperDocumentFromFile(file, formData);
-          const savedPaper = isApiConfigured() ? await createApiConceptPaper(conceptPaper) : conceptPaper;
+          const savedPaper = isApiConfigured() ? await createApiConceptPaper({ ...conceptPaper, ...actorPayload() }) : conceptPaper;
           state.conceptPapers = [savedPaper, ...state.conceptPapers.filter((paper) => paper.id !== savedPaper.id)];
           state.selectedConceptPaper = savedPaper.id;
           saveState();
