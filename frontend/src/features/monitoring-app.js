@@ -1,7 +1,7 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260518e";
+import { $, $$, elements } from "../core/dom.js?v=20260518f";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
-import { seedState } from "../data/seed-state.js?v=20260518e";
+import { seedState } from "../data/seed-state.js?v=20260518f";
 import {
   REPORT_STATUSES,
   canReviewReports,
@@ -20,12 +20,13 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260518e";
+} from "../services/auth-service.js?v=20260518f";
 import {
   createApiConceptPaper,
   createApiAttendanceParticipant,
   createApiIndicator,
   createApiProgram,
+  createApiProgramCenter,
   createApiReport,
   createApiReportsBulk,
   deleteApiAttendanceParticipant,
@@ -34,10 +35,12 @@ import {
   deleteApiReport,
   deleteApiIndicator,
   deleteApiProgram,
+  deleteApiProgramCenter,
   fetchApiConceptPapers,
   fetchApiAttendanceParticipants,
   fetchApiAttendanceSessions,
   fetchApiNotifications,
+  fetchApiProgramCenters,
   fetchApiReports,
   isApiConfigured,
   markApiNotificationRead,
@@ -46,7 +49,8 @@ import {
   updateApiReportStatus,
   updateApiIndicator,
   updateApiProgram,
-} from "../services/mel-api.js?v=20260518e";
+  updateApiProgramCenter,
+} from "../services/mel-api.js?v=20260518f";
 import {
   currentMonth,
   escapeHtml,
@@ -65,6 +69,7 @@ const ROLE_STORAGE_KEY = "pulso-me-active-role";
 const MAX_REPORT_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 const MAX_CONCEPT_PAPER_BYTES = 15 * 1024 * 1024;
 const ATTENDANCE_PROGRAMS = ["Girls Empowerment", "Club de Chicos", "IGA"];
+const NO_CENTER_OPTION = "Sin centros registrados";
 let currentUser = null;
 let currentUserRoles = SYSTEM_ROLES.slice();
 let currentUserViews = VIEW_DEFINITIONS.map((view) => view.id);
@@ -193,7 +198,14 @@ function normalizeState(savedState) {
   nextState.programCenters = mergeByKey(savedState.programCenters || [], seedState.programCenters || [], (item) =>
     [item.program, item.province, item.name].join("|"),
   ).map((center) => ({
+    id:
+      center.id ||
+      `center-${slugify(String(center.program || ""))}-${slugify(String(center.province || ""))}-${slugify(String(center.name || ""))}`,
     program: String(center.program || ""),
+    programId:
+      center.programId ||
+      nextState.programs.find((program) => program.name === center.program)?.id ||
+      null,
     province: String(center.province || ""),
     name: String(center.name || ""),
   }));
@@ -211,6 +223,10 @@ function normalizeState(savedState) {
   nextState.attendancePeriod = savedState.attendancePeriod || seedState.attendancePeriod || currentMonth();
   nextState.attendanceWeek = savedState.attendanceWeek || new Date().toISOString().slice(0, 10);
   nextState.attendanceArchive = Array.isArray(savedState.attendanceArchive) ? savedState.attendanceArchive.slice() : [];
+  nextState.operationalProvinces = unique([
+    ...(Array.isArray(savedState.operationalProvinces) ? savedState.operationalProvinces : []),
+    ...(seedState.operationalProvinces || []),
+  ].filter(Boolean));
   nextState.chartPreferences = { ...seedState.chartPreferences, ...(savedState.chartPreferences || {}) };
   nextState.filters = { ...seedState.filters, ...(savedState.filters || {}) };
   nextState.role = normalizeRoleLabel(nextState.role || seedState.role);
@@ -333,6 +349,8 @@ function registeredCenters() {
 }
 
 function provincesForProgram(programName) {
+  if (state.operationalProvinces?.length) return state.operationalProvinces;
+
   const centerProvinces = unique(
     registeredCenters()
       .filter((center) => !programName || center.program === programName)
@@ -353,7 +371,7 @@ function centersForProgramProvince(programName, province) {
       .filter((center) => center.program === programName && center.province === province)
       .map((center) => center.name),
   );
-  return centers.length ? centers : ["Centro por definir"];
+  return centers.length ? centers : [NO_CENTER_OPTION];
 }
 
 function syncReportCaptureOptions() {
@@ -383,6 +401,7 @@ function renderFilters() {
   const provinces = [
     "Todas",
     ...unique([
+      ...(state.operationalProvinces || []),
       ...registeredCenters().map((center) => center.province),
       ...state.programs.flatMap((program) => program.provinces || []),
     ].filter(Boolean)),
@@ -399,6 +418,16 @@ function renderFilters() {
   setOptions(elements.periodFilter, periods, state.filters.period);
   setOptions(elements.reportProgram, programNames, currentReportProgram);
   syncReportCaptureOptions();
+  if (elements.programCenterProgramInput) {
+    setOptions(elements.programCenterProgramInput, programNames, elements.programCenterProgramInput.value || selectedProgram);
+  }
+  if (elements.programCenterProvinceInput) {
+    setOptions(
+      elements.programCenterProvinceInput,
+      state.operationalProvinces || [],
+      elements.programCenterProvinceInput.value || state.operationalProvinces?.[0] || "",
+    );
+  }
   setOptions(elements.indicatorProgramInput, programNames, elements.indicatorProgramInput?.value || selectedProgram);
   setOptions(elements.designProgramSelect, programNames, state.designProgram || selectedProgram);
   setOptions(elements.formsProgramSelect, programNames, state.formsProgram || state.designProgram || selectedProgram);
@@ -431,6 +460,11 @@ function renderFilters() {
 
 function canValidate() {
   return isSystemAdminRole() || canReviewReports(activeRole());
+}
+
+function canManageProgramCenters(role = activeRole()) {
+  const normalizedRole = normalizeRoleLabel(role);
+  return ["Supervision M&E", "Coordinador de programa"].includes(normalizedRole);
 }
 
 function isSystemAdminRole(role = activeRole()) {
@@ -738,6 +772,15 @@ async function refreshConceptPapersFromApi() {
     if (!state.conceptPapers.some((paper) => paper.id === state.selectedConceptPaper)) {
       state.selectedConceptPaper = state.conceptPapers[0]?.id;
     }
+    saveState();
+  }
+}
+
+async function refreshProgramCentersFromApi() {
+  if (!isApiConfigured()) return;
+  const remoteCenters = await fetchApiProgramCenters();
+  if (remoteCenters.length) {
+    state.programCenters = remoteCenters;
     saveState();
   }
 }
@@ -1536,6 +1579,43 @@ function renderPrograms() {
       `;
     })
     .join("");
+}
+
+function renderProgramCenters() {
+  if (!elements.programCenterGrid) return;
+  const canManage = canManageProgramCenters();
+  if (elements.programCenterForm) {
+    elements.programCenterForm.hidden = !canManage;
+  }
+
+  const centers = registeredCenters();
+  elements.programCenterGrid.innerHTML = centers.length
+    ? centers
+        .map(
+          (center) => `
+            <article class="program-item">
+              <div class="program-top">
+                <div>
+                  <h3>${escapeHtml(center.name)}</h3>
+                  <p class="item-meta">${escapeHtml(center.program)} · ${escapeHtml(center.province)}</p>
+                </div>
+                <span class="status-pill neutral">Centro</span>
+              </div>
+              <div class="item-actions">
+                ${
+                  canManage
+                    ? `
+                      <button type="button" data-edit-program-center="${escapeHtml(center.id)}">Editar</button>
+                      <button type="button" data-delete-program-center="${escapeHtml(center.id)}">Eliminar</button>
+                    `
+                    : ""
+                }
+              </div>
+            </article>
+          `,
+        )
+        .join("")
+    : `<p class="item-meta">Todavia no hay centros registrados.</p>`;
 }
 
 function captureFormValues(form) {
@@ -2418,6 +2498,7 @@ function renderAll() {
   renderReviewQueue();
   renderActions();
   renderPrograms();
+  renderProgramCenters();
   renderAccessWorkspace();
   switchView(state.activeView || firstAllowedView(), { persist: false });
 }
@@ -3016,6 +3097,11 @@ async function addReport(formData) {
     return false;
   }
   const value = Number(formData.get("value"));
+  const selectedCenter = String(formData.get("center") || "").trim();
+  if (!selectedCenter || selectedCenter === NO_CENTER_OPTION) {
+    showToast("Selecciona un centro registrado para ese programa y provincia.");
+    return false;
+  }
   const attachedFile = elements.reportFormUploadInput.files?.[0] || null;
   let attachedDocument = null;
   try {
@@ -3032,7 +3118,7 @@ async function addReport(formData) {
     program: formData.get("program"),
     programId: state.programs.find((program) => program.name === formData.get("program"))?.id || null,
     province: formData.get("province"),
-    center: formData.get("center"),
+    center: selectedCenter,
     indicatorId: indicator.id,
     value,
     women: Number(formData.get("women") || 0),
@@ -3611,6 +3697,23 @@ function resetProgramForm() {
   elements.programMelSupervisorEmailInput.value = "";
 }
 
+function resetProgramCenterForm() {
+  if (!elements.programCenterForm) return;
+  elements.programCenterForm.reset();
+  elements.programCenterIdInput.value = "";
+  const programName = state.programs[0]?.name || "";
+  const province = state.operationalProvinces?.[0] || "";
+  if (programName) elements.programCenterProgramInput.value = programName;
+  if (province) elements.programCenterProvinceInput.value = province;
+}
+
+function fillProgramCenterForm(center) {
+  elements.programCenterIdInput.value = center.id || "";
+  elements.programCenterProgramInput.value = center.program || state.programs[0]?.name || "";
+  elements.programCenterProvinceInput.value = center.province || state.operationalProvinces?.[0] || "";
+  elements.programCenterNameInput.value = center.name || "";
+}
+
 function fillProgramForm(program) {
   elements.programIdInput.value = program.id;
   elements.programNameInput.value = program.name;
@@ -3660,6 +3763,9 @@ async function saveProgramFromForm(formData) {
       state.reports = state.reports.map((report) =>
         report.program === previous.name ? { ...report, program: saved.name, programId: saved.id } : report,
       );
+      state.programCenters = (state.programCenters || []).map((center) =>
+        center.program === previous.name ? { ...center, program: saved.name, programId: saved.id } : center,
+      );
     }
     saveState();
     renderAll();
@@ -3668,6 +3774,42 @@ async function saveProgramFromForm(formData) {
   } catch (error) {
     console.error(error);
     showToast(error.message || "No pude guardar el programa.");
+  }
+}
+
+async function saveProgramCenterFromForm(formData) {
+  if (!canManageProgramCenters()) {
+    showToast("No tienes permiso para administrar centros.");
+    return;
+  }
+
+  const centerId = String(formData.get("id") || "").trim();
+  const payload = {
+    id: centerId || undefined,
+    program: String(formData.get("program") || "").trim(),
+    province: String(formData.get("province") || "").trim(),
+    name: String(formData.get("name") || "").trim(),
+  };
+
+  if (!payload.program || !payload.province || !payload.name) {
+    showToast("Completa programa, provincia y centro.");
+    return;
+  }
+
+  try {
+    const saved = isApiConfigured()
+      ? centerId
+        ? await updateApiProgramCenter(centerId, payload)
+        : await createApiProgramCenter(payload)
+      : { ...payload, id: centerId || `center-${slugify(payload.program)}-${slugify(payload.province)}-${Date.now()}` };
+    upsertById(state.programCenters, saved);
+    saveState();
+    resetProgramCenterForm();
+    renderAll();
+    showToast("Centro guardado.");
+  } catch (error) {
+    console.error(error);
+    showToast(error.message || "No pude guardar el centro.");
   }
 }
 
@@ -4010,6 +4152,11 @@ function bindEvents() {
     void saveProgramFromForm(new FormData(elements.programCrudForm));
   });
   elements.clearProgramFormButton.addEventListener("click", resetProgramForm);
+  elements.programCenterForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void saveProgramCenterFromForm(new FormData(elements.programCenterForm));
+  });
+  elements.clearProgramCenterFormButton.addEventListener("click", resetProgramCenterForm);
   elements.formUploadInput.addEventListener("change", () => {
     const file = elements.formUploadInput.files?.[0];
     elements.uploadStatus.textContent = file ? file.name : "Sin archivo";
@@ -4170,6 +4317,37 @@ function bindEvents() {
     }
   });
 
+  elements.programCenterGrid.addEventListener("click", (event) => {
+    const editId = event.target.closest("[data-edit-program-center]")?.dataset.editProgramCenter;
+    const deleteId = event.target.closest("[data-delete-program-center]")?.dataset.deleteProgramCenter;
+
+    if (editId) {
+      const center = state.programCenters.find((item) => item.id === editId);
+      if (center) fillProgramCenterForm(center);
+    }
+
+    if (deleteId) {
+      if (!canManageProgramCenters()) {
+        showToast("No tienes permiso para eliminar centros.");
+        return;
+      }
+      void (async () => {
+        try {
+          if (isApiConfigured()) {
+            await deleteApiProgramCenter(deleteId);
+          }
+          removeById(state.programCenters, deleteId);
+          saveState();
+          renderAll();
+          showToast("Centro eliminado.");
+        } catch (error) {
+          console.error(error);
+          showToast(error.message || "No pude eliminar el centro.");
+        }
+      })();
+    }
+  });
+
   $("#addIndicatorButton").addEventListener("click", () => {
     const next = state.indicators.length + 1;
     const program = selectedProgramForIndicatorForm();
@@ -4301,6 +4479,7 @@ export function createMonitoringApp() {
     async start(authenticatedUser = null) {
       hydrateState();
       await syncAuthenticatedAccess(authenticatedUser);
+      await refreshProgramCentersFromApi();
       await refreshAttendanceFromApi();
       renderAll();
       bindEvents();
@@ -4312,6 +4491,7 @@ export function createMonitoringApp() {
     async syncAccess(authenticatedUser = null) {
       hydrateState();
       await syncAuthenticatedAccess(authenticatedUser);
+      await refreshProgramCentersFromApi();
       await refreshAttendanceFromApi();
       renderAll();
     },

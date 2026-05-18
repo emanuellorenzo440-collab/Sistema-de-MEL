@@ -7,6 +7,7 @@ import {
   createAttendanceParticipant,
   createIndicator,
   createProgram,
+  createProgramCenter,
   createReport,
   createReportsBulk,
   deleteAttendanceParticipant,
@@ -15,6 +16,7 @@ import {
   deleteCorrectableReport,
   deleteIndicator,
   deleteProgram,
+  deleteProgramCenter,
   findReportById,
   listAttendanceArchive,
   listAttendanceParticipants,
@@ -24,6 +26,7 @@ import {
   listIndicators,
   listNotifications,
   listPrograms,
+  listProgramCenters,
   listDeletedReports,
   listReportStatusHistory,
   markNotificationRead,
@@ -33,6 +36,7 @@ import {
   saveReportStatusDecision,
   updateIndicator,
   updateProgram,
+  updateProgramCenter,
 } from "./data/mock-store.js";
 import {
   completeRequiredPasswordChange,
@@ -162,6 +166,57 @@ function filterReportsByScope(reports, scope) {
 
 export async function handlePrograms(_request, response) {
   sendJson(response, 200, { data: listPrograms() });
+}
+
+export async function handleProgramCenters(_request, response, url) {
+  const filters = {
+    program: url.searchParams.get("program") || undefined,
+    province: url.searchParams.get("province") || undefined,
+  };
+  sendJson(response, 200, { data: listProgramCenters(filters), filters });
+}
+
+export async function handleProgramCenterCreate(request, response) {
+  let payload;
+  try {
+    payload = await readJsonBody(request);
+  } catch {
+    sendJson(response, 400, { error: "El cuerpo del centro no es JSON valido." });
+    return;
+  }
+
+  const required = requireFields(payload, ["program", "province", "name"]);
+  if (required) {
+    sendJson(response, 400, required);
+    return;
+  }
+
+  sendJson(response, 201, { data: createProgramCenter(payload) });
+}
+
+export async function handleProgramCenterUpdate(request, response, centerId) {
+  let payload;
+  try {
+    payload = await readJsonBody(request);
+  } catch {
+    sendJson(response, 400, { error: "El cuerpo del centro no es JSON valido." });
+    return;
+  }
+
+  const center = updateProgramCenter(centerId, payload);
+  if (!center) {
+    sendJson(response, 404, { error: "No encontre el centro solicitado." });
+    return;
+  }
+  sendJson(response, 200, { data: center });
+}
+
+export async function handleProgramCenterDelete(_request, response, centerId) {
+  if (!deleteProgramCenter(centerId)) {
+    sendJson(response, 404, { error: "No encontre el centro solicitado." });
+    return;
+  }
+  sendEmpty(response);
 }
 
 export async function handleProgramCreate(request, response) {
@@ -696,6 +751,7 @@ function apiIndex() {
     version: "v1",
     resources: [
       "programs",
+      "program-centers",
       "indicators",
       "concept-papers",
       "attendance/participants",
@@ -907,6 +963,27 @@ async function router(request, response) {
 
   if (request.method === "POST" && pathname === "/api/v1/programs") {
     await handleProgramCreate(request, response, url);
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/v1/program-centers") {
+    await handleProgramCenters(request, response, url);
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/v1/program-centers") {
+    await handleProgramCenterCreate(request, response, url);
+    return;
+  }
+
+  const programCenterMatch = pathname.match(/^\/api\/v1\/program-centers\/([^/]+)$/);
+  if (request.method === "PUT" && programCenterMatch) {
+    await handleProgramCenterUpdate(request, response, decodeURIComponent(programCenterMatch[1]));
+    return;
+  }
+
+  if (request.method === "DELETE" && programCenterMatch) {
+    await handleProgramCenterDelete(request, response, decodeURIComponent(programCenterMatch[1]));
     return;
   }
 

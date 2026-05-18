@@ -110,6 +110,33 @@ export async function deleteApiProgram(programId) {
   });
 }
 
+export async function fetchApiProgramCenters(filters = {}) {
+  const response = await requestJson("program-centers", {}, filters);
+  return response.data || [];
+}
+
+export async function createApiProgramCenter(center) {
+  const response = await requestJson("program-centers", {
+    method: "POST",
+    body: JSON.stringify(center),
+  });
+  return response.data;
+}
+
+export async function updateApiProgramCenter(centerId, center) {
+  const response = await requestJson("program-centers/" + encodeURIComponent(centerId), {
+    method: "PUT",
+    body: JSON.stringify(center),
+  });
+  return response.data;
+}
+
+export async function deleteApiProgramCenter(centerId) {
+  await requestJson("program-centers/" + encodeURIComponent(centerId), {
+    method: "DELETE",
+  });
+}
+
 export async function fetchApiIndicators(filters = {}) {
   const response = await requestJson("indicators", {}, filters);
   return response.data || [];

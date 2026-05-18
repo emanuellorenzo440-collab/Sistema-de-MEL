@@ -33,6 +33,11 @@ const seededPrograms = seedState.programs.map((program) => ({
   ...structuredClone(program),
 }));
 const programs = structuredClone(seededPrograms);
+const seededProgramCenters = (seedState.programCenters || []).map((center) => ({
+  id: `center-${slugify(center.program)}-${slugify(center.province)}-${slugify(center.name)}`,
+  ...structuredClone(center),
+}));
+const programCenters = structuredClone(seededProgramCenters);
 
 function programIdByName() {
   return new Map(programs.map((program) => [program.name, program.id]));
@@ -189,6 +194,7 @@ function snapshotStore() {
     programs,
     indicators,
     conceptPapers,
+    programCenters,
     reports,
     reportStatusHistory,
     deletedReports,
@@ -219,6 +225,10 @@ function hydratePersistentStore() {
     replaceArray(conceptPapers, stored.conceptPapers.map(normalizedConceptPaper));
   }
   mergeMissingByKey(programs, seededPrograms, (program) => program.name);
+  if (Array.isArray(stored.programCenters) && stored.programCenters.length) {
+    replaceArray(programCenters, stored.programCenters.map(normalizedProgramCenter));
+  }
+  mergeMissingByKey(programCenters, seededProgramCenters, (center) => `${center.program}|${center.province}|${center.name}`);
   mergeMissingByKey(conceptPapers, seedState.conceptPapers.map(normalizedConceptPaper), (paper) => paper.id);
   replaceArray(reports, Array.isArray(stored.reports) ? stored.reports.map(normalizedReport) : []);
   replaceArray(reportStatusHistory, Array.isArray(stored.reportStatusHistory) ? stored.reportStatusHistory : []);
@@ -275,6 +285,22 @@ function normalizedReport(input = {}) {
     correctionForRole: input.correctionForRole || null,
     createdAt: input.createdAt || timestamp,
     updatedAt: input.updatedAt || timestamp,
+  };
+}
+
+function normalizedProgramCenter(input = {}, existing = {}) {
+  const timestamp = nowIso();
+  const program = normalizeString(input.program, existing.program);
+  const province = normalizeString(input.province, existing.province);
+  const name = normalizeString(input.name, existing.name);
+  return {
+    id: normalizeString(input.id, existing.id || `center-${slugify(program)}-${slugify(province)}-${Date.now()}`),
+    program,
+    programId: input.programId || existing.programId || programIdByName().get(program) || null,
+    province,
+    name,
+    createdAt: existing.createdAt || input.createdAt || timestamp,
+    updatedAt: timestamp,
   };
 }
 
@@ -516,6 +542,48 @@ export function listPrograms() {
   return programs.map((program) => structuredClone(program));
 }
 
+export function listProgramCenters(filters = {}) {
+  const { program, province } = filters;
+  return programCenters
+    .filter((center) => {
+      if (program && center.program !== program) return false;
+      if (province && center.province !== province) return false;
+      return true;
+    })
+    .map((center) => structuredClone(center));
+}
+
+export function createProgramCenter(input) {
+  const center = normalizedProgramCenter(input);
+  const duplicate = programCenters.find(
+    (item) =>
+      item.program === center.program &&
+      item.province === center.province &&
+      item.name.toLowerCase() === center.name.toLowerCase(),
+  );
+  if (duplicate) return structuredClone(duplicate);
+  programCenters.push(center);
+  persistStore();
+  return structuredClone(center);
+}
+
+export function updateProgramCenter(centerId, input) {
+  const index = programCenters.findIndex((center) => center.id === centerId);
+  if (index < 0) return null;
+  const next = normalizedProgramCenter({ ...programCenters[index], ...input, id: centerId }, programCenters[index]);
+  programCenters[index] = next;
+  persistStore();
+  return structuredClone(next);
+}
+
+export function deleteProgramCenter(centerId) {
+  const index = programCenters.findIndex((center) => center.id === centerId);
+  if (index < 0) return false;
+  programCenters.splice(index, 1);
+  persistStore();
+  return true;
+}
+
 export function findProgramById(programId) {
   return programs.find((program) => program.id === programId) || null;
 }
@@ -551,6 +619,14 @@ export function updateProgram(programId, input) {
     }
   });
 
+  programCenters.forEach((center) => {
+    if (center.programId === previous.id || center.program === previous.name) {
+      center.programId = next.id;
+      center.program = next.name;
+      center.updatedAt = nowIso();
+    }
+  });
+
   persistStore();
   return structuredClone(next);
 }
@@ -565,7 +641,13 @@ export function deleteProgram(programId) {
     return { blocked: true, hasIndicators, hasReports };
   }
 
+  const program = programs[index];
   programs.splice(index, 1);
+  for (let centerIndex = programCenters.length - 1; centerIndex >= 0; centerIndex -= 1) {
+    if (programCenters[centerIndex].programId === programId || programCenters[centerIndex].program === program.name) {
+      programCenters.splice(centerIndex, 1);
+    }
+  }
   persistStore();
   return true;
 }

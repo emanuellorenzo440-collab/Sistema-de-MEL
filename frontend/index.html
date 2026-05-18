@@ -9,7 +9,7 @@
         display: none !important;
       }
     </style>
-    <link rel="stylesheet" href="styles.css?v=20260518e" />
+    <link rel="stylesheet" href="styles.css?v=20260518f" />
   </head>
   <body>
     <section class="auth-shell" id="authShell">
@@ -845,6 +845,37 @@
             </form>
             <div class="program-grid" id="programGrid"></div>
           </section>
+
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">Centros</p>
+                <h2>Centros por programa</h2>
+              </div>
+            </div>
+            <form class="form-layout compact-form" id="programCenterForm">
+              <input type="hidden" id="programCenterIdInput" name="id" />
+              <div class="form-grid">
+                <label>
+                  Programa
+                  <select id="programCenterProgramInput" name="program" required></select>
+                </label>
+                <label>
+                  Provincia
+                  <select id="programCenterProvinceInput" name="province" required></select>
+                </label>
+                <label>
+                  Centro
+                  <input id="programCenterNameInput" name="name" type="text" required />
+                </label>
+              </div>
+              <div class="form-actions">
+                <button class="primary-action" type="submit">Guardar centro</button>
+                <button id="clearProgramCenterFormButton" type="button">Limpiar</button>
+              </div>
+            </form>
+            <div class="program-grid" id="programCenterGrid"></div>
+          </section>
         </section>
 
         <section class="view" id="accessView" data-view-panel="access">
@@ -863,6 +894,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="src/main.js?v=20260518e"></script>
+    <script type="module" src="src/main.js?v=20260518f"></script>
   </body>
 </html>
