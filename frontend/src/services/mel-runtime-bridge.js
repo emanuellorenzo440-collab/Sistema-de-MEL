@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { seedState } from "../data/seed-state.js?v=20260514a";
+import { seedState } from "../data/seed-state.js?v=20260518g";
 import { REPORT_STATUSES, isApprovedReportStatus, isPendingApprovalStatus } from "../../../shared/contracts/reporting.js?v=20260514a";
 import {
   createApiReport,
@@ -11,12 +11,13 @@ import {
   fetchApiDeletedReports,
   fetchApiIndicators,
   fetchApiNotifications,
+  fetchApiProgramCenters,
   fetchApiPrograms,
   fetchApiReports,
   getApiBaseUrl,
   isApiConfigured,
   updateApiReportStatus,
-} from "./mel-api.js?v=20260514a";
+} from "./mel-api.js?v=20260518g";
 
 const CHART_COLORS = ["#14b8a6", "#2563eb", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6"];
 let syncInFlight = false;
@@ -107,6 +108,10 @@ function normalizeState(savedState = {}) {
   nextState.indicators = mergeByKey(savedState.indicators || [], seedState.indicators, (item) => item.id || item.name);
   nextState.monitoringForms = mergeByKey(savedState.monitoringForms || [], seedState.monitoringForms, (item) => item.id);
   nextState.conceptPapers = mergeByKey(savedState.conceptPapers || [], seedState.conceptPapers, (item) => item.id);
+  nextState.programCenters = Array.isArray(savedState.programCenters) ? savedState.programCenters.slice() : seedState.programCenters || [];
+  nextState.operationalProvinces = [
+    ...new Set([...(savedState.operationalProvinces || []), ...(seedState.operationalProvinces || [])]),
+  ].sort((a, b) => a.localeCompare(b));
   nextState.reports = Array.isArray(savedState.reports) ? savedState.reports.slice() : [];
   nextState.notifications = Array.isArray(savedState.notifications) ? savedState.notifications.slice() : [];
   nextState.reportDrafts = Array.isArray(savedState.reportDrafts) ? savedState.reportDrafts.slice() : [];
@@ -547,10 +552,11 @@ async function pullRemoteNotifications() {
 }
 
 async function pullRemotePlanningData() {
-  const [remotePrograms, remoteIndicators, remoteConceptPapers] = await Promise.all([
+  const [remotePrograms, remoteIndicators, remoteConceptPapers, remoteProgramCenters] = await Promise.all([
     fetchApiPrograms(),
     fetchApiIndicators(),
     fetchApiConceptPapers(),
+    fetchApiProgramCenters(),
   ]);
   const currentState = normalizeState(readStoredState());
   const nextState = recomputeIndicators({
@@ -558,6 +564,7 @@ async function pullRemotePlanningData() {
     programs: remotePrograms.length ? remotePrograms : currentState.programs,
     indicators: remoteIndicators.length ? remoteIndicators : currentState.indicators,
     conceptPapers: remoteConceptPapers.length ? remoteConceptPapers : currentState.conceptPapers,
+    programCenters: remoteProgramCenters,
   });
   commitStoredState(nextState, { source: "pullRemotePlanningData" });
   return nextState;

@@ -1,7 +1,7 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260518f";
+import { $, $$, elements } from "../core/dom.js?v=20260518g";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
-import { seedState } from "../data/seed-state.js?v=20260518f";
+import { seedState } from "../data/seed-state.js?v=20260518g";
 import {
   REPORT_STATUSES,
   canReviewReports,
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260518f";
+} from "../services/auth-service.js?v=20260518g";
 import {
   createApiConceptPaper,
   createApiAttendanceParticipant,
@@ -50,7 +50,7 @@ import {
   updateApiIndicator,
   updateApiProgram,
   updateApiProgramCenter,
-} from "../services/mel-api.js?v=20260518f";
+} from "../services/mel-api.js?v=20260518g";
 import {
   currentMonth,
   escapeHtml,
@@ -779,10 +779,8 @@ async function refreshConceptPapersFromApi() {
 async function refreshProgramCentersFromApi() {
   if (!isApiConfigured()) return;
   const remoteCenters = await fetchApiProgramCenters();
-  if (remoteCenters.length) {
-    state.programCenters = remoteCenters;
-    saveState();
-  }
+  state.programCenters = remoteCenters;
+  saveState();
 }
 
 function renderIndicators() {

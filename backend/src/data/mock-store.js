@@ -225,10 +225,11 @@ function hydratePersistentStore() {
     replaceArray(conceptPapers, stored.conceptPapers.map(normalizedConceptPaper));
   }
   mergeMissingByKey(programs, seededPrograms, (program) => program.name);
-  if (Array.isArray(stored.programCenters) && stored.programCenters.length) {
+  if (Array.isArray(stored.programCenters)) {
     replaceArray(programCenters, stored.programCenters.map(normalizedProgramCenter));
+  } else {
+    mergeMissingByKey(programCenters, seededProgramCenters, (center) => `${center.program}|${center.province}|${center.name}`);
   }
-  mergeMissingByKey(programCenters, seededProgramCenters, (center) => `${center.program}|${center.province}|${center.name}`);
   mergeMissingByKey(conceptPapers, seedState.conceptPapers.map(normalizedConceptPaper), (paper) => paper.id);
   replaceArray(reports, Array.isArray(stored.reports) ? stored.reports.map(normalizedReport) : []);
   replaceArray(reportStatusHistory, Array.isArray(stored.reportStatusHistory) ? stored.reportStatusHistory : []);
