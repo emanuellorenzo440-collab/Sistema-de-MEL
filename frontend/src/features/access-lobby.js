@@ -10,7 +10,7 @@ import {
   signOutUser,
   signUpUser,
   verifyRegisteredUserByLink,
-} from "../services/auth-service.js?v=20260518b";
+} from "../services/auth-service.js?v=20260518c";
 
 const sections = ["signin", "signup", "forgot", "force-password", "reset-password"];
 let wired = false;

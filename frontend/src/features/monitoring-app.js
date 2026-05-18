@@ -1,7 +1,7 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260518b";
+import { $, $$, elements } from "../core/dom.js?v=20260518c";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
-import { seedState } from "../data/seed-state.js?v=20260518b";
+import { seedState } from "../data/seed-state.js?v=20260518c";
 import {
   REPORT_STATUSES,
   canReviewReports,
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260518b";
+} from "../services/auth-service.js?v=20260518c";
 import {
   createApiConceptPaper,
   createApiAttendanceParticipant,
@@ -46,7 +46,7 @@ import {
   updateApiReportStatus,
   updateApiIndicator,
   updateApiProgram,
-} from "../services/mel-api.js?v=20260518b";
+} from "../services/mel-api.js?v=20260518c";
 import {
   currentMonth,
   escapeHtml,
@@ -2381,7 +2381,7 @@ function switchView(viewName, options = {}) {
   $$(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.view === viewName));
   $$(".view").forEach((panel) => panel.classList.toggle("active", panel.dataset.viewPanel === viewName));
   if (elements.globalFilters) {
-    elements.globalFilters.hidden = viewName === "access";
+    elements.globalFilters.hidden = ["access", "attendance"].includes(viewName);
   }
   elements.pageTitle.textContent = titles[viewName];
   if (persist && state) {
