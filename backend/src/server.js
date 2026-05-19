@@ -124,6 +124,122 @@ function sendStoredUpload(response, storagePath, options = {}) {
   fs.createReadStream(absolutePath).pipe(response);
 }
 
+function pdfEscape(value = "") {
+  return String(value).replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+}
+
+function wrapText(value = "", maxLength = 92) {
+  const words = String(value || "").replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  const lines = [];
+  let current = "";
+  words.forEach((word) => {
+    const next = current ? `${current} ${word}` : word;
+    if (next.length > maxLength && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = next;
+    }
+  });
+  if (current) lines.push(current);
+  return lines.length ? lines : [""];
+}
+
+function conceptPaperFallbackLines(paper = {}) {
+  const listLines = (label, values = []) => {
+    const items = Array.isArray(values) ? values.filter(Boolean) : [];
+    if (!items.length) return [];
+    return [label, ...items.flatMap((item) => wrapText(`- ${item}`, 88))];
+  };
+
+  return [
+    paper.title || "Concept Paper",
+    `Programa: ${paper.program || "No definido"}`,
+    `Ano: ${paper.year || "No definido"}`,
+    `Presentador: ${paper.presenter || paper.uploadedBy || "Equipo M&E"}`,
+    `Archivo registrado: ${paper.fileName || "Sin archivo fisico disponible"}`,
+    "",
+    "Objetivo",
+    ...wrapText(paper.objective || "Pendiente de completar.", 88),
+    "",
+    `Beneficiarios: ${paper.beneficiaries || "Pendiente"}`,
+    `Presupuesto: ${paper.budget || "Pendiente"}`,
+    "",
+    ...listLines("Metodologia", paper.methodology),
+    "",
+    ...listLines("Impacto esperado", paper.expectedImpact),
+    "",
+    ...listLines("Resultados medibles", paper.measurableResults),
+    "",
+    ...listLines("Indicadores de logro", paper.achievementIndicators),
+  ].filter((line, index, lines) => !(line === "" && lines[index - 1] === ""));
+}
+
+function simplePdfBuffer(lines = []) {
+  const pageWidth = 612;
+  const pageHeight = 792;
+  const marginX = 56;
+  const firstY = 736;
+  const lineHeight = 14;
+  const pages = [];
+  let current = [];
+  let y = firstY;
+
+  lines.forEach((line) => {
+    const wrappedLines = wrapText(line, line === lines[0] ? 70 : 92);
+    wrappedLines.forEach((wrappedLine) => {
+      if (y < 64) {
+        pages.push(current);
+        current = [];
+        y = firstY;
+      }
+      current.push({ text: wrappedLine, y, size: pages.length === 0 && current.length === 0 ? 18 : 10 });
+      y -= line === "" ? lineHeight / 2 : lineHeight;
+    });
+  });
+  if (current.length) pages.push(current);
+
+  const objects = [];
+  objects.push("<< /Type /Catalog /Pages 2 0 R >>");
+  const pageObjectNumbers = pages.map((_, index) => 3 + index * 2);
+  objects.push(`<< /Type /Pages /Kids [${pageObjectNumbers.map((number) => `${number} 0 R`).join(" ")}] /Count ${pages.length} >>`);
+
+  pages.forEach((pageLines, index) => {
+    const pageNumber = 3 + index * 2;
+    const contentNumber = pageNumber + 1;
+    const content = [
+      "BT",
+      ...pageLines.map((line) => `/F1 ${line.size} Tf ${marginX} ${line.y} Td (${pdfEscape(line.text)}) Tj`),
+      "ET",
+    ].join("\n");
+    objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> /Contents ${contentNumber} 0 R >>`);
+    objects.push(`<< /Length ${Buffer.byteLength(content, "utf8")} >>\nstream\n${content}\nendstream`);
+  });
+
+  const chunks = ["%PDF-1.4\n"];
+  const offsets = [0];
+  objects.forEach((object, index) => {
+    offsets.push(Buffer.byteLength(chunks.join(""), "utf8"));
+    chunks.push(`${index + 1} 0 obj\n${object}\nendobj\n`);
+  });
+  const xrefOffset = Buffer.byteLength(chunks.join(""), "utf8");
+  chunks.push(`xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`);
+  offsets.slice(1).forEach((offset) => {
+    chunks.push(`${String(offset).padStart(10, "0")} 00000 n \n`);
+  });
+  chunks.push(`trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`);
+  return Buffer.from(chunks.join(""), "utf8");
+}
+
+function sendConceptPaperFallbackPdf(response, paper) {
+  const buffer = simplePdfBuffer(conceptPaperFallbackLines(paper));
+  sendBinary(response, 200, buffer, {
+    contentType: "application/pdf",
+    fileName: paper.fileName || `${paper.title || "concept-paper"}.pdf`,
+    disposition: "inline",
+  });
+}
+
 function sendStaticFile(request, response) {
   if (request.method !== "GET" && request.method !== "HEAD") {
     sendJson(response, 405, { error: "Metodo no permitido." });
@@ -599,14 +715,28 @@ export async function handleConceptPaperFile(_request, response, conceptPaperId)
   const file = dataUrlToFile(paper.dataUrl);
   if (!file) {
     if (paper.path) {
-      sendStoredUpload(response, paper.path, {
-        contentType: paper.mimeType || "application/octet-stream",
-        fileName: paper.fileName || `${paper.title || "concept-paper"}.pdf`,
-        disposition: "inline",
-      });
+      const absoluteUploadPath = resolveUploadPath(paper.path);
+      if (absoluteUploadPath && fs.existsSync(absoluteUploadPath)) {
+        sendStoredUpload(response, paper.path, {
+          contentType: paper.mimeType || "application/octet-stream",
+          fileName: paper.fileName || `${paper.title || "concept-paper"}.pdf`,
+          disposition: "inline",
+        });
+        return;
+      }
+      if (!path.isAbsolute(paper.path) && fs.existsSync(path.resolve(frontendDir, paper.path.replace(/^\/+/, "")))) {
+        const staticPath = path.resolve(frontendDir, paper.path.replace(/^\/+/, ""));
+        sendBinary(response, 200, fs.readFileSync(staticPath), {
+          contentType: paper.mimeType || "application/pdf",
+          fileName: paper.fileName || `${paper.title || "concept-paper"}.pdf`,
+          disposition: "inline",
+        });
+        return;
+      }
+      sendConceptPaperFallbackPdf(response, paper);
       return;
     }
-    sendJson(response, 404, { error: "Este Concept Paper no tiene archivo disponible en la API." });
+    sendConceptPaperFallbackPdf(response, paper);
     return;
   }
 
