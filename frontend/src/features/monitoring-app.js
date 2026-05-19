@@ -1,7 +1,7 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260519e";
+import { $, $$, elements } from "../core/dom.js?v=20260519f";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
-import { seedState } from "../data/seed-state.js?v=20260519e";
+import { seedState } from "../data/seed-state.js?v=20260519f";
 import {
   REPORT_STATUSES,
   canReviewReports,
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260519e";
+} from "../services/auth-service.js?v=20260519f";
 import {
   apiFileUrl,
   createApiConceptPaper,
@@ -34,10 +34,12 @@ import {
   deleteApiAttendanceParticipant,
   deleteApiAttendanceParticipants,
   deleteApiAttendanceSession,
+  deleteApiConceptPaper,
   deleteApiReport,
   deleteApiIndicator,
   deleteApiProgram,
   deleteApiProgramCenter,
+  deleteApiProgramManual,
   fetchApiConceptPapers,
   fetchApiAttendanceParticipants,
   fetchApiAttendanceSessions,
@@ -55,7 +57,7 @@ import {
   updateApiProgram,
   updateApiProgramCenter,
   uploadApiFile,
-} from "../services/mel-api.js?v=20260519e";
+} from "../services/mel-api.js?v=20260519f";
 import {
   currentMonth,
   escapeHtml,
@@ -983,6 +985,7 @@ function renderConceptPapers() {
   const papers = state.conceptPapers || [];
   const manuals = state.programManuals || [];
   const activePaper = selectedConceptPaper();
+  const canDeleteLibraryDocuments = isSystemAdminRole();
   const totalDocuments = papers.length + manuals.length;
   elements.conceptCount.textContent = `${totalDocuments} ${totalDocuments === 1 ? "documento" : "documentos"}`;
 
@@ -1006,6 +1009,11 @@ function renderConceptPapers() {
           <div class="concept-actions">
             <button class="ghost-action" data-concept-id="${paper.id}" type="button">Ver resumen</button>
             ${openDocument}
+            ${
+              canDeleteLibraryDocuments
+                ? `<button class="ghost-action danger-action" data-delete-concept-paper="${escapeHtml(paper.id)}" type="button">Eliminar</button>`
+                : ""
+            }
           </div>
         </article>
       `;
@@ -1030,6 +1038,11 @@ function renderConceptPapers() {
               </div>
               <div class="concept-actions">
                 ${openDocument}
+                ${
+                  canDeleteLibraryDocuments
+                    ? `<button class="ghost-action danger-action" data-delete-program-manual="${escapeHtml(manual.id)}" type="button">Eliminar</button>`
+                    : ""
+                }
               </div>
             </article>
           `;
@@ -3971,6 +3984,77 @@ async function saveProgramFromForm(formData) {
   }
 }
 
+async function deleteConceptPaperFromUi(conceptPaperId) {
+  if (!isSystemAdminRole()) {
+    showToast("Solo Supervision M&E puede eliminar Concept Papers.");
+    return;
+  }
+  const paper = (state.conceptPapers || []).find((item) => item.id === conceptPaperId);
+  if (!paper) {
+    showToast("No encontre el Concept Paper.");
+    return;
+  }
+  const confirmed = window.confirm(
+    `Eliminar "${paper.title}" quitara tambien su resumen tecnico de la biblioteca para todos los usuarios. Quedara registro en auditoria. Deseas continuar?`,
+  );
+  if (!confirmed) return;
+
+  try {
+    if (isApiConfigured()) {
+      await deleteApiConceptPaper(conceptPaperId, {
+        ...actorPayload(),
+        reason: "Concept Paper eliminado desde la biblioteca.",
+      });
+      await refreshConceptPapersFromApi();
+    } else {
+      state.conceptPapers = (state.conceptPapers || []).filter((item) => item.id !== conceptPaperId);
+      if (state.selectedConceptPaper === conceptPaperId) {
+        state.selectedConceptPaper = state.conceptPapers[0]?.id || null;
+      }
+      saveState();
+    }
+    renderAll();
+    showToast("Concept Paper eliminado de la plataforma.");
+  } catch (error) {
+    console.error(error);
+    showToast(error.message || "No pude eliminar el Concept Paper.");
+  }
+}
+
+async function deleteProgramManualFromUi(manualId) {
+  if (!isSystemAdminRole()) {
+    showToast("Solo Supervision M&E puede eliminar manuales.");
+    return;
+  }
+  const manual = (state.programManuals || []).find((item) => item.id === manualId);
+  if (!manual) {
+    showToast("No encontre el manual.");
+    return;
+  }
+  const confirmed = window.confirm(
+    `Eliminar "${manual.title || manual.fileName}" quitara este manual de la biblioteca para todos los usuarios. Quedara registro en auditoria. Deseas continuar?`,
+  );
+  if (!confirmed) return;
+
+  try {
+    if (isApiConfigured()) {
+      await deleteApiProgramManual(manualId, {
+        ...actorPayload(),
+        reason: "Manual eliminado desde la biblioteca.",
+      });
+      await refreshProgramManualsFromApi();
+    } else {
+      state.programManuals = (state.programManuals || []).filter((item) => item.id !== manualId);
+      saveState();
+    }
+    renderAll();
+    showToast("Manual eliminado de la plataforma.");
+  } catch (error) {
+    console.error(error);
+    showToast(error.message || "No pude eliminar el manual.");
+  }
+}
+
 async function saveProgramCenterFromForm(formData) {
   if (!canManageProgramCenters()) {
     showToast("No tienes permiso para administrar centros.");
@@ -4377,6 +4461,18 @@ function bindEvents() {
   });
 
   elements.conceptPaperList.addEventListener("click", (event) => {
+    const deleteConceptPaperId = event.target.closest("[data-delete-concept-paper]")?.dataset.deleteConceptPaper;
+    if (deleteConceptPaperId) {
+      void deleteConceptPaperFromUi(deleteConceptPaperId);
+      return;
+    }
+
+    const deleteManualId = event.target.closest("[data-delete-program-manual]")?.dataset.deleteProgramManual;
+    if (deleteManualId) {
+      void deleteProgramManualFromUi(deleteManualId);
+      return;
+    }
+
     const openDocumentId = event.target.closest("[data-open-concept-document]")?.dataset.openConceptDocument;
     if (openDocumentId) {
       const paper = state.conceptPapers.find((item) => item.id === openDocumentId);

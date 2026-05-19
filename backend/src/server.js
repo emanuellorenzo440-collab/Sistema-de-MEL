@@ -14,13 +14,16 @@ import {
   deleteAttendanceParticipant,
   deleteAttendanceParticipantsForProgram,
   deleteAttendanceSession,
+  deleteConceptPaper,
   deleteCorrectableReport,
   deleteIndicator,
   deleteProgram,
   deleteProgramCenter,
+  deleteProgramManual,
   findConceptPaperById,
   findProgramManualById,
   findReportById,
+  isLibraryDocumentPathDeleted,
   listAttendanceArchive,
   listAttendanceParticipants,
   listAttendanceSessions,
@@ -260,6 +263,10 @@ function sendStaticFile(request, response) {
   const relativePath = requestedPath.startsWith("/shared/")
     ? requestedPath.replace(/^\/shared\//, "")
     : requestedPath.replace(/^\//, "");
+  if (isLibraryDocumentPathDeleted(relativePath)) {
+    sendJson(response, 404, { error: "Este documento fue eliminado de la biblioteca." });
+    return;
+  }
   const filePath = path.resolve(staticRoot, relativePath || "index.html");
   const safePath = filePath.startsWith(staticRoot) ? filePath : path.join(frontendDir, "index.html");
   const finalPath = fs.existsSync(safePath) && fs.statSync(safePath).isFile()
@@ -713,6 +720,30 @@ export async function handleConceptPaperCreate(request, response) {
   sendJson(response, 201, { data: conceptPaper });
 }
 
+export async function handleConceptPaperDelete(request, response, conceptPaperId) {
+  let payload = {};
+  try {
+    payload = await readOptionalJsonBody(request);
+  } catch {
+    payload = {};
+  }
+
+  try {
+    const deleted = deleteConceptPaper(conceptPaperId, {
+      actorId: payload.actorId,
+      actorRole: payload.actorRole,
+      reason: payload.reason || "Eliminado desde biblioteca de Concept Papers.",
+    });
+    if (!deleted) {
+      sendJson(response, 404, { error: "No encontre el Concept Paper solicitado." });
+      return;
+    }
+    sendJson(response, 200, { data: deleted });
+  } catch (error) {
+    sendApiError(response, error);
+  }
+}
+
 export async function handleConceptPaperFile(_request, response, conceptPaperId) {
   const paper = findConceptPaperById(conceptPaperId);
   if (!paper) {
@@ -809,6 +840,30 @@ export async function handleProgramManualCreate(request, response) {
   sendJson(response, 201, { data: manual });
 }
 
+export async function handleProgramManualDelete(request, response, manualId) {
+  let payload = {};
+  try {
+    payload = await readOptionalJsonBody(request);
+  } catch {
+    payload = {};
+  }
+
+  try {
+    const deleted = deleteProgramManual(manualId, {
+      actorId: payload.actorId,
+      actorRole: payload.actorRole,
+      reason: payload.reason || "Eliminado desde biblioteca de manuales.",
+    });
+    if (!deleted) {
+      sendJson(response, 404, { error: "No encontre el manual solicitado." });
+      return;
+    }
+    sendJson(response, 200, { data: deleted });
+  } catch (error) {
+    sendApiError(response, error);
+  }
+}
+
 export async function handleProgramManualFile(_request, response, manualId) {
   const manual = findProgramManualById(manualId);
   if (!manual) {
@@ -853,6 +908,10 @@ export async function handleUploadCreate(request, response, url) {
 
 export async function handleUploadFile(_request, response, url) {
   const storagePath = url.searchParams.get("path") || "";
+  if (isLibraryDocumentPathDeleted(storagePath)) {
+    sendJson(response, 404, { error: "Este documento fue eliminado de la biblioteca." });
+    return;
+  }
   const fileName = url.searchParams.get("fileName") || path.basename(storagePath);
   const contentType = url.searchParams.get("mimeType") || "application/octet-stream";
   sendStoredUpload(response, storagePath, { fileName, contentType, disposition: "inline" });
@@ -1255,6 +1314,8 @@ function apiIndex() {
       "concept-papers/:id/file",
       "program-manuals",
       "program-manuals/:id/file",
+      "DELETE concept-papers/:id",
+      "DELETE program-manuals/:id",
       "uploads",
       "uploads/file",
       "attendance/participants",
@@ -1532,6 +1593,12 @@ async function router(request, response) {
     return;
   }
 
+  const conceptPaperMatch = pathname.match(/^\/api\/v1\/concept-papers\/([^/]+)$/);
+  if (request.method === "DELETE" && conceptPaperMatch) {
+    await handleConceptPaperDelete(request, response, decodeURIComponent(conceptPaperMatch[1]));
+    return;
+  }
+
   const conceptPaperFileMatch = pathname.match(/^\/api\/v1\/concept-papers\/([^/]+)\/file$/);
   if (request.method === "GET" && conceptPaperFileMatch) {
     await handleConceptPaperFile(request, response, decodeURIComponent(conceptPaperFileMatch[1]));
@@ -1545,6 +1612,12 @@ async function router(request, response) {
 
   if (request.method === "POST" && pathname === "/api/v1/program-manuals") {
     await handleProgramManualCreate(request, response);
+    return;
+  }
+
+  const programManualMatch = pathname.match(/^\/api\/v1\/program-manuals\/([^/]+)$/);
+  if (request.method === "DELETE" && programManualMatch) {
+    await handleProgramManualDelete(request, response, decodeURIComponent(programManualMatch[1]));
     return;
   }
 

@@ -26,9 +26,11 @@ Base propuesta para conectar frontend, backend y base de datos.
 - `POST /api/v1/form-submissions`
 - `GET /api/v1/concept-papers?programId=...`
 - `GET /api/v1/concept-papers/:id/file`
+- `DELETE /api/v1/concept-papers/:id`
 - `GET /api/v1/program-manuals?program=...&year=...&companyId=...`
 - `POST /api/v1/program-manuals`
 - `GET /api/v1/program-manuals/:id/file`
+- `DELETE /api/v1/program-manuals/:id`
 - `POST /api/v1/uploads?kind=...&fileName=...`
 - `GET /api/v1/uploads/file?path=...`
 - `GET /api/v1/actions`
@@ -43,6 +45,7 @@ Base propuesta para conectar frontend, backend y base de datos.
 - El backend valida permisos segun rol antes de modificar datos.
 - Los archivos cargados en reportes, Concept Papers y manuales permiten hasta 200 MB por archivo.
 - Los archivos grandes se cargan como binario en `/uploads` y los recursos guardan solo la ruta/metadatos.
+- Las eliminaciones de biblioteca se quitan de la vista activa y se registran en auditoria persistente.
 - La analitica ejecutiva debe usar por defecto `scope=approved`.
 - La vista operativa puede usar `scope=all`, pero debe marcar que incluye datos no aprobados.
 - El backend habilita CORS para desarrollo local entre frontend y API.

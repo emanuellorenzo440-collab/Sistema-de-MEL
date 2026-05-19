@@ -199,6 +199,14 @@ export async function createApiConceptPaper(conceptPaper) {
   return response.data;
 }
 
+export async function deleteApiConceptPaper(conceptPaperId, payload = {}) {
+  const response = await requestJson("concept-papers/" + encodeURIComponent(conceptPaperId), {
+    method: "DELETE",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
 export async function fetchApiProgramManuals(filters = {}) {
   const response = await requestJson("program-manuals", {}, filters);
   return response.data || [];
@@ -208,6 +216,14 @@ export async function createApiProgramManual(manual) {
   const response = await requestJson("program-manuals", {
     method: "POST",
     body: JSON.stringify(manual),
+  });
+  return response.data;
+}
+
+export async function deleteApiProgramManual(manualId, payload = {}) {
+  const response = await requestJson("program-manuals/" + encodeURIComponent(manualId), {
+    method: "DELETE",
+    body: JSON.stringify(payload),
   });
   return response.data;
 }

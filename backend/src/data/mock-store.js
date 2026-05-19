@@ -136,6 +136,7 @@ const programManuals = [];
 const reports = [];
 const reportStatusHistory = [];
 const deletedReports = [];
+const deletedLibraryDocuments = [];
 const attendanceParticipants = [];
 const attendanceSessions = [];
 const attendanceArchive = [];
@@ -234,6 +235,7 @@ function snapshotStore() {
     reports,
     reportStatusHistory,
     deletedReports,
+    deletedLibraryDocuments,
     attendanceParticipants,
     attendanceSessions,
     attendanceArchive,
@@ -261,13 +263,21 @@ function hydratePersistentStore() {
     replaceArray(conceptPapers, stored.conceptPapers.map(normalizedConceptPaper));
   }
   replaceArray(programManuals, Array.isArray(stored.programManuals) ? stored.programManuals.map(normalizedProgramManual) : []);
+  replaceArray(deletedLibraryDocuments, Array.isArray(stored.deletedLibraryDocuments) ? stored.deletedLibraryDocuments : []);
   mergeMissingByKey(programs, seededPrograms, (program) => program.name);
   if (Array.isArray(stored.programCenters)) {
     replaceArray(programCenters, stored.programCenters.map(normalizedProgramCenter));
   } else {
     mergeMissingByKey(programCenters, seededProgramCenters, (center) => `${center.program}|${center.province}|${center.name}`);
   }
-  mergeMissingByKey(conceptPapers, seedState.conceptPapers.map(normalizedConceptPaper), (paper) => paper.id);
+  const deletedConceptPaperIds = new Set(
+    deletedLibraryDocuments.filter((item) => item.type === "concept-paper").map((item) => item.id),
+  );
+  mergeMissingByKey(
+    conceptPapers,
+    seedState.conceptPapers.map(normalizedConceptPaper).filter((paper) => !deletedConceptPaperIds.has(paper.id)),
+    (paper) => paper.id,
+  );
   replaceArray(reports, Array.isArray(stored.reports) ? stored.reports.map(normalizedReport) : []);
   replaceArray(reportStatusHistory, Array.isArray(stored.reportStatusHistory) ? stored.reportStatusHistory : []);
   replaceArray(deletedReports, Array.isArray(stored.deletedReports) ? stored.deletedReports : []);
@@ -754,6 +764,44 @@ export function createConceptPaper(input = {}) {
   return structuredClone(paper);
 }
 
+function archiveLibraryDocument(type, document, options = {}) {
+  const timestamp = nowIso();
+  deletedLibraryDocuments.unshift({
+    type,
+    id: document.id,
+    title: document.title || document.fileName || "",
+    program: document.program || "",
+    fileName: document.fileName || "",
+    path: document.path || "",
+    mimeType: document.mimeType || "",
+    deletedAt: timestamp,
+    deletedBy: normalizeString(options.actorId || options.deletedBy, ""),
+    deletedByRole: normalizeString(options.actorRole, ""),
+    reason: normalizeString(options.reason, ""),
+    snapshot: structuredClone(document),
+  });
+}
+
+function requireSupervisorLibraryDelete(options = {}) {
+  const actorRole = normalizeString(options.actorRole, "");
+  if (actorRole !== "Supervision M&E") {
+    const error = new Error("Solo Supervision M&E puede eliminar documentos de la biblioteca.");
+    error.status = 403;
+    throw error;
+  }
+}
+
+export function deleteConceptPaper(conceptPaperId, options = {}) {
+  requireSupervisorLibraryDelete(options);
+  const index = conceptPapers.findIndex((paper) => paper.id === conceptPaperId);
+  if (index < 0) return null;
+
+  const [deleted] = conceptPapers.splice(index, 1);
+  archiveLibraryDocument("concept-paper", deleted, options);
+  persistStore();
+  return structuredClone(deleted);
+}
+
 export function listProgramManuals(filters = {}) {
   const { companyId, program, year, status } = filters;
   return programManuals
@@ -776,6 +824,26 @@ export function createProgramManual(input = {}) {
   programManuals.unshift(manual);
   persistStore();
   return structuredClone(manual);
+}
+
+export function deleteProgramManual(manualId, options = {}) {
+  requireSupervisorLibraryDelete(options);
+  const index = programManuals.findIndex((manual) => manual.id === manualId);
+  if (index < 0) return null;
+
+  const [deleted] = programManuals.splice(index, 1);
+  archiveLibraryDocument("program-manual", deleted, options);
+  persistStore();
+  return structuredClone(deleted);
+}
+
+export function isLibraryDocumentPathDeleted(storagePath = "") {
+  const normalizedPath = String(storagePath || "").replace(/\\/g, "/").replace(/^\/+/, "");
+  if (!normalizedPath) return false;
+  return deletedLibraryDocuments.some((document) => {
+    const documentPath = String(document.path || document.snapshot?.path || "").replace(/\\/g, "/").replace(/^\/+/, "");
+    return documentPath === normalizedPath;
+  });
 }
 
 export function listAttendanceParticipants(filters = {}) {
