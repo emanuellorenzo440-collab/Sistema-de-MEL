@@ -25,6 +25,10 @@ Base propuesta para conectar frontend, backend y base de datos.
 - `GET /api/v1/forms?programId=...`
 - `POST /api/v1/form-submissions`
 - `GET /api/v1/concept-papers?programId=...`
+- `GET /api/v1/concept-papers/:id/file`
+- `GET /api/v1/program-manuals?program=...&year=...&companyId=...`
+- `POST /api/v1/program-manuals`
+- `GET /api/v1/program-manuals/:id/file`
 - `GET /api/v1/actions`
 - `POST /api/v1/actions`
 
@@ -76,6 +80,27 @@ Base propuesta para conectar frontend, backend y base de datos.
   "type": "Logro"
 }
 ```
+
+## Payload sugerido para cargar un manual de programa
+
+`POST /api/v1/program-manuals`
+
+```json
+{
+  "companyId": "org-default",
+  "program": "CFI",
+  "title": "Manual operativo CFI",
+  "fileName": "manual-cfi.pdf",
+  "dataUrl": "data:application/pdf;base64,...",
+  "mimeType": "application/pdf",
+  "year": "2026",
+  "version": "1.0",
+  "notes": "Manual vigente del programa",
+  "actorRole": "Supervision M&E"
+}
+```
+
+El backend valida que el archivo sea PDF y que la carga venga de un rol administrativo autorizado.
 
 `POST /api/v1/reports`
 

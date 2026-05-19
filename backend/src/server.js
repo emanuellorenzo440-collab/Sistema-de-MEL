@@ -8,6 +8,7 @@ import {
   createIndicator,
   createProgram,
   createProgramCenter,
+  createProgramManual,
   createReport,
   createReportsBulk,
   deleteAttendanceParticipant,
@@ -18,6 +19,7 @@ import {
   deleteProgram,
   deleteProgramCenter,
   findConceptPaperById,
+  findProgramManualById,
   findReportById,
   listAttendanceArchive,
   listAttendanceParticipants,
@@ -28,6 +30,7 @@ import {
   listNotifications,
   listPrograms,
   listProgramCenters,
+  listProgramManuals,
   listDeletedReports,
   listReportStatusHistory,
   markNotificationRead,
@@ -446,6 +449,66 @@ export async function handleConceptPaperFile(_request, response, conceptPaperId)
   });
 }
 
+export async function handleProgramManuals(_request, response, url) {
+  const filters = {
+    companyId: url.searchParams.get("companyId") || undefined,
+    program: url.searchParams.get("program") || undefined,
+    year: url.searchParams.get("year") || undefined,
+    status: url.searchParams.get("status") || undefined,
+  };
+  sendJson(response, 200, { data: listProgramManuals(filters), filters });
+}
+
+export async function handleProgramManualCreate(request, response) {
+  let payload;
+  try {
+    payload = await readJsonBody(request);
+  } catch {
+    sendJson(response, 400, { error: "El cuerpo del manual no es JSON valido." });
+    return;
+  }
+
+  const missing = ["program", "title", "fileName", "dataUrl"].filter((field) => !String(payload[field] || "").trim());
+  if (missing.length) {
+    sendJson(response, 400, {
+      error: "Faltan campos obligatorios para registrar el manual.",
+      details: { missing },
+    });
+    return;
+  }
+  if (!requireActorRole(response, payload, ["Supervision M&E"], "cargar manuales")) return;
+
+  const file = dataUrlToFile(payload.dataUrl);
+  const mimeType = String(payload.mimeType || file?.contentType || "");
+  if (!file || !/application\/pdf/i.test(mimeType)) {
+    sendJson(response, 400, { error: "Los manuales deben subirse en formato PDF." });
+    return;
+  }
+
+  const manual = createProgramManual({ ...payload, mimeType: "application/pdf" });
+  sendJson(response, 201, { data: manual });
+}
+
+export async function handleProgramManualFile(_request, response, manualId) {
+  const manual = findProgramManualById(manualId);
+  if (!manual) {
+    sendJson(response, 404, { error: "No encontre el manual solicitado." });
+    return;
+  }
+
+  const file = dataUrlToFile(manual.dataUrl);
+  if (!file) {
+    sendJson(response, 404, { error: "Este manual no tiene archivo disponible en la API." });
+    return;
+  }
+
+  sendBinary(response, 200, file.buffer, {
+    contentType: manual.mimeType || file.contentType || "application/pdf",
+    fileName: manual.fileName || `${manual.title || "manual"}.pdf`,
+    disposition: "inline",
+  });
+}
+
 export async function handleAttendanceParticipants(_request, response, url) {
   const filters = {
     program: url.searchParams.get("program") || undefined,
@@ -827,6 +890,8 @@ function apiIndex() {
       "indicators",
       "concept-papers",
       "concept-papers/:id/file",
+      "program-manuals",
+      "program-manuals/:id/file",
       "attendance/participants",
       "attendance/sessions",
       "attendance/archive",
@@ -1105,6 +1170,22 @@ async function router(request, response) {
   const conceptPaperFileMatch = pathname.match(/^\/api\/v1\/concept-papers\/([^/]+)\/file$/);
   if (request.method === "GET" && conceptPaperFileMatch) {
     await handleConceptPaperFile(request, response, decodeURIComponent(conceptPaperFileMatch[1]));
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/v1/program-manuals") {
+    await handleProgramManuals(request, response, url);
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/v1/program-manuals") {
+    await handleProgramManualCreate(request, response);
+    return;
+  }
+
+  const programManualFileMatch = pathname.match(/^\/api\/v1\/program-manuals\/([^/]+)\/file$/);
+  if (request.method === "GET" && programManualFileMatch) {
+    await handleProgramManualFile(request, response, decodeURIComponent(programManualFileMatch[1]));
     return;
   }
 

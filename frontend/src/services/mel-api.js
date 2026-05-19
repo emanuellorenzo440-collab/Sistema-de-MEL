@@ -157,6 +157,19 @@ export async function createApiConceptPaper(conceptPaper) {
   return response.data;
 }
 
+export async function fetchApiProgramManuals(filters = {}) {
+  const response = await requestJson("program-manuals", {}, filters);
+  return response.data || [];
+}
+
+export async function createApiProgramManual(manual) {
+  const response = await requestJson("program-manuals", {
+    method: "POST",
+    body: JSON.stringify(manual),
+  });
+  return response.data;
+}
+
 export async function fetchApiAttendanceParticipants(filters = {}) {
   const response = await requestJson("attendance/participants", {}, filters);
   return response.data || [];

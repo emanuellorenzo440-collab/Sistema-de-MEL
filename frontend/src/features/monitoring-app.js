@@ -1,7 +1,7 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260519a";
+import { $, $$, elements } from "../core/dom.js?v=20260519b";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
-import { seedState } from "../data/seed-state.js?v=20260519a";
+import { seedState } from "../data/seed-state.js?v=20260519b";
 import {
   REPORT_STATUSES,
   canReviewReports,
@@ -20,13 +20,14 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260519a";
+} from "../services/auth-service.js?v=20260519b";
 import {
   createApiConceptPaper,
   createApiAttendanceParticipant,
   createApiIndicator,
   createApiProgram,
   createApiProgramCenter,
+  createApiProgramManual,
   createApiReport,
   createApiReportsBulk,
   deleteApiAttendanceParticipant,
@@ -41,6 +42,7 @@ import {
   fetchApiAttendanceSessions,
   fetchApiNotifications,
   fetchApiProgramCenters,
+  fetchApiProgramManuals,
   fetchApiReports,
   getApiBaseUrl,
   isApiConfigured,
@@ -51,7 +53,7 @@ import {
   updateApiIndicator,
   updateApiProgram,
   updateApiProgramCenter,
-} from "../services/mel-api.js?v=20260519a";
+} from "../services/mel-api.js?v=20260519b";
 import {
   currentMonth,
   escapeHtml,
@@ -69,6 +71,7 @@ let state = null;
 const ROLE_STORAGE_KEY = "pulso-me-active-role";
 const MAX_REPORT_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 const MAX_CONCEPT_PAPER_BYTES = 15 * 1024 * 1024;
+const MAX_PROGRAM_MANUAL_BYTES = 20 * 1024 * 1024;
 const ATTENDANCE_PROGRAMS = ["Girls Empowerment", "Club de Chicos", "IGA"];
 const NO_CENTER_OPTION = "Sin centros registrados";
 let currentUser = null;
@@ -196,6 +199,7 @@ function normalizeState(savedState) {
   nextState.conceptPapers = mergeByKey(savedState.conceptPapers || [], seedState.conceptPapers, (item) => item.id).map(
     normalizeConceptPaperState,
   );
+  nextState.programManuals = Array.isArray(savedState.programManuals) ? savedState.programManuals.slice() : [];
   nextState.programCenters = mergeByKey(savedState.programCenters || [], seedState.programCenters || [], (item) =>
     [item.program, item.province, item.name].join("|"),
   ).map((center) => ({
@@ -742,6 +746,13 @@ function conceptPaperFileUrl(paper) {
   return `${baseUrl}/concept-papers/${encodeURIComponent(paper.id)}/file`;
 }
 
+function programManualFileUrl(manual) {
+  if (!manual?.id || !isApiConfigured()) return "";
+  const baseUrl = getApiBaseUrl();
+  if (!baseUrl) return "";
+  return `${baseUrl}/program-manuals/${encodeURIComponent(manual.id)}/file`;
+}
+
 async function attachmentFromFile(file, uploadedBy = null) {
   if (!file) return null;
   if (file.size > MAX_REPORT_ATTACHMENT_BYTES) {
@@ -803,6 +814,39 @@ async function conceptPaperDocumentFromFile(file, formData) {
   };
 }
 
+async function programManualDocumentFromFile(file, formData) {
+  if (!file) {
+    throw new Error("Selecciona un manual en PDF.");
+  }
+  const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+  if (!isPdf) {
+    throw new Error("Los manuales deben subirse en formato PDF.");
+  }
+  if (file.size > MAX_PROGRAM_MANUAL_BYTES) {
+    throw new Error(`El manual supera ${formatFileSize(MAX_PROGRAM_MANUAL_BYTES)}. Sube una version mas liviana.`);
+  }
+
+  const program = String(formData.get("program") || "").trim();
+  const title = String(formData.get("title") || file.name || "").trim();
+  const uploadedBy = currentUser?.email || currentUser?.fullName || activeRole();
+  return {
+    id: `manual-${slugify(program || title || file.name)}-${Date.now()}`,
+    companyId: "org-default",
+    program,
+    title,
+    fileName: file.name,
+    dataUrl: await readFileAsDataUrl(file),
+    mimeType: "application/pdf",
+    size: file.size,
+    uploadedAt: new Date().toISOString(),
+    uploadedBy,
+    year: String(formData.get("year") || new Date().getFullYear()).trim(),
+    status: "Cargado",
+    version: String(formData.get("version") || "1.0").trim(),
+    notes: String(formData.get("notes") || "").trim(),
+  };
+}
+
 async function refreshConceptPapersFromApi() {
   if (!isApiConfigured()) return;
   const remoteConceptPapers = await fetchApiConceptPapers();
@@ -813,6 +857,12 @@ async function refreshConceptPapersFromApi() {
     }
     saveState();
   }
+}
+
+async function refreshProgramManualsFromApi() {
+  if (!isApiConfigured()) return;
+  state.programManuals = await fetchApiProgramManuals();
+  saveState();
 }
 
 async function refreshProgramCentersFromApi() {
@@ -909,10 +959,12 @@ function selectedConceptPaper() {
 
 function renderConceptPapers() {
   const papers = state.conceptPapers || [];
+  const manuals = state.programManuals || [];
   const activePaper = selectedConceptPaper();
-  elements.conceptCount.textContent = `${papers.length} ${papers.length === 1 ? "documento" : "documentos"}`;
+  const totalDocuments = papers.length + manuals.length;
+  elements.conceptCount.textContent = `${totalDocuments} ${totalDocuments === 1 ? "documento" : "documentos"}`;
 
-  elements.conceptPaperList.innerHTML = papers
+  const conceptPaperMarkup = papers
     .map(
       (paper) => {
         const documentHref = conceptPaperFileUrl(paper) || (paper.path ? localFileUrl(paper.path) : "");
@@ -938,6 +990,41 @@ function renderConceptPapers() {
       },
     )
     .join("");
+  const manualMarkup = manuals.length
+    ? manuals
+        .map((manual) => {
+          const documentHref = programManualFileUrl(manual);
+          const openDocument = documentHref
+            ? `<a class="ghost-link" href="${escapeHtml(documentHref)}" target="_blank" rel="noreferrer">Abrir PDF</a>`
+            : manual.dataUrl
+            ? `<button class="ghost-link" data-open-program-manual="${escapeHtml(manual.id)}" type="button">Abrir PDF</button>`
+            : `<span class="item-meta">Sin archivo</span>`;
+          return `
+            <article class="concept-card">
+              <div>
+                <p class="eyebrow">${escapeHtml(manual.year || "")} · Manual · Version ${escapeHtml(manual.version || "1.0")}</p>
+                <h3>${escapeHtml(manual.title || manual.fileName || "Manual de programa")}</h3>
+                <p class="item-meta">${escapeHtml(manual.program || "Programa")} · ${escapeHtml(manual.fileName || "manual.pdf")}</p>
+              </div>
+              <div class="concept-actions">
+                ${openDocument}
+              </div>
+            </article>
+          `;
+        })
+        .join("")
+    : `<p class="item-meta">Todavia no hay manuales cargados.</p>`;
+
+  elements.conceptPaperList.innerHTML = `
+    <div class="library-group">
+      <p class="eyebrow">Concept Papers</p>
+      ${conceptPaperMarkup || `<p class="item-meta">Todavia no hay concept papers cargados.</p>`}
+    </div>
+    <div class="library-group">
+      <p class="eyebrow">Manuales de programa</p>
+      ${manualMarkup}
+    </div>
+  `;
 
   if (!activePaper) {
     elements.conceptDetailTitle.textContent = "Sin concept paper";
@@ -1764,6 +1851,51 @@ function renderAccessWorkspace() {
     elements.accessRequestCount.textContent = `${pendingCount} pendiente${pendingCount === 1 ? "" : "s"}`;
     elements.accessRequestCount.className = `status-pill ${pendingCount ? "warning" : "good"}`;
 
+  const manualUploadMarkup = isSystemAdminRole()
+    ? `
+      <form class="user-access-card concept-upload-card" id="createProgramManualForm">
+        <div class="user-access-top">
+          <div>
+            <p class="eyebrow">Manuales</p>
+            <h3>Cargar manual de programa</h3>
+          </div>
+          <span class="status-pill info">${(state.programManuals || []).length} cargados</span>
+        </div>
+        <div class="access-card-grid">
+          <label>
+            Programa
+            <select name="program" required>
+              ${state.programs.map((program) => `<option value="${escapeHtml(program.name)}">${escapeHtml(program.name)}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            Ano
+            <input name="year" type="number" min="2000" max="2100" value="${new Date().getFullYear()}" required />
+          </label>
+          <label>
+            Titulo
+            <input name="title" type="text" placeholder="Ej. Manual operativo del programa" required />
+          </label>
+          <label>
+            Version
+            <input name="version" type="text" value="1.0" />
+          </label>
+          <label class="span-2">
+            Manual PDF
+            <input name="manualFile" type="file" accept=".pdf,application/pdf" required />
+          </label>
+          <label class="span-2">
+            Nota interna
+            <textarea name="notes" rows="2" placeholder="Opcional: uso, alcance o version del manual."></textarea>
+          </label>
+        </div>
+        <div class="item-actions">
+          <button class="primary-action" type="submit">Subir manual</button>
+        </div>
+      </form>
+    `
+    : "";
+
   const summaryMarkup = `
       <form class="user-access-card create-user-card" id="createManagedUserForm">
         <div class="user-access-top">
@@ -1853,6 +1985,7 @@ function renderAccessWorkspace() {
           <button class="primary-action" type="submit">Subir a Concept Papers</button>
         </div>
       </form>
+      ${manualUploadMarkup}
       <div class="access-summary-grid">
         ${groups
           .map((group) => {
@@ -4231,6 +4364,15 @@ function bindEvents() {
       return;
     }
 
+    const openManualId = event.target.closest("[data-open-program-manual]")?.dataset.openProgramManual;
+    if (openManualId) {
+      const manual = (state.programManuals || []).find((item) => item.id === openManualId);
+      if (manual?.dataUrl) {
+        openDataUrlDocument(manual.dataUrl, manual.fileName || manual.title || "Manual de programa");
+      }
+      return;
+    }
+
     const conceptId = event.target.dataset.conceptId;
     if (!conceptId) return;
     state.selectedConceptPaper = conceptId;
@@ -4432,6 +4574,29 @@ function bindEvents() {
       return;
     }
 
+    if (event.target.id === "createProgramManualForm") {
+      event.preventDefault();
+      const form = event.target;
+      const formData = new FormData(form);
+      const file = form.elements.manualFile?.files?.[0] || null;
+      void (async () => {
+        try {
+          const manual = await programManualDocumentFromFile(file, formData);
+          const savedManual = isApiConfigured() ? await createApiProgramManual({ ...manual, ...actorPayload() }) : manual;
+          state.programManuals = [savedManual, ...(state.programManuals || []).filter((item) => item.id !== savedManual.id)];
+          saveState();
+          form.reset();
+          await refreshProgramManualsFromApi();
+          renderAll();
+          showToast("Manual cargado y disponible para todos.");
+        } catch (error) {
+          console.error(error);
+          showToast(error.message || "No pude cargar el manual.");
+        }
+      })();
+      return;
+    }
+
     if (event.target.id === "createManagedUserForm") {
       event.preventDefault();
       const formData = new FormData(event.target);
@@ -4529,6 +4694,7 @@ export function createMonitoringApp() {
       hydrateState();
       await syncAuthenticatedAccess(authenticatedUser);
       await refreshProgramCentersFromApi();
+      await refreshProgramManualsFromApi();
       await refreshAttendanceFromApi();
       renderAll();
       bindEvents();
@@ -4541,6 +4707,7 @@ export function createMonitoringApp() {
       hydrateState();
       await syncAuthenticatedAccess(authenticatedUser);
       await refreshProgramCentersFromApi();
+      await refreshProgramManualsFromApi();
       await refreshAttendanceFromApi();
       renderAll();
     },

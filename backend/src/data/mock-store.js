@@ -97,7 +97,32 @@ function normalizedConceptPaper(input = {}) {
   };
 }
 
+function normalizedProgramManual(input = {}) {
+  const timestamp = nowIso();
+  const program = String(input.program || "");
+  const fileName = String(input.fileName || input.name || "manual.pdf");
+  return {
+    id: String(input.id || `manual-${slugify(program || fileName)}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`),
+    companyId: String(input.companyId || DEFAULT_COMPANY_ID),
+    program,
+    title: String(input.title || fileName || "Manual de programa"),
+    fileName,
+    dataUrl: input.dataUrl || null,
+    mimeType: String(input.mimeType || input.type || "application/pdf"),
+    size: asNumber(input.size),
+    uploadedAt: input.uploadedAt || timestamp,
+    uploadedBy: input.uploadedBy || null,
+    year: String(input.year || timestamp.slice(0, 4)),
+    status: String(input.status || "Cargado"),
+    version: String(input.version || "1.0"),
+    notes: String(input.notes || ""),
+    createdAt: input.createdAt || timestamp,
+    updatedAt: input.updatedAt || timestamp,
+  };
+}
+
 const conceptPapers = seedState.conceptPapers.map(normalizedConceptPaper);
+const programManuals = [];
 const reports = [];
 const reportStatusHistory = [];
 const deletedReports = [];
@@ -194,6 +219,7 @@ function snapshotStore() {
     programs,
     indicators,
     conceptPapers,
+    programManuals,
     programCenters,
     reports,
     reportStatusHistory,
@@ -224,6 +250,7 @@ function hydratePersistentStore() {
   if (Array.isArray(stored.conceptPapers) && stored.conceptPapers.length) {
     replaceArray(conceptPapers, stored.conceptPapers.map(normalizedConceptPaper));
   }
+  replaceArray(programManuals, Array.isArray(stored.programManuals) ? stored.programManuals.map(normalizedProgramManual) : []);
   mergeMissingByKey(programs, seededPrograms, (program) => program.name);
   if (Array.isArray(stored.programCenters)) {
     replaceArray(programCenters, stored.programCenters.map(normalizedProgramCenter));
@@ -713,6 +740,30 @@ export function createConceptPaper(input = {}) {
   conceptPapers.unshift(paper);
   persistStore();
   return structuredClone(paper);
+}
+
+export function listProgramManuals(filters = {}) {
+  const { companyId, program, year, status } = filters;
+  return programManuals
+    .filter((manual) => {
+      if (companyId && manual.companyId !== companyId) return false;
+      if (program && manual.program !== program) return false;
+      if (year && manual.year !== year) return false;
+      if (status && manual.status !== status) return false;
+      return true;
+    })
+    .map((manual) => structuredClone(manual));
+}
+
+export function findProgramManualById(manualId) {
+  return programManuals.find((manual) => manual.id === manualId) || null;
+}
+
+export function createProgramManual(input = {}) {
+  const manual = normalizedProgramManual(input);
+  programManuals.unshift(manual);
+  persistStore();
+  return structuredClone(manual);
 }
 
 export function listAttendanceParticipants(filters = {}) {

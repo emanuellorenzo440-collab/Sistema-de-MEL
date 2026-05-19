@@ -951,6 +951,17 @@ textarea {
   gap: 8px;
 }
 
+.library-group {
+  display: grid;
+  gap: 10px;
+}
+
+.library-group + .library-group {
+  border-top: 1px solid var(--line);
+  margin-top: 8px;
+  padding-top: 14px;
+}
+
 .form-template-actions {
   display: flex;
   flex-wrap: wrap;
