@@ -124,8 +124,15 @@ function sendStoredUpload(response, storagePath, options = {}) {
   fs.createReadStream(absolutePath).pipe(response);
 }
 
+function pdfText(value = "") {
+  return String(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\x20-\x7E]/g, "");
+}
+
 function pdfEscape(value = "") {
-  return String(value).replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+  return pdfText(value).replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
 }
 
 function wrapText(value = "", maxLength = 92) {
@@ -193,7 +200,8 @@ function simplePdfBuffer(lines = []) {
         current = [];
         y = firstY;
       }
-      current.push({ text: wrappedLine, y, size: pages.length === 0 && current.length === 0 ? 18 : 10 });
+      const isTitle = pages.length === 0 && current.length === 0;
+      current.push({ text: wrappedLine, y, size: isTitle ? 18 : 10, bold: isTitle });
       y -= line === "" ? lineHeight / 2 : lineHeight;
     });
   });
@@ -209,7 +217,7 @@ function simplePdfBuffer(lines = []) {
     const contentNumber = pageNumber + 1;
     const content = [
       "BT",
-      ...pageLines.map((line) => `/F1 ${line.size} Tf ${marginX} ${line.y} Td (${pdfEscape(line.text)}) Tj`),
+      ...pageLines.map((line) => `/F1 ${line.size} Tf 1 0 0 1 ${marginX} ${line.y} Tm (${pdfEscape(line.text)}) Tj`),
       "ET",
     ].join("\n");
     objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> /Contents ${contentNumber} 0 R >>`);
