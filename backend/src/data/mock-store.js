@@ -704,6 +704,10 @@ export function listConceptPapers(filters = {}) {
     .map((paper) => structuredClone(paper));
 }
 
+export function findConceptPaperById(conceptPaperId) {
+  return conceptPapers.find((paper) => paper.id === conceptPaperId) || null;
+}
+
 export function createConceptPaper(input = {}) {
   const paper = normalizedConceptPaper(input);
   conceptPapers.unshift(paper);

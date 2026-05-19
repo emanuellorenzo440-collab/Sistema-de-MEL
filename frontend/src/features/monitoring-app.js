@@ -1,7 +1,7 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260518h";
+import { $, $$, elements } from "../core/dom.js?v=20260519a";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
-import { seedState } from "../data/seed-state.js?v=20260518h";
+import { seedState } from "../data/seed-state.js?v=20260519a";
 import {
   REPORT_STATUSES,
   canReviewReports,
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260518h";
+} from "../services/auth-service.js?v=20260519a";
 import {
   createApiConceptPaper,
   createApiAttendanceParticipant,
@@ -42,6 +42,7 @@ import {
   fetchApiNotifications,
   fetchApiProgramCenters,
   fetchApiReports,
+  getApiBaseUrl,
   isApiConfigured,
   markApiNotificationRead,
   resetApiAttendanceProgram,
@@ -50,7 +51,7 @@ import {
   updateApiIndicator,
   updateApiProgram,
   updateApiProgramCenter,
-} from "../services/mel-api.js?v=20260518h";
+} from "../services/mel-api.js?v=20260519a";
 import {
   currentMonth,
   escapeHtml,
@@ -710,6 +711,37 @@ function readFileAsDataUrl(file) {
   });
 }
 
+function blobUrlFromDataUrl(dataUrl) {
+  const match = String(dataUrl || "").match(/^data:([^;,]+)?(?:;[^,]*)?;base64,(.*)$/);
+  if (!match) return "";
+  const binary = atob(match[2] || "");
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return URL.createObjectURL(new Blob([bytes], { type: match[1] || "application/octet-stream" }));
+}
+
+function openDataUrlDocument(dataUrl, fallbackName = "documento") {
+  const blobUrl = blobUrlFromDataUrl(dataUrl);
+  if (!blobUrl) {
+    showToast(`No pude abrir ${fallbackName}.`);
+    return;
+  }
+  const opened = window.open(blobUrl, "_blank", "noopener,noreferrer");
+  if (!opened) {
+    showToast("El navegador bloqueo la nueva pestana. Permite ventanas emergentes para abrir el documento.");
+  }
+  window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+}
+
+function conceptPaperFileUrl(paper) {
+  if (!paper?.id || !isApiConfigured()) return "";
+  const baseUrl = getApiBaseUrl();
+  if (!baseUrl) return "";
+  return `${baseUrl}/concept-papers/${encodeURIComponent(paper.id)}/file`;
+}
+
 async function attachmentFromFile(file, uploadedBy = null) {
   if (!file) return null;
   if (file.size > MAX_REPORT_ATTACHMENT_BYTES) {
@@ -883,10 +915,12 @@ function renderConceptPapers() {
   elements.conceptPaperList.innerHTML = papers
     .map(
       (paper) => {
-        const documentHref = paper.dataUrl || (paper.path ? localFileUrl(paper.path) : "");
+        const documentHref = conceptPaperFileUrl(paper) || (paper.path ? localFileUrl(paper.path) : "");
         const openLabel = /pdf/i.test(`${paper.mimeType || ""} ${paper.fileName || ""}`) ? "Abrir PDF" : "Abrir documento";
         const openDocument = documentHref
           ? `<a class="ghost-link" href="${escapeHtml(documentHref)}" target="_blank" rel="noreferrer">${openLabel}</a>`
+          : paper.dataUrl
+          ? `<button class="ghost-link" data-open-concept-document="${escapeHtml(paper.id)}" type="button">${openLabel}</button>`
           : `<span class="item-meta">Sin archivo</span>`;
         return `
         <article class="concept-card ${paper.id === activePaper?.id ? "active" : ""}">
@@ -4188,6 +4222,15 @@ function bindEvents() {
   });
 
   elements.conceptPaperList.addEventListener("click", (event) => {
+    const openDocumentId = event.target.closest("[data-open-concept-document]")?.dataset.openConceptDocument;
+    if (openDocumentId) {
+      const paper = state.conceptPapers.find((item) => item.id === openDocumentId);
+      if (paper?.dataUrl) {
+        openDataUrlDocument(paper.dataUrl, paper.fileName || paper.title || "Concept Paper");
+      }
+      return;
+    }
+
     const conceptId = event.target.dataset.conceptId;
     if (!conceptId) return;
     state.selectedConceptPaper = conceptId;

@@ -17,6 +17,7 @@ import {
   deleteIndicator,
   deleteProgram,
   deleteProgramCenter,
+  findConceptPaperById,
   findReportById,
   listAttendanceArchive,
   listAttendanceParticipants,
@@ -84,6 +85,17 @@ function sendJson(response, status, body) {
 function sendEmpty(response, status = 204) {
   response.writeHead(status, CORS_HEADERS);
   response.end();
+}
+
+function sendBinary(response, status, buffer, options = {}) {
+  response.writeHead(status, {
+    ...CORS_HEADERS,
+    "content-type": options.contentType || "application/octet-stream",
+    "content-length": buffer.length,
+    "content-disposition": `${options.disposition || "inline"}; filename="${String(options.fileName || "documento").replaceAll('"', "")}"`,
+    "cache-control": "private, max-age=300",
+  });
+  response.end(buffer);
 }
 
 function sendStaticFile(request, response) {
@@ -156,6 +168,15 @@ function requireFields(payload, fields) {
   return {
     error: "Faltan campos obligatorios para registrar el reporte.",
     details: { missing },
+  };
+}
+
+function dataUrlToFile(dataUrl = "") {
+  const match = String(dataUrl).match(/^data:([^;,]+)?(?:;[^,]*)?;base64,(.*)$/);
+  if (!match) return null;
+  return {
+    contentType: match[1] || "application/octet-stream",
+    buffer: Buffer.from(match[2] || "", "base64"),
   };
 }
 
@@ -403,6 +424,26 @@ export async function handleConceptPaperCreate(request, response) {
 
   const conceptPaper = createConceptPaper(payload);
   sendJson(response, 201, { data: conceptPaper });
+}
+
+export async function handleConceptPaperFile(_request, response, conceptPaperId) {
+  const paper = findConceptPaperById(conceptPaperId);
+  if (!paper) {
+    sendJson(response, 404, { error: "No encontre el Concept Paper solicitado." });
+    return;
+  }
+
+  const file = dataUrlToFile(paper.dataUrl);
+  if (!file) {
+    sendJson(response, 404, { error: "Este Concept Paper no tiene archivo disponible en la API." });
+    return;
+  }
+
+  sendBinary(response, 200, file.buffer, {
+    contentType: paper.mimeType || file.contentType,
+    fileName: paper.fileName || `${paper.title || "concept-paper"}.pdf`,
+    disposition: "inline",
+  });
 }
 
 export async function handleAttendanceParticipants(_request, response, url) {
@@ -785,6 +826,7 @@ function apiIndex() {
       "program-centers",
       "indicators",
       "concept-papers",
+      "concept-papers/:id/file",
       "attendance/participants",
       "attendance/sessions",
       "attendance/archive",
@@ -1057,6 +1099,12 @@ async function router(request, response) {
 
   if (request.method === "POST" && pathname === "/api/v1/concept-papers") {
     await handleConceptPaperCreate(request, response, url);
+    return;
+  }
+
+  const conceptPaperFileMatch = pathname.match(/^\/api\/v1\/concept-papers\/([^/]+)\/file$/);
+  if (request.method === "GET" && conceptPaperFileMatch) {
+    await handleConceptPaperFile(request, response, decodeURIComponent(conceptPaperFileMatch[1]));
     return;
   }
 
