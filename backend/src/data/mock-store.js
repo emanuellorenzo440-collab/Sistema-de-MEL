@@ -107,6 +107,8 @@ function normalizedProgramManual(input = {}) {
     program,
     title: String(input.title || fileName || "Manual de programa"),
     fileName,
+    path: String(input.path || ""),
+    fileUrl: String(input.fileUrl || ""),
     dataUrl: input.dataUrl || null,
     mimeType: String(input.mimeType || input.type || "application/pdf"),
     size: asNumber(input.size),
@@ -301,6 +303,8 @@ function normalizedReport(input = {}) {
           size: asNumber(attachment.size),
           uploadedAt: attachment.uploadedAt || timestamp,
           uploadedBy: attachment.uploadedBy || input.owner || null,
+          path: String(attachment.path || ""),
+          fileUrl: String(attachment.fileUrl || ""),
           dataUrl: attachment.dataUrl || null,
         }))
       : [],

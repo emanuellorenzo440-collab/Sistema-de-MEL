@@ -59,6 +59,9 @@ const PORT = Number(process.env.PORT || 8080);
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const frontendDir = path.resolve(dirname, "..", "..", "frontend");
 const sharedDir = path.resolve(dirname, "..", "..", "shared");
+const defaultDataDir = path.resolve(dirname, "..", "..", "data");
+const dataDir = process.env.MEL_DATA_DIR || process.env.RAILWAY_VOLUME_MOUNT_PATH || defaultDataDir;
+const uploadsDir = process.env.MEL_UPLOAD_DIR || path.join(dataDir, "uploads");
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -77,6 +80,7 @@ const CORS_HEADERS = {
   "access-control-allow-headers": "content-type,x-mel-actor-id",
 };
 const MAX_UPLOAD_FILE_BYTES = 200 * 1024 * 1024;
+const MAX_JSON_BODY_BYTES = 12 * 1024 * 1024;
 
 function sendJson(response, status, body) {
   response.writeHead(status, {
@@ -100,6 +104,24 @@ function sendBinary(response, status, buffer, options = {}) {
     "cache-control": "private, max-age=300",
   });
   response.end(buffer);
+}
+
+function sendStoredUpload(response, storagePath, options = {}) {
+  const absolutePath = resolveUploadPath(storagePath);
+  if (!absolutePath || !fs.existsSync(absolutePath)) {
+    sendJson(response, 404, { error: "No encontre el archivo solicitado." });
+    return;
+  }
+
+  const stat = fs.statSync(absolutePath);
+  response.writeHead(200, {
+    ...CORS_HEADERS,
+    "content-type": options.contentType || "application/octet-stream",
+    "content-length": stat.size,
+    "content-disposition": `${options.disposition || "inline"}; filename="${String(options.fileName || path.basename(absolutePath)).replaceAll('"', "")}"`,
+    "cache-control": "private, max-age=300",
+  });
+  fs.createReadStream(absolutePath).pipe(response);
 }
 
 function sendStaticFile(request, response) {
@@ -140,7 +162,14 @@ function sendApiError(response, error) {
 
 async function readJsonBody(request) {
   const chunks = [];
+  let totalBytes = 0;
   for await (const chunk of request) {
+    totalBytes += chunk.length;
+    if (totalBytes > MAX_JSON_BODY_BYTES) {
+      const error = new Error("BODY_TOO_LARGE");
+      error.status = 413;
+      throw error;
+    }
     chunks.push(chunk);
   }
 
@@ -175,6 +204,74 @@ function requireFields(payload, fields) {
   };
 }
 
+function safeFileName(value = "archivo") {
+  const baseName = path.basename(String(value || "archivo")).replace(/[^\w.\- ]+/g, "-").trim();
+  return baseName || "archivo";
+}
+
+function uploadStoragePath(kind = "general", fileName = "archivo") {
+  const date = new Date();
+  const folder = [String(date.getFullYear()), String(date.getMonth() + 1).padStart(2, "0"), safeFileName(kind)].join("/");
+  const id = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+  return `${folder}/${id}-${safeFileName(fileName)}`;
+}
+
+function resolveUploadPath(storagePath = "") {
+  const normalizedPath = String(storagePath || "").replace(/\\/g, "/").replace(/^\/+/, "");
+  const absolutePath = path.resolve(uploadsDir, normalizedPath);
+  const root = path.resolve(uploadsDir);
+  if (!absolutePath.startsWith(root + path.sep) && absolutePath !== root) {
+    return null;
+  }
+  return absolutePath;
+}
+
+async function streamRequestToUpload(request, { kind = "general", fileName = "archivo" } = {}) {
+  const storagePath = uploadStoragePath(kind, fileName);
+  const absolutePath = resolveUploadPath(storagePath);
+  if (!absolutePath) {
+    const error = new Error("Ruta de archivo invalida.");
+    error.status = 400;
+    throw error;
+  }
+
+  await fs.promises.mkdir(path.dirname(absolutePath), { recursive: true });
+  const stream = fs.createWriteStream(absolutePath, { flags: "wx" });
+  let totalBytes = 0;
+
+  try {
+    for await (const chunk of request) {
+      totalBytes += chunk.length;
+      if (totalBytes > MAX_UPLOAD_FILE_BYTES) {
+        const error = new Error(`El archivo supera ${formatFileSize(MAX_UPLOAD_FILE_BYTES)}.`);
+        error.status = 413;
+        throw error;
+      }
+      if (!stream.write(chunk)) {
+        await new Promise((resolve, reject) => {
+          stream.once("drain", resolve);
+          stream.once("error", reject);
+        });
+      }
+    }
+    await new Promise((resolve, reject) => {
+      stream.end(resolve);
+      stream.once("error", reject);
+    });
+  } catch (error) {
+    stream.destroy();
+    await fs.promises.rm(absolutePath, { force: true }).catch(() => {});
+    throw error;
+  }
+
+  return {
+    path: storagePath,
+    fileName: safeFileName(fileName),
+    mimeType: request.headers["content-type"] || "application/octet-stream",
+    size: totalBytes,
+  };
+}
+
 function dataUrlToFile(dataUrl = "") {
   const match = String(dataUrl).match(/^data:([^;,]+)?(?:;[^,]*)?;base64,(.*)$/);
   if (!match) return null;
@@ -204,6 +301,19 @@ function uploadSizeError(label = "archivo") {
     error: `El ${label} supera ${formatFileSize(MAX_UPLOAD_FILE_BYTES)}.`,
     details: { maxBytes: MAX_UPLOAD_FILE_BYTES },
   };
+}
+
+function jsonBodyReadError(error, fallbackMessage = "El cuerpo de la solicitud no es JSON valido.") {
+  if (error?.status === 413 || error?.message === "BODY_TOO_LARGE") {
+    return {
+      status: 413,
+      body: {
+        error: "La solicitud es demasiado grande. Sube archivos usando el flujo de carga del sistema.",
+        details: { maxJsonBytes: MAX_JSON_BODY_BYTES },
+      },
+    };
+  }
+  return { status: 400, body: { error: fallbackMessage } };
 }
 
 function isUploadTooLarge(dataUrl, declaredSize = null) {
@@ -450,8 +560,9 @@ export async function handleConceptPaperCreate(request, response) {
   let payload;
   try {
     payload = await readJsonBody(request);
-  } catch {
-    sendJson(response, 400, { error: "El cuerpo del Concept Paper no es JSON valido." });
+  } catch (error) {
+    const apiError = jsonBodyReadError(error, "El cuerpo del Concept Paper no es JSON valido.");
+    sendJson(response, apiError.status, apiError.body);
     return;
   }
 
@@ -487,6 +598,14 @@ export async function handleConceptPaperFile(_request, response, conceptPaperId)
 
   const file = dataUrlToFile(paper.dataUrl);
   if (!file) {
+    if (paper.path) {
+      sendStoredUpload(response, paper.path, {
+        contentType: paper.mimeType || "application/octet-stream",
+        fileName: paper.fileName || `${paper.title || "concept-paper"}.pdf`,
+        disposition: "inline",
+      });
+      return;
+    }
     sendJson(response, 404, { error: "Este Concept Paper no tiene archivo disponible en la API." });
     return;
   }
@@ -512,12 +631,16 @@ export async function handleProgramManualCreate(request, response) {
   let payload;
   try {
     payload = await readJsonBody(request);
-  } catch {
-    sendJson(response, 400, { error: "El cuerpo del manual no es JSON valido." });
+  } catch (error) {
+    const apiError = jsonBodyReadError(error, "El cuerpo del manual no es JSON valido.");
+    sendJson(response, apiError.status, apiError.body);
     return;
   }
 
-  const missing = ["program", "title", "fileName", "dataUrl"].filter((field) => !String(payload[field] || "").trim());
+  const missing = ["program", "title", "fileName"].filter((field) => !String(payload[field] || "").trim());
+  if (!payload.dataUrl && !payload.path) {
+    missing.push("dataUrl");
+  }
   if (missing.length) {
     sendJson(response, 400, {
       error: "Faltan campos obligatorios para registrar el manual.",
@@ -535,7 +658,11 @@ export async function handleProgramManualCreate(request, response) {
 
   const file = dataUrlToFile(payload.dataUrl);
   const mimeType = String(payload.mimeType || file?.contentType || "");
-  if (!file || !/application\/pdf/i.test(mimeType)) {
+  if (!/application\/pdf/i.test(mimeType)) {
+    sendJson(response, 400, { error: "Los manuales deben subirse en formato PDF." });
+    return;
+  }
+  if (!file && !payload.path) {
     sendJson(response, 400, { error: "Los manuales deben subirse en formato PDF." });
     return;
   }
@@ -553,6 +680,14 @@ export async function handleProgramManualFile(_request, response, manualId) {
 
   const file = dataUrlToFile(manual.dataUrl);
   if (!file) {
+    if (manual.path) {
+      sendStoredUpload(response, manual.path, {
+        contentType: manual.mimeType || "application/pdf",
+        fileName: manual.fileName || `${manual.title || "manual"}.pdf`,
+        disposition: "inline",
+      });
+      return;
+    }
     sendJson(response, 404, { error: "Este manual no tiene archivo disponible en la API." });
     return;
   }
@@ -562,6 +697,27 @@ export async function handleProgramManualFile(_request, response, manualId) {
     fileName: manual.fileName || `${manual.title || "manual"}.pdf`,
     disposition: "inline",
   });
+}
+
+export async function handleUploadCreate(request, response, url) {
+  const kind = url.searchParams.get("kind") || "general";
+  const fileName = url.searchParams.get("fileName") || "archivo";
+  try {
+    const uploaded = await streamRequestToUpload(request, { kind, fileName });
+    sendJson(response, 201, { data: uploaded });
+  } catch (error) {
+    sendJson(response, error.status || 500, {
+      error: error.message || "No pude cargar el archivo.",
+      details: { maxBytes: MAX_UPLOAD_FILE_BYTES },
+    });
+  }
+}
+
+export async function handleUploadFile(_request, response, url) {
+  const storagePath = url.searchParams.get("path") || "";
+  const fileName = url.searchParams.get("fileName") || path.basename(storagePath);
+  const contentType = url.searchParams.get("mimeType") || "application/octet-stream";
+  sendStoredUpload(response, storagePath, { fileName, contentType, disposition: "inline" });
 }
 
 export async function handleAttendanceParticipants(_request, response, url) {
@@ -749,7 +905,8 @@ export async function handleReportCreate(request, response) {
   try {
     payload = await readJsonBody(request);
   } catch (error) {
-    sendJson(response, 400, { error: "El cuerpo del reporte no es JSON valido." });
+    const apiError = jsonBodyReadError(error, "El cuerpo del reporte no es JSON valido.");
+    sendJson(response, apiError.status, apiError.body);
     return;
   }
 
@@ -773,8 +930,9 @@ export async function handleReportBulkCreate(request, response) {
   let payload;
   try {
     payload = await readJsonBody(request);
-  } catch {
-    sendJson(response, 400, { error: "El cuerpo del lote no es JSON valido." });
+  } catch (error) {
+    const apiError = jsonBodyReadError(error, "El cuerpo del lote no es JSON valido.");
+    sendJson(response, apiError.status, apiError.body);
     return;
   }
 
@@ -959,6 +1117,8 @@ function apiIndex() {
       "concept-papers/:id/file",
       "program-manuals",
       "program-manuals/:id/file",
+      "uploads",
+      "uploads/file",
       "attendance/participants",
       "attendance/sessions",
       "attendance/archive",
@@ -1253,6 +1413,16 @@ async function router(request, response) {
   const programManualFileMatch = pathname.match(/^\/api\/v1\/program-manuals\/([^/]+)\/file$/);
   if (request.method === "GET" && programManualFileMatch) {
     await handleProgramManualFile(request, response, decodeURIComponent(programManualFileMatch[1]));
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/v1/uploads") {
+    await handleUploadCreate(request, response, url);
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/v1/uploads/file") {
+    await handleUploadFile(request, response, url);
     return;
   }
 

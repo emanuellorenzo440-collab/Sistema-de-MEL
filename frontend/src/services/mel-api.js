@@ -78,6 +78,48 @@ async function requestJson(pathname, options = {}, params = {}) {
   return body;
 }
 
+export function apiFileUrl(fileRef = {}) {
+  if (fileRef.fileUrl) return fileRef.fileUrl;
+  if (!fileRef.path) return "";
+  const url = buildApiUrl("uploads/file", {
+    path: fileRef.path,
+    fileName: fileRef.fileName || fileRef.name || "archivo",
+    mimeType: fileRef.mimeType || fileRef.type || "application/octet-stream",
+  });
+  return url.toString();
+}
+
+export async function uploadApiFile(file, { kind = "general" } = {}) {
+  if (!file) return null;
+  const response = await fetch(
+    buildApiUrl("uploads", {
+      kind,
+      fileName: file.name || "archivo",
+    }),
+    {
+      method: "POST",
+      headers: {
+        "content-type": file.type || "application/octet-stream",
+      },
+      body: file,
+    },
+  );
+
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(body.error || "No pude cargar el archivo a la API.");
+    error.details = body.details || null;
+    throw error;
+  }
+
+  return {
+    ...(body.data || {}),
+    fileName: body.data?.fileName || file.name,
+    mimeType: body.data?.mimeType || file.type || "application/octet-stream",
+    size: body.data?.size ?? file.size,
+  };
+}
+
 export async function fetchApiConfig() {
   const response = await requestJson("analytics/config");
   return response.data;

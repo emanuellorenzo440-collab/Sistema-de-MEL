@@ -1,7 +1,7 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260519c";
+import { $, $$, elements } from "../core/dom.js?v=20260519d";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
-import { seedState } from "../data/seed-state.js?v=20260519c";
+import { seedState } from "../data/seed-state.js?v=20260519d";
 import {
   REPORT_STATUSES,
   canReviewReports,
@@ -20,8 +20,9 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260519c";
+} from "../services/auth-service.js?v=20260519d";
 import {
+  apiFileUrl,
   createApiConceptPaper,
   createApiAttendanceParticipant,
   createApiIndicator,
@@ -53,7 +54,8 @@ import {
   updateApiIndicator,
   updateApiProgram,
   updateApiProgramCenter,
-} from "../services/mel-api.js?v=20260519c";
+  uploadApiFile,
+} from "../services/mel-api.js?v=20260519d";
 import {
   currentMonth,
   escapeHtml,
@@ -693,11 +695,12 @@ function renderAttachmentLinks(report, compact = false) {
       const label = escapeHtml(attachment.name || `Documento ${index + 1}`);
       const size = formatFileSize(attachment.size);
       const meta = [attachment.type, size].filter(Boolean).join(" · ");
-      if (!attachment.dataUrl) {
+      const href = uploadFileUrl(attachment) || attachment.dataUrl || "";
+      if (!href) {
         return `<span class="attachment-link unavailable">${label}${meta ? ` <small>${escapeHtml(meta)}</small>` : ""}</span>`;
       }
       return `
-        <a class="attachment-link" href="${escapeHtml(attachment.dataUrl)}" target="_blank" rel="noreferrer">
+        <a class="attachment-link" href="${escapeHtml(href)}" target="_blank" rel="noreferrer">
           Abrir ${label}${meta ? ` <small>${escapeHtml(meta)}</small>` : ""}
         </a>
       `;
@@ -754,20 +757,32 @@ function programManualFileUrl(manual) {
   return `${baseUrl}/program-manuals/${encodeURIComponent(manual.id)}/file`;
 }
 
+function uploadFileUrl(fileRef) {
+  if (!fileRef || !isApiConfigured()) return "";
+  try {
+    return apiFileUrl(fileRef);
+  } catch {
+    return "";
+  }
+}
+
 async function attachmentFromFile(file, uploadedBy = null) {
   if (!file) return null;
   if (file.size > MAX_REPORT_ATTACHMENT_BYTES) {
     throw new Error(`El documento adjunto supera ${formatFileSize(MAX_REPORT_ATTACHMENT_BYTES)}. Sube un archivo mas liviano.`);
   }
 
+  const uploadedFile = isApiConfigured() ? await uploadApiFile(file, { kind: "report-attachments" }) : null;
   return {
     id: `att-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
     name: file.name,
-    type: file.type || "application/octet-stream",
-    size: file.size,
+    type: uploadedFile?.mimeType || file.type || "application/octet-stream",
+    size: uploadedFile?.size ?? file.size,
     uploadedAt: new Date().toISOString(),
     uploadedBy: uploadedBy || currentUser?.email || activeRole(),
-    dataUrl: await readFileAsDataUrl(file),
+    path: uploadedFile?.path || "",
+    fileUrl: uploadedFile ? uploadFileUrl(uploadedFile) : "",
+    dataUrl: uploadedFile ? null : await readFileAsDataUrl(file),
   };
 }
 
@@ -784,6 +799,7 @@ async function conceptPaperDocumentFromFile(file, formData) {
   const uploadedBy = currentUser?.email || currentUser?.fullName || activeRole();
   const normalizedProgram = conceptProgramFromContent({ program, title, fileName: file.name });
   const programInfo = state.programs.find((item) => item.name === normalizedProgram) || {};
+  const uploadedFile = isApiConfigured() ? await uploadApiFile(file, { kind: "concept-papers" }) : null;
   const indicatorNames = Array.isArray(programInfo.indicatorBlueprints)
     ? programInfo.indicatorBlueprints.map((item) => item.name).filter(Boolean)
     : [];
@@ -794,9 +810,11 @@ async function conceptPaperDocumentFromFile(file, formData) {
     title: title.replace(/\bCFA\b/g, "CFI"),
     presenter: String(formData.get("presenter") || uploadedBy || "Equipo M&E").trim(),
     fileName: file.name,
-    dataUrl: await readFileAsDataUrl(file),
-    mimeType: file.type || "application/octet-stream",
-    size: file.size,
+    path: uploadedFile?.path || "",
+    fileUrl: uploadedFile ? uploadFileUrl(uploadedFile) : "",
+    dataUrl: uploadedFile ? null : await readFileAsDataUrl(file),
+    mimeType: uploadedFile?.mimeType || file.type || "application/octet-stream",
+    size: uploadedFile?.size ?? file.size,
     uploadedAt: new Date().toISOString(),
     uploadedBy,
     year: String(formData.get("year") || new Date().getFullYear()).trim(),
@@ -830,15 +848,18 @@ async function programManualDocumentFromFile(file, formData) {
   const program = String(formData.get("program") || "").trim();
   const title = String(formData.get("title") || file.name || "").trim();
   const uploadedBy = currentUser?.email || currentUser?.fullName || activeRole();
+  const uploadedFile = isApiConfigured() ? await uploadApiFile(file, { kind: "program-manuals" }) : null;
   return {
     id: `manual-${slugify(program || title || file.name)}-${Date.now()}`,
     companyId: "org-default",
     program,
     title,
     fileName: file.name,
-    dataUrl: await readFileAsDataUrl(file),
+    path: uploadedFile?.path || "",
+    fileUrl: uploadedFile ? uploadFileUrl(uploadedFile) : "",
+    dataUrl: uploadedFile ? null : await readFileAsDataUrl(file),
     mimeType: "application/pdf",
-    size: file.size,
+    size: uploadedFile?.size ?? file.size,
     uploadedAt: new Date().toISOString(),
     uploadedBy,
     year: String(formData.get("year") || new Date().getFullYear()).trim(),
