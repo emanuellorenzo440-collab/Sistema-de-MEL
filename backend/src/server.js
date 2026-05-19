@@ -76,6 +76,7 @@ const CORS_HEADERS = {
   "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
   "access-control-allow-headers": "content-type,x-mel-actor-id",
 };
+const MAX_UPLOAD_FILE_BYTES = 200 * 1024 * 1024;
 
 function sendJson(response, status, body) {
   response.writeHead(status, {
@@ -181,6 +182,48 @@ function dataUrlToFile(dataUrl = "") {
     contentType: match[1] || "application/octet-stream",
     buffer: Buffer.from(match[2] || "", "base64"),
   };
+}
+
+function dataUrlFileSize(dataUrl = "") {
+  const match = String(dataUrl).match(/^data:[^,]*;base64,(.*)$/);
+  if (!match) return null;
+  const base64 = match[1] || "";
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+  return Math.floor((base64.length * 3) / 4) - padding;
+}
+
+function formatFileSize(size) {
+  if (!Number.isFinite(size)) return "0 MB";
+  if (size >= 1024 * 1024) return `${Math.round(size / (1024 * 1024))} MB`;
+  if (size >= 1024) return `${Math.round(size / 1024)} KB`;
+  return `${Math.round(size)} B`;
+}
+
+function uploadSizeError(label = "archivo") {
+  return {
+    error: `El ${label} supera ${formatFileSize(MAX_UPLOAD_FILE_BYTES)}.`,
+    details: { maxBytes: MAX_UPLOAD_FILE_BYTES },
+  };
+}
+
+function isUploadTooLarge(dataUrl, declaredSize = null) {
+  const decodedSize = dataUrl ? dataUrlFileSize(dataUrl) : null;
+  const size = Number.isFinite(decodedSize) ? decodedSize : Number(declaredSize || 0);
+  return size > MAX_UPLOAD_FILE_BYTES;
+}
+
+function validatePayloadUploads(payload, label = "archivo") {
+  if (payload?.dataUrl && isUploadTooLarge(payload.dataUrl, payload.size)) {
+    return uploadSizeError(label);
+  }
+  const attachments = Array.isArray(payload?.attachments) ? payload.attachments : [];
+  const oversizedAttachment = attachments.find((attachment) =>
+    isUploadTooLarge(attachment?.dataUrl, attachment?.size),
+  );
+  if (oversizedAttachment) {
+    return uploadSizeError(oversizedAttachment.name || label);
+  }
+  return null;
 }
 
 function requireActorRole(response, payload = {}, allowedRoles = [], action = "realizar esta accion") {
@@ -425,6 +468,12 @@ export async function handleConceptPaperCreate(request, response) {
   }
   if (!requireActorRole(response, payload, ["Supervision M&E", "Program Manager", "Coordinador de programa"], "cargar Concept Papers")) return;
 
+  const uploadError = validatePayloadUploads(payload, "Concept Paper");
+  if (uploadError) {
+    sendJson(response, 413, uploadError);
+    return;
+  }
+
   const conceptPaper = createConceptPaper(payload);
   sendJson(response, 201, { data: conceptPaper });
 }
@@ -477,6 +526,12 @@ export async function handleProgramManualCreate(request, response) {
     return;
   }
   if (!requireActorRole(response, payload, ["Supervision M&E"], "cargar manuales")) return;
+
+  const uploadError = validatePayloadUploads(payload, "manual");
+  if (uploadError) {
+    sendJson(response, 413, uploadError);
+    return;
+  }
 
   const file = dataUrlToFile(payload.dataUrl);
   const mimeType = String(payload.mimeType || file?.contentType || "");
@@ -704,6 +759,12 @@ export async function handleReportCreate(request, response) {
     return;
   }
 
+  const uploadError = validatePayloadUploads(payload, "adjunto del reporte");
+  if (uploadError) {
+    sendJson(response, 413, uploadError);
+    return;
+  }
+
   const report = createReport(payload);
   sendJson(response, 201, { data: report });
 }
@@ -723,6 +784,12 @@ export async function handleReportBulkCreate(request, response) {
       error: "Debes enviar un arreglo de reportes en reports.",
       details: { field: "reports" },
     });
+    return;
+  }
+
+  const uploadError = items.map((item) => validatePayloadUploads(item, "adjunto del reporte")).find(Boolean);
+  if (uploadError) {
+    sendJson(response, 413, uploadError);
     return;
   }
 

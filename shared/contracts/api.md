@@ -39,6 +39,7 @@ Base propuesta para conectar frontend, backend y base de datos.
 - Fechas en formato ISO 8601.
 - Los errores usan `{ "error": "mensaje", "details": {} }`.
 - El backend valida permisos segun rol antes de modificar datos.
+- Los archivos cargados en reportes, Concept Papers y manuales permiten hasta 200 MB por archivo.
 - La analitica ejecutiva debe usar por defecto `scope=approved`.
 - La vista operativa puede usar `scope=all`, pero debe marcar que incluye datos no aprobados.
 - El backend habilita CORS para desarrollo local entre frontend y API.

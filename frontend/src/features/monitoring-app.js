@@ -1,7 +1,7 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260519b";
+import { $, $$, elements } from "../core/dom.js?v=20260519c";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
-import { seedState } from "../data/seed-state.js?v=20260519b";
+import { seedState } from "../data/seed-state.js?v=20260519c";
 import {
   REPORT_STATUSES,
   canReviewReports,
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260519b";
+} from "../services/auth-service.js?v=20260519c";
 import {
   createApiConceptPaper,
   createApiAttendanceParticipant,
@@ -53,7 +53,7 @@ import {
   updateApiIndicator,
   updateApiProgram,
   updateApiProgramCenter,
-} from "../services/mel-api.js?v=20260519b";
+} from "../services/mel-api.js?v=20260519c";
 import {
   currentMonth,
   escapeHtml,
@@ -69,9 +69,10 @@ import {
 
 let state = null;
 const ROLE_STORAGE_KEY = "pulso-me-active-role";
-const MAX_REPORT_ATTACHMENT_BYTES = 8 * 1024 * 1024;
-const MAX_CONCEPT_PAPER_BYTES = 15 * 1024 * 1024;
-const MAX_PROGRAM_MANUAL_BYTES = 20 * 1024 * 1024;
+const MAX_UPLOAD_FILE_BYTES = 200 * 1024 * 1024;
+const MAX_REPORT_ATTACHMENT_BYTES = MAX_UPLOAD_FILE_BYTES;
+const MAX_CONCEPT_PAPER_BYTES = MAX_UPLOAD_FILE_BYTES;
+const MAX_PROGRAM_MANUAL_BYTES = MAX_UPLOAD_FILE_BYTES;
 const ATTENDANCE_PROGRAMS = ["Girls Empowerment", "Club de Chicos", "IGA"];
 const NO_CENTER_OPTION = "Sin centros registrados";
 let currentUser = null;
