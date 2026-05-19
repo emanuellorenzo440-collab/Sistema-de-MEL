@@ -61,6 +61,13 @@ function conceptProgramFromContent(input = {}, fallbackProgram = "") {
   return fallbackProgram;
 }
 
+function bundledConceptPaperPath(input = {}) {
+  const id = String(input.id || "");
+  if (id === "cp-ge-2026") return "assets/concept-papers/girls-empowerment-concept-paper-2026.pdf";
+  if (id === "cp-bc-2026") return "assets/concept-papers/club-de-chicos-concept-paper-2026.pdf";
+  return "";
+}
+
 function normalizedConceptPaper(input = {}) {
   const timestamp = nowIso();
   const inputProgram = String(input.program || "");
@@ -68,6 +75,7 @@ function normalizedConceptPaper(input = {}) {
   const programInfo = programs.find((item) => item.name === program) || {};
   const fileName = String(input.fileName || input.name || "documento");
   const title = String(input.title || fileName || "Concept paper").replace(/\bCFA\b/g, "CFI");
+  const bundledPath = bundledConceptPaperPath(input);
   const blueprintNames = Array.isArray(programInfo.indicatorBlueprints)
     ? programInfo.indicatorBlueprints.map((item) => item.name).filter(Boolean)
     : [];
@@ -78,9 +86,9 @@ function normalizedConceptPaper(input = {}) {
     title,
     presenter: String(input.presenter || input.uploadedBy || "Equipo M&E"),
     fileName,
-    path: String(input.path || ""),
+    path: bundledPath || String(input.path || ""),
     dataUrl: input.dataUrl || null,
-    mimeType: String(input.mimeType || input.type || "application/octet-stream"),
+    mimeType: bundledPath ? "application/pdf" : String(input.mimeType || input.type || "application/pdf"),
     size: asNumber(input.size),
     uploadedAt: input.uploadedAt || timestamp,
     uploadedBy: input.uploadedBy || null,

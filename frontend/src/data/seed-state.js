@@ -637,7 +637,7 @@ export const seedState = {
       title: "Girls Empowerment Concept Paper 2026",
       presenter: "Facilitadora Alanna Pujols",
       fileName: "CONCEPT PAPER- 2026 (ACTU.).pdf",
-      path: "/Users/levilorenzo/Downloads/CONCEPT PAPER- 2026 (ACTU.).pdf",
+      path: "assets/concept-papers/girls-empowerment-concept-paper-2026.pdf",
       year: "2026",
       status: "Cargado",
       objective:
@@ -677,7 +677,7 @@ export const seedState = {
       title: "Club de Chicos Concept Paper 2026",
       presenter: "Equipo de mentores",
       fileName: "Manual de mentores 6.pdf",
-      path: "/Users/levilorenzo/Downloads/Manual de mentores 6.pdf",
+      path: "assets/concept-papers/club-de-chicos-concept-paper-2026.pdf",
       year: "2026",
       status: "Cargado",
       objective:

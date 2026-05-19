@@ -1,7 +1,7 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260519d";
+import { $, $$, elements } from "../core/dom.js?v=20260519e";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
-import { seedState } from "../data/seed-state.js?v=20260519d";
+import { seedState } from "../data/seed-state.js?v=20260519e";
 import {
   REPORT_STATUSES,
   canReviewReports,
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260519d";
+} from "../services/auth-service.js?v=20260519e";
 import {
   apiFileUrl,
   createApiConceptPaper,
@@ -55,7 +55,7 @@ import {
   updateApiProgram,
   updateApiProgramCenter,
   uploadApiFile,
-} from "../services/mel-api.js?v=20260519d";
+} from "../services/mel-api.js?v=20260519e";
 import {
   currentMonth,
   escapeHtml,
