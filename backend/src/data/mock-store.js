@@ -766,6 +766,10 @@ export function createConceptPaper(input = {}) {
 
 function archiveLibraryDocument(type, document, options = {}) {
   const timestamp = nowIso();
+  const existingIndex = deletedLibraryDocuments.findIndex((item) => item.type === type && item.id === document.id);
+  if (existingIndex >= 0) {
+    deletedLibraryDocuments.splice(existingIndex, 1);
+  }
   deletedLibraryDocuments.unshift({
     type,
     id: document.id,
@@ -782,6 +786,10 @@ function archiveLibraryDocument(type, document, options = {}) {
   });
 }
 
+function findDeletedLibraryDocument(type, documentId) {
+  return deletedLibraryDocuments.find((item) => item.type === type && item.id === documentId) || null;
+}
+
 function requireSupervisorLibraryDelete(options = {}) {
   const actorRole = normalizeString(options.actorRole, "");
   if (actorRole !== "Supervision M&E") {
@@ -794,7 +802,18 @@ function requireSupervisorLibraryDelete(options = {}) {
 export function deleteConceptPaper(conceptPaperId, options = {}) {
   requireSupervisorLibraryDelete(options);
   const index = conceptPapers.findIndex((paper) => paper.id === conceptPaperId);
-  if (index < 0) return null;
+  if (index < 0) {
+    const alreadyDeleted = findDeletedLibraryDocument("concept-paper", conceptPaperId);
+    if (alreadyDeleted?.snapshot) {
+      return structuredClone(alreadyDeleted.snapshot);
+    }
+    const seededPaper = seedState.conceptPapers.find((paper) => paper.id === conceptPaperId);
+    if (!seededPaper) return null;
+    const normalizedSeed = normalizedConceptPaper(seededPaper);
+    archiveLibraryDocument("concept-paper", normalizedSeed, options);
+    persistStore();
+    return structuredClone(normalizedSeed);
+  }
 
   const [deleted] = conceptPapers.splice(index, 1);
   archiveLibraryDocument("concept-paper", deleted, options);
@@ -829,7 +848,13 @@ export function createProgramManual(input = {}) {
 export function deleteProgramManual(manualId, options = {}) {
   requireSupervisorLibraryDelete(options);
   const index = programManuals.findIndex((manual) => manual.id === manualId);
-  if (index < 0) return null;
+  if (index < 0) {
+    const alreadyDeleted = findDeletedLibraryDocument("program-manual", manualId);
+    if (alreadyDeleted?.snapshot) {
+      return structuredClone(alreadyDeleted.snapshot);
+    }
+    return null;
+  }
 
   const [deleted] = programManuals.splice(index, 1);
   archiveLibraryDocument("program-manual", deleted, options);

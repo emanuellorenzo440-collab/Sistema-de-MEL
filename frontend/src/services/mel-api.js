@@ -71,6 +71,7 @@ async function requestJson(pathname, options = {}, params = {}) {
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
     const error = new Error(body.error || "No pude completar la solicitud a la API.");
+    error.status = response.status;
     error.details = body.details || null;
     throw error;
   }

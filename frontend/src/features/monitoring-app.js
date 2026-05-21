@@ -4028,6 +4028,12 @@ async function deleteConceptPaperFromUi(conceptPaperId) {
     renderAll();
     showToast("Concept Paper eliminado de la plataforma.");
   } catch (error) {
+    if (error.status === 404) {
+      saveState();
+      renderAll();
+      showToast("Concept Paper eliminado de la plataforma.");
+      return;
+    }
     state.conceptPapers = previousConceptPapers;
     state.deletedConceptPaperIds = previousDeletedConceptPaperIds;
     state.selectedConceptPaper = previousSelectedConceptPaper;
@@ -4071,6 +4077,12 @@ async function deleteProgramManualFromUi(manualId) {
     renderAll();
     showToast("Manual eliminado de la plataforma.");
   } catch (error) {
+    if (error.status === 404) {
+      saveState();
+      renderAll();
+      showToast("Manual eliminado de la plataforma.");
+      return;
+    }
     state.programManuals = previousManuals;
     saveState();
     renderAll();
