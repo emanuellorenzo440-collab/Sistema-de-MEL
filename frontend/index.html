@@ -245,7 +245,7 @@
           </div>
         </header>
 
-        <section class="filters" id="globalFilters" aria-label="Filtros">
+        <section class="filters" id="globalFilters" aria-label="Filtros" hidden>
           <label>
             Programa
             <select id="programFilter"></select>
@@ -802,11 +802,11 @@
                   <input id="programNameInput" name="name" type="text" required />
                 </label>
                 <label>
-                  Lider
+                  Lider de programa
                   <input id="programLeadInput" name="lead" type="text" required />
                 </label>
                 <label>
-                  Beneficiarios
+                  Meta de beneficiarios
                   <input id="programBeneficiariesInput" name="beneficiaries" type="number" min="0" value="0" />
                 </label>
                 <label>
@@ -815,7 +815,11 @@
                 </label>
                 <label class="span-2">
                   Provincias
-                  <input id="programProvincesInput" name="provinces" type="text" value="Centros de programa" />
+                  <select id="programProvincesInput" name="provinces" multiple size="6" required></select>
+                </label>
+                <label class="span-2">
+                  Beneficiario principal
+                  <textarea id="programPopulationInput" name="primaryPopulation" rows="2" placeholder="Ej. Ninas, adolescentes, mujeres o participantes del programa."></textarea>
                 </label>
                 <label>
                   Correo coordinador
@@ -833,9 +837,9 @@
                   Enfoque
                   <textarea id="programFocusInput" name="focus" required></textarea>
                 </label>
-                <label>
-                  Poblacion primaria
-                  <textarea id="programPopulationInput" name="primaryPopulation"></textarea>
+                <label class="span-2">
+                  Centros del programa
+                  <textarea id="programCentersInput" name="centers" rows="5" placeholder="Una linea por centro. Usa el formato: Provincia | Nombre del centro"></textarea>
                 </label>
               </div>
               <div class="form-actions">
@@ -894,6 +898,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="src/main.js?v=20260521a"></script>
+    <script type="module" src="src/main.js?v=20260521b"></script>
   </body>
 </html>

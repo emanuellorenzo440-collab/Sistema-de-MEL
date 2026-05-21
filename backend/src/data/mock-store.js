@@ -354,6 +354,64 @@ function normalizedProgramCenter(input = {}, existing = {}) {
   };
 }
 
+function normalizeProgramCenterEntries(value, program) {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set();
+  return value
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") return null;
+      const province = normalizeString(entry.province);
+      const name = normalizeString(entry.name);
+      if (!province || !name) return null;
+      const key = `${province.toLowerCase()}|${name.toLowerCase()}`;
+      if (seen.has(key)) return null;
+      seen.add(key);
+      return { program, province, name };
+    })
+    .filter(Boolean);
+}
+
+function syncProgramCentersForProgram(program, centerEntries = []) {
+  const desiredCenters = normalizeProgramCenterEntries(centerEntries, program.name);
+  const keepKeys = new Set(desiredCenters.map((center) => `${center.province.toLowerCase()}|${center.name.toLowerCase()}`));
+
+  for (let index = programCenters.length - 1; index >= 0; index -= 1) {
+    const center = programCenters[index];
+    if (center.programId !== program.id && center.program !== program.name) continue;
+    const key = `${String(center.province || "").toLowerCase()}|${String(center.name || "").toLowerCase()}`;
+    if (!keepKeys.has(key)) {
+      programCenters.splice(index, 1);
+    }
+  }
+
+  desiredCenters.forEach((center) => {
+    const existing = programCenters.find(
+      (item) =>
+        (item.programId === program.id || item.program === program.name) &&
+        item.province.toLowerCase() === center.province.toLowerCase() &&
+        item.name.toLowerCase() === center.name.toLowerCase(),
+    );
+    if (existing) {
+      existing.program = program.name;
+      existing.programId = program.id;
+      existing.province = center.province;
+      existing.name = center.name;
+      existing.updatedAt = nowIso();
+      return;
+    }
+    programCenters.push(
+      normalizedProgramCenter({
+        program: program.name,
+        programId: program.id,
+        province: center.province,
+        name: center.name,
+      }),
+    );
+  });
+
+  return listProgramCenters({ program: program.name });
+}
+
 function contactEmail(name, role) {
   const localPart = slugify(name || role || "usuario") || "usuario";
   return `${localPart}@pulso-me.local`;
@@ -641,8 +699,12 @@ export function findProgramById(programId) {
 export function createProgram(input) {
   const program = normalizedProgram(input);
   programs.push(program);
+  const centers = Array.isArray(input.centers) ? syncProgramCentersForProgram(program, input.centers) : [];
   persistStore();
-  return structuredClone(program);
+  return {
+    ...structuredClone(program),
+    centers,
+  };
 }
 
 export function updateProgram(programId, input) {
@@ -677,8 +739,13 @@ export function updateProgram(programId, input) {
     }
   });
 
+  const centers = Array.isArray(input.centers) ? syncProgramCentersForProgram(next, input.centers) : [];
+
   persistStore();
-  return structuredClone(next);
+  return {
+    ...structuredClone(next),
+    centers,
+  };
 }
 
 export function deleteProgram(programId) {

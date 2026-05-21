@@ -88,6 +88,7 @@ export const elements = {
   programBeneficiariesInput: $("#programBeneficiariesInput"),
   programBudgetInput: $("#programBudgetInput"),
   programProvincesInput: $("#programProvincesInput"),
+  programCentersInput: $("#programCentersInput"),
   programCoordinatorEmailInput: $("#programCoordinatorEmailInput"),
   programManagerEmailInput: $("#programManagerEmailInput"),
   programMelSupervisorEmailInput: $("#programMelSupervisorEmailInput"),

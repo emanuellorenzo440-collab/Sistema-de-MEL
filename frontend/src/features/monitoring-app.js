@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260521a";
+import { $, $$, elements } from "../core/dom.js?v=20260521b";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -365,6 +365,57 @@ function registeredCenters() {
   return (state.programCenters || []).filter((center) => center.program && center.province && center.name);
 }
 
+function setMultiSelectValues(select, values = []) {
+  if (!select) return;
+  const selected = new Set((values || []).map((value) => String(value)));
+  Array.from(select.options).forEach((option) => {
+    option.selected = selected.has(option.value);
+  });
+}
+
+function selectedProgramProvinces() {
+  return Array.from(elements.programProvincesInput?.selectedOptions || [])
+    .map((option) => String(option.value || "").trim())
+    .filter(Boolean);
+}
+
+function populateProgramProvinceChoices(selectedValues = []) {
+  if (!elements.programProvincesInput) return;
+  elements.programProvincesInput.innerHTML = (state.operationalProvinces || [])
+    .map((province) => `<option value="${escapeHtml(province)}">${escapeHtml(province)}</option>`)
+    .join("");
+  setMultiSelectValues(elements.programProvincesInput, selectedValues);
+}
+
+function parseProgramCentersInput(value) {
+  return String(value || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const parts = line.split(/\s*\|\s*|\s*:\s*/).map((part) => part.trim()).filter(Boolean);
+      if (parts.length < 2) return null;
+      const [province, ...nameParts] = parts;
+      return {
+        province,
+        name: nameParts.join(" | "),
+      };
+    })
+    .filter((entry) => entry?.province && entry?.name);
+}
+
+function formatProgramCentersInput(programName) {
+  return registeredCenters()
+    .filter((center) => center.program === programName)
+    .sort((left, right) => {
+      const provinceCompare = String(left.province || "").localeCompare(String(right.province || ""));
+      if (provinceCompare !== 0) return provinceCompare;
+      return String(left.name || "").localeCompare(String(right.name || ""));
+    })
+    .map((center) => `${center.province} | ${center.name}`)
+    .join("\n");
+}
+
 function provincesForProgram(programName) {
   if (state.operationalProvinces?.length) return state.operationalProvinces;
 
@@ -445,6 +496,7 @@ function renderFilters() {
       elements.programCenterProvinceInput.value || state.operationalProvinces?.[0] || "",
     );
   }
+  populateProgramProvinceChoices(selectedProgramProvinces().length ? selectedProgramProvinces() : state.programs[0]?.provinces || []);
   setOptions(elements.indicatorProgramInput, programNames, elements.indicatorProgramInput?.value || selectedProgram);
   setOptions(elements.designProgramSelect, programNames, state.designProgram || selectedProgram);
   setOptions(elements.formsProgramSelect, programNames, state.formsProgram || state.designProgram || selectedProgram);
@@ -1733,9 +1785,11 @@ function renderPrograms() {
             ${(program.expectedResults || []).slice(0, 2).map((result) => `<span>${result}</span>`).join("")}
           </div>
           <div class="coverage">
-            <span>${program.beneficiaries.toLocaleString("es-DO")} beneficiarios</span>
+            <span>${escapeHtml(program.primaryPopulation || "Participantes del programa")}</span>
+            <span>${program.beneficiaries.toLocaleString("es-DO")} meta</span>
             <span>${program.budget} presupuesto</span>
             <span>${program.provinces.join(", ")}</span>
+            <span>${registeredCenters().filter((center) => center.program === program.name).length} centros</span>
           </div>
           <div class="item-actions">
             <button type="button" data-edit-program="${program.id}">Editar</button>
@@ -2739,7 +2793,7 @@ function switchView(viewName, options = {}) {
   $$(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.view === viewName));
   $$(".view").forEach((panel) => panel.classList.toggle("active", panel.dataset.viewPanel === viewName));
   if (elements.globalFilters) {
-    elements.globalFilters.hidden = ["access", "attendance", "report"].includes(viewName);
+    elements.globalFilters.hidden = true;
   }
   updateQuickReportButtonVisibility(viewName);
   elements.pageTitle.textContent = titles[viewName];
@@ -3902,7 +3956,9 @@ function resetProgramForm() {
   elements.programIdInput.value = "";
   elements.programBeneficiariesInput.value = 0;
   elements.programBudgetInput.value = "No especificado";
-  elements.programProvincesInput.value = "Centros de programa";
+  populateProgramProvinceChoices([]);
+  if (elements.programCentersInput) elements.programCentersInput.value = "";
+  elements.programPopulationInput.value = "";
   elements.programCoordinatorEmailInput.value = "";
   elements.programManagerEmailInput.value = "";
   elements.programMelSupervisorEmailInput.value = "";
@@ -3931,7 +3987,10 @@ function fillProgramForm(program) {
   elements.programLeadInput.value = program.lead;
   elements.programBeneficiariesInput.value = program.beneficiaries;
   elements.programBudgetInput.value = program.budget;
-  elements.programProvincesInput.value = (program.provinces || []).join(", ");
+  populateProgramProvinceChoices(program.provinces || []);
+  if (elements.programCentersInput) {
+    elements.programCentersInput.value = formatProgramCentersInput(program.name);
+  }
   elements.programCoordinatorEmailInput.value = program.coordinatorEmail || "";
   elements.programManagerEmailInput.value = program.programManagerEmail || "";
   elements.programMelSupervisorEmailInput.value = program.melSupervisorEmail || "";
@@ -3941,6 +4000,8 @@ function fillProgramForm(program) {
 
 async function saveProgramFromForm(formData) {
   const programId = formData.get("id");
+  const selectedProvinces = formData.getAll("provinces").map((item) => String(item || "").trim()).filter(Boolean);
+  const centers = parseProgramCentersInput(formData.get("centers"));
   const payload = {
     id: programId || undefined,
     name: formData.get("name"),
@@ -3950,15 +4011,18 @@ async function saveProgramFromForm(formData) {
     coordinatorEmail: formData.get("coordinatorEmail"),
     programManagerEmail: formData.get("programManagerEmail"),
     melSupervisorEmail: formData.get("melSupervisorEmail"),
-    provinces: String(formData.get("provinces") || "")
-      .split(",")
-      .map((item) => item.trim())
-      .filter(Boolean),
+    provinces: selectedProvinces,
     focus: formData.get("focus"),
     primaryPopulation: formData.get("primaryPopulation"),
+    centers,
     expectedResults: programId ? state.programs.find((program) => program.id === programId)?.expectedResults || [] : [],
     ...actorPayload(),
   };
+
+  if (!payload.provinces.length) {
+    showToast("Selecciona al menos una provincia para el programa.");
+    return;
+  }
 
   try {
     const previous = state.programs.find((program) => program.id === programId);
@@ -3966,7 +4030,17 @@ async function saveProgramFromForm(formData) {
       ? programId
         ? await updateApiProgram(programId, payload)
         : await createApiProgram(payload)
-      : { ...payload, id: programId || `prog-${slugify(payload.name)}-${Date.now()}` };
+      : {
+          ...payload,
+          id: programId || `prog-${slugify(payload.name)}-${Date.now()}`,
+          centers: centers.map((center, index) => ({
+            id: `center-${slugify(payload.name)}-${slugify(center.province)}-${Date.now()}-${index}`,
+            program: payload.name,
+            programId: programId || null,
+            province: center.province,
+            name: center.name,
+          })),
+        };
     upsertById(state.programs, saved);
     if (previous && previous.name !== saved.name) {
       state.indicators = state.indicators.map((indicator) =>
@@ -3978,6 +4052,12 @@ async function saveProgramFromForm(formData) {
       state.programCenters = (state.programCenters || []).map((center) =>
         center.program === previous.name ? { ...center, program: saved.name, programId: saved.id } : center,
       );
+    }
+    if (Array.isArray(saved.centers)) {
+      state.programCenters = [
+        ...(state.programCenters || []).filter((center) => center.programId !== saved.id && center.program !== saved.name),
+        ...saved.centers,
+      ];
     }
     saveState();
     renderAll();
