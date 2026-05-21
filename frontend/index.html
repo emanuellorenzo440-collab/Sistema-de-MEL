@@ -380,15 +380,23 @@
                 </label>
                 <label class="span-2">
                   Evidencia
-                  <input id="reportEvidence" name="evidence" placeholder="Acta, lista, enlace, foto o codigo de archivo" />
+                  <div class="inline-split">
+                    <select id="reportEvidenceType" name="evidenceType">
+                      <option value="note">Nota o referencia</option>
+                      <option value="link">Enlace</option>
+                      <option value="photo">Foto adjunta</option>
+                      <option value="file">Archivo adjunto</option>
+                    </select>
+                    <input id="reportEvidence" name="evidence" placeholder="Describe la evidencia o pega un enlace" />
+                  </div>
                 </label>
                 <label class="span-2">
                   Observaciones
                   <textarea id="reportNotes" name="notes" rows="4" placeholder="Hallazgos, retos, acuerdos o alertas"></textarea>
                 </label>
                 <label class="span-2">
-                  Documento adjunto
-                  <input id="reportFormUploadInput" type="file" accept=".csv,text/csv,.xlsx,.xls,.doc,.docx,.pdf,.txt,.jpg,.jpeg,.png" />
+                  Adjuntos de evidencia
+                  <input id="reportFormUploadInput" type="file" accept=".csv,text/csv,.xlsx,.xls,.doc,.docx,.pdf,.txt,.jpg,.jpeg,.png" multiple />
                 </label>
               </div>
               <div class="upload-preview" id="reportUploadPreview"></div>
@@ -903,6 +911,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="src/main.js?v=20260521d"></script>
+    <script type="module" src="src/main.js?v=20260521e"></script>
   </body>
 </html>

@@ -536,6 +536,7 @@ function renderFilters() {
   if (elements.chartDataScopeSelect) {
     elements.chartDataScopeSelect.value = getChartDataScope();
   }
+  syncEvidencePlaceholder();
 }
 
 function canValidate() {
@@ -856,6 +857,48 @@ async function attachmentFromFile(file, uploadedBy = null) {
     fileUrl: uploadedFile ? uploadFileUrl(uploadedFile) : "",
     dataUrl: uploadedFile ? null : await readFileAsDataUrl(file),
   };
+}
+
+async function attachmentsFromFiles(files, uploadedBy = null) {
+  const fileList = Array.from(files || []).filter(Boolean);
+  if (!fileList.length) return [];
+  const attachments = await Promise.all(fileList.map((file) => attachmentFromFile(file, uploadedBy)));
+  return attachments.filter(Boolean);
+}
+
+function evidenceLabel(type) {
+  if (type === "link") return "Enlace";
+  if (type === "photo") return "Foto adjunta";
+  if (type === "file") return "Archivo adjunto";
+  return "Nota";
+}
+
+function buildEvidenceSummary(type, detail, attachments = []) {
+  const cleanDetail = String(detail || "").trim();
+  const attachmentNames = attachments.map((attachment) => attachment?.name).filter(Boolean);
+  const pieces = [];
+  if (cleanDetail) {
+    pieces.push(`${evidenceLabel(type)}: ${cleanDetail}`);
+  } else if (type === "photo" || type === "file") {
+    pieces.push(evidenceLabel(type));
+  }
+  if (attachmentNames.length) {
+    pieces.push(`Adjuntos: ${attachmentNames.join(", ")}`);
+  }
+  return pieces.join(" | ").trim();
+}
+
+function syncEvidencePlaceholder() {
+  if (!elements.reportEvidence || !elements.reportEvidenceType) return;
+  const type = elements.reportEvidenceType.value;
+  elements.reportEvidence.placeholder =
+    type === "link"
+      ? "Pega el enlace de la evidencia"
+      : type === "photo"
+        ? "Opcional: describe la foto o el contexto"
+        : type === "file"
+          ? "Opcional: describe el archivo o su contenido"
+          : "Describe la evidencia o agrega una referencia";
 }
 
 async function conceptPaperDocumentFromFile(file, formData) {
@@ -3216,8 +3259,10 @@ function applyDraftToReportForm(draft) {
   document.querySelector("#reportWomen").value = draft.women || 0;
   document.querySelector("#reportMen").value = draft.men || 0;
   document.querySelector("#reportYouth").value = draft.youth || 0;
+  if (elements.reportEvidenceType) elements.reportEvidenceType.value = "note";
   document.querySelector("#reportEvidence").value = draft.evidence || "";
   document.querySelector("#reportNotes").value = draft.botSummary || draft.notes || "";
+  syncEvidencePlaceholder();
 }
 
 function renderReportDrafts() {
@@ -3376,12 +3421,22 @@ async function addReport(formData) {
     showToast("Selecciona un centro registrado para ese programa y provincia.");
     return false;
   }
-  const attachedFile = elements.reportFormUploadInput.files?.[0] || null;
-  let attachedDocument = null;
+  const evidenceType = String(formData.get("evidenceType") || "note").trim();
+  const evidenceDetail = String(formData.get("evidence") || "").trim();
+  const attachedFiles = Array.from(elements.reportFormUploadInput.files || []);
+  let attachedDocuments = [];
   try {
-    attachedDocument = attachedFile ? await attachmentFromFile(attachedFile, formData.get("owner")) : null;
+    attachedDocuments = await attachmentsFromFiles(attachedFiles, formData.get("owner"));
   } catch (error) {
     showToast(error.message || "No pude adjuntar el documento.");
+    return false;
+  }
+  if (evidenceType === "link" && evidenceDetail && !/^https?:\/\//i.test(evidenceDetail)) {
+    showToast("Cuando la evidencia sea un enlace, pega una URL valida que empiece con http:// o https://.");
+    return false;
+  }
+  if ((evidenceType === "photo" || evidenceType === "file") && !attachedDocuments.length) {
+    showToast("Adjunta al menos un archivo cuando la evidencia sea foto o archivo.");
     return false;
   }
   const newReport = {
@@ -3399,9 +3454,9 @@ async function addReport(formData) {
     men: Number(formData.get("men") || 0),
     youth: Number(formData.get("youth") || 0),
     owner: formData.get("owner"),
-    evidence: formData.get("evidence") || attachedDocument?.name || "",
+    evidence: buildEvidenceSummary(evidenceType, evidenceDetail, attachedDocuments),
     notes: formData.get("notes"),
-    attachments: attachedDocument ? [attachedDocument] : [],
+    attachments: attachedDocuments,
     status: REPORT_STATUSES.PENDING_COORDINATION,
   };
 
@@ -3414,7 +3469,7 @@ async function addReport(formData) {
       saveState();
     }
     renderAll();
-    showToast(attachedDocument ? "Reporte y documento enviados a revision." : "Reporte enviado a coordinacion para primera aprobacion.");
+    showToast(attachedDocuments.length ? "Reporte y evidencias enviadas a revision." : "Reporte enviado a coordinacion para primera aprobacion.");
     return true;
   } catch (error) {
     console.error(error);
@@ -4240,23 +4295,35 @@ function bindEvents() {
   $("#clearFormButton").addEventListener("click", () => {
     elements.reportForm.reset();
     elements.reportPeriod.value = state.filters.period === "Todos" ? currentMonth() : state.filters.period;
+    if (elements.reportEvidenceType) elements.reportEvidenceType.value = "note";
+    syncEvidencePlaceholder();
     elements.reportUploadStatus.textContent = "Sin archivo";
     elements.reportUploadStatus.className = "status-pill neutral";
     elements.reportUploadPreview.innerHTML = "";
     state.reportDrafts = [];
   });
+  elements.reportEvidenceType?.addEventListener("change", () => {
+    syncEvidencePlaceholder();
+  });
   elements.reportFormUploadInput.addEventListener("change", () => {
-    const file = elements.reportFormUploadInput.files?.[0];
-    if (file && file.size > MAX_REPORT_ATTACHMENT_BYTES) {
+    const files = Array.from(elements.reportFormUploadInput.files || []);
+    const oversizedFile = files.find((file) => file.size > MAX_REPORT_ATTACHMENT_BYTES);
+    if (oversizedFile) {
       elements.reportUploadStatus.textContent = "Archivo grande";
       elements.reportUploadStatus.className = "status-pill danger";
       elements.reportUploadPreview.innerHTML = `<p class="item-meta">El documento supera ${formatFileSize(MAX_REPORT_ATTACHMENT_BYTES)}. Sube una version mas liviana para adjuntarla al reporte.</p>`;
       return;
     }
-    elements.reportUploadStatus.textContent = file ? file.name : "Sin archivo";
-    elements.reportUploadStatus.className = `status-pill ${file ? "info" : "neutral"}`;
-    elements.reportUploadPreview.innerHTML = file
-      ? `<p class="item-meta">${escapeHtml(file.name)} se adjuntara al reporte para que quienes revisan y aprueban puedan abrirlo.</p>`
+    elements.reportUploadStatus.textContent =
+      files.length > 1 ? `${files.length} adjuntos` : files[0]?.name || "Sin archivo";
+    elements.reportUploadStatus.className = `status-pill ${files.length ? "info" : "neutral"}`;
+    elements.reportUploadPreview.innerHTML = files.length
+      ? `
+        <p class="item-meta">Los adjuntos viajaran con el reporte para que quienes revisan y aprueban puedan abrirlos.</p>
+        <ul class="item-meta">
+          ${files.map((file) => `<li>${escapeHtml(file.name)}${file.size ? ` (${escapeHtml(formatFileSize(file.size))})` : ""}</li>`).join("")}
+        </ul>
+      `
       : "";
   });
 

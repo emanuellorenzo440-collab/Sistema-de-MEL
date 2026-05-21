@@ -23,6 +23,7 @@ export const elements = {
   reportCenter: $("#reportCenter"),
   reportIndicator: $("#reportIndicator"),
   reportPeriod: $("#reportPeriod"),
+  reportEvidenceType: $("#reportEvidenceType"),
   reportUploadStatus: $("#reportUploadStatus"),
   reportFormUploadInput: $("#reportFormUploadInput"),
   analyzeReportFormButton: $("#analyzeReportFormButton"),
