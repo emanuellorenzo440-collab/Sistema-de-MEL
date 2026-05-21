@@ -143,7 +143,10 @@ const attendanceArchive = [];
 const notifications = [];
 const emailOutbox = [];
 const DEFAULT_COMPANY_ID = "org-default";
-const ATTENDANCE_PROGRAMS = ["Girls Empowerment", "Club de Chicos", "IGA"];
+function attendanceProgramNames() {
+  const names = programs.map((program) => normalizeString(program.name)).filter(Boolean);
+  return names.length ? names : ["Programa general"];
+}
 
 function ensureStoreDir() {
   fs.mkdirSync(path.dirname(melStorePath), { recursive: true });
@@ -174,7 +177,9 @@ function mergeMissingByKey(target, source, keyFn) {
 
 function normalizedAttendanceParticipant(input = {}) {
   const timestamp = nowIso();
-  const program = ATTENDANCE_PROGRAMS.includes(input.program) ? input.program : ATTENDANCE_PROGRAMS[0];
+  const validPrograms = attendanceProgramNames();
+  const requestedProgram = normalizeString(input.program);
+  const program = validPrograms.includes(requestedProgram) ? requestedProgram : validPrograms[0];
   return {
     id: normalizeString(input.id, `attp-${slugify(program)}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`),
     program,
@@ -187,7 +192,9 @@ function normalizedAttendanceParticipant(input = {}) {
 
 function normalizedAttendanceSession(input = {}) {
   const timestamp = nowIso();
-  const program = ATTENDANCE_PROGRAMS.includes(input.program) ? input.program : ATTENDANCE_PROGRAMS[0];
+  const validPrograms = attendanceProgramNames();
+  const requestedProgram = normalizeString(input.program);
+  const program = validPrograms.includes(requestedProgram) ? requestedProgram : validPrograms[0];
   const weekStart = normalizeString(input.weekStart || input.date, timestamp.slice(0, 10));
   const center = normalizeString(input.center, "General");
   const period = normalizeString(input.period, weekStart.slice(0, 7));

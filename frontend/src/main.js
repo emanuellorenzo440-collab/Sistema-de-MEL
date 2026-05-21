@@ -1,4 +1,4 @@
-import { initializeAccessLobby } from "./features/access-lobby.js?v=20260521e";
+import { initializeAccessLobby } from "./features/access-lobby.js?v=20260521f";
 
 let monitoringApp = null;
 let monitoringAppPromise = null;
@@ -10,8 +10,8 @@ async function loadMonitoringApp(authenticatedUser = null) {
 
   monitoringAppPromise = (async () => {
     const [{ createMonitoringApp }, { bootstrapApiBridge, startRuntimeBridge }] = await Promise.all([
-      import("./features/monitoring-app.js?v=20260521e"),
-      import("./services/mel-runtime-bridge.js?v=20260521e"),
+      import("./features/monitoring-app.js?v=20260521f"),
+      import("./services/mel-runtime-bridge.js?v=20260521f"),
     ]);
 
     const app = createMonitoringApp();

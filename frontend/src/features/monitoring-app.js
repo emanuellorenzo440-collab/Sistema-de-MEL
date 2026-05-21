@@ -77,7 +77,6 @@ const MAX_UPLOAD_FILE_BYTES = 200 * 1024 * 1024;
 const MAX_REPORT_ATTACHMENT_BYTES = MAX_UPLOAD_FILE_BYTES;
 const MAX_CONCEPT_PAPER_BYTES = MAX_UPLOAD_FILE_BYTES;
 const MAX_PROGRAM_MANUAL_BYTES = MAX_UPLOAD_FILE_BYTES;
-const ATTENDANCE_PROGRAMS = ["Girls Empowerment", "Club de Chicos", "IGA"];
 const NO_CENTER_OPTION = "Sin centros registrados";
 let currentUser = null;
 let currentUserRoles = SYSTEM_ROLES.slice();
@@ -232,9 +231,10 @@ function normalizeState(savedState) {
   nextState.formSubmissions = Array.isArray(savedState.formSubmissions) ? savedState.formSubmissions.slice() : [];
   nextState.attendanceParticipants = Array.isArray(savedState.attendanceParticipants) ? savedState.attendanceParticipants.slice() : [];
   nextState.attendanceSessions = Array.isArray(savedState.attendanceSessions) ? savedState.attendanceSessions.slice() : [];
-  nextState.attendanceProgram = ATTENDANCE_PROGRAMS.includes(savedState.attendanceProgram)
+  const attendancePrograms = unique(nextState.programs.map((program) => String(program.name || "").trim()).filter(Boolean));
+  nextState.attendanceProgram = attendancePrograms.includes(savedState.attendanceProgram)
     ? savedState.attendanceProgram
-    : ATTENDANCE_PROGRAMS[0];
+    : attendancePrograms[0] || "Programa general";
   nextState.attendanceCenter = savedState.attendanceCenter || seedState.attendanceCenter || "General";
   nextState.attendancePeriod = savedState.attendancePeriod || seedState.attendancePeriod || currentMonth();
   nextState.attendanceWeek = savedState.attendanceWeek || new Date().toISOString().slice(0, 10);
@@ -365,6 +365,21 @@ function getAnalyticsReports() {
 
 function registeredCenters() {
   return (state.programCenters || []).filter((center) => center.program && center.province && center.name);
+}
+
+function attendanceProgramOptions() {
+  const programNames = unique((state.programs || []).map((program) => String(program.name || "").trim()).filter(Boolean));
+  return programNames.length ? programNames : ["Programa general"];
+}
+
+function attendanceCentersForProgram(program = state.attendanceProgram) {
+  const centers = unique(
+    registeredCenters()
+      .filter((center) => center.program === program)
+      .map((center) => center.name)
+      .filter(Boolean),
+  );
+  return centers.length ? centers : ["General"];
 }
 
 function setMultiSelectValues(select, values = []) {
@@ -1224,7 +1239,10 @@ function attendanceParticipantsForProgram(program = state.attendanceProgram) {
 }
 
 function attendanceCenterValue() {
-  return String(state.attendanceCenter || "").trim() || "General";
+  const centers = attendanceCentersForProgram();
+  const selectedCenter = String(state.attendanceCenter || "").trim();
+  if (centers.includes(selectedCenter)) return selectedCenter;
+  return centers[0] || "General";
 }
 
 function attendancePeriodValue() {
@@ -1460,8 +1478,17 @@ function renderAttendanceChart(detailEntries = attendanceEntriesForCurrentSelect
 
 function renderAttendance() {
   if (!elements.attendanceProgramSelect) return;
-  setOptions(elements.attendanceProgramSelect, ATTENDANCE_PROGRAMS, state.attendanceProgram);
-  if (elements.attendanceCenterInput) elements.attendanceCenterInput.value = attendanceCenterValue();
+  const programs = attendanceProgramOptions();
+  if (!programs.includes(state.attendanceProgram)) {
+    state.attendanceProgram = programs[0] || "Programa general";
+  }
+  setOptions(elements.attendanceProgramSelect, programs, state.attendanceProgram);
+  if (elements.attendanceCenterInput) {
+    const centers = attendanceCentersForProgram(state.attendanceProgram);
+    const resolvedCenter = centers.includes(state.attendanceCenter) ? state.attendanceCenter : centers[0] || "General";
+    state.attendanceCenter = resolvedCenter;
+    setOptions(elements.attendanceCenterInput, centers, resolvedCenter);
+  }
   if (elements.attendancePeriodInput) elements.attendancePeriodInput.value = attendancePeriodValue();
   elements.attendanceWeekInput.value = state.attendanceWeek;
   const entries = attendanceEntriesForCurrentSelection();
@@ -4337,12 +4364,13 @@ function bindEvents() {
 
   elements.attendanceProgramSelect?.addEventListener("change", () => {
     state.attendanceProgram = elements.attendanceProgramSelect.value;
+    state.attendanceCenter = attendanceCentersForProgram(state.attendanceProgram)[0] || "General";
     saveState();
     renderAttendance();
   });
 
   elements.attendanceCenterInput?.addEventListener("change", () => {
-    state.attendanceCenter = elements.attendanceCenterInput.value.trim() || "General";
+    state.attendanceCenter = elements.attendanceCenterInput.value || "General";
     saveState();
     renderAttendance();
   });
