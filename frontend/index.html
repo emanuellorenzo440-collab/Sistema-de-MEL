@@ -335,7 +335,7 @@
                   <p class="eyebrow">Captura</p>
                   <h2>Reporte de actividades y metricas</h2>
                 </div>
-                <span class="status-pill neutral" id="draftStatus">Borrador local</span>
+                <span class="status-pill neutral" id="reportUploadStatus">Sin archivo</span>
               </div>
               <div class="form-grid">
                 <label>
@@ -386,7 +386,12 @@
                   Observaciones
                   <textarea id="reportNotes" name="notes" rows="4" placeholder="Hallazgos, retos, acuerdos o alertas"></textarea>
                 </label>
+                <label class="span-2">
+                  Documento adjunto
+                  <input id="reportFormUploadInput" type="file" accept=".csv,text/csv,.xlsx,.xls,.doc,.docx,.pdf,.txt,.jpg,.jpeg,.png" />
+                </label>
               </div>
+              <div class="upload-preview" id="reportUploadPreview"></div>
               <div class="form-actions">
                 <button class="ghost-action" id="clearFormButton" type="button">Limpiar</button>
                 <button class="primary-action" type="submit">
@@ -396,29 +401,29 @@
               </div>
             </section>
 
-            <section class="panel">
+            <section class="panel" id="reportAssistantPanel" hidden>
               <div class="panel-header">
                 <div>
                   <p class="eyebrow">Asistente de formularios</p>
                   <h2>Subir y autocompletar reportes</h2>
                 </div>
-                <span class="status-pill neutral" id="reportUploadStatus">Sin archivo</span>
+                <span class="status-pill neutral" id="reportUploadStatusLegacy">Sin archivo</span>
               </div>
               <div class="upload-grid">
                 <label class="span-2">
                   Formulario completado
-                  <input id="reportFormUploadInput" type="file" accept=".csv,text/csv,.xlsx,.xls,.doc,.docx,.pdf,.txt" />
+                  <input id="reportFormUploadInputLegacy" type="file" accept=".csv,text/csv,.xlsx,.xls,.doc,.docx,.pdf,.txt" />
                 </label>
-                <button class="primary-action" id="analyzeReportFormButton" type="button">
+                <button class="primary-action" id="analyzeReportFormButtonLegacy" type="button">
                   <span aria-hidden="true">⎎</span>
                   Leer formulario
                 </button>
               </div>
-              <div class="upload-preview" id="reportUploadPreview"></div>
-              <div class="draft-list" id="reportDraftList"></div>
+              <div class="upload-preview" id="reportUploadPreviewLegacy"></div>
+              <div class="draft-list" id="reportDraftListLegacy"></div>
               <div class="form-actions">
-                <button class="ghost-action" id="applyFirstDraftButton" type="button">Cargar primer borrador</button>
-                <button class="primary-action" id="submitDraftReportsButton" type="button">Enviar borradores a revision</button>
+                <button class="ghost-action" id="applyFirstDraftButtonLegacy" type="button">Cargar primer borrador</button>
+                <button class="primary-action" id="submitDraftReportsButtonLegacy" type="button">Enviar borradores a revision</button>
               </div>
             </section>
           </form>
@@ -898,6 +903,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="src/main.js?v=20260521c"></script>
+    <script type="module" src="src/main.js?v=20260521d"></script>
   </body>
 </html>

@@ -2764,7 +2764,6 @@ function renderAll() {
   renderProgramChart();
   renderRisks();
   renderReports();
-  renderReportDrafts();
   renderIndicators();
   renderDesignStudio();
   renderForms();
@@ -3222,6 +3221,7 @@ function applyDraftToReportForm(draft) {
 }
 
 function renderReportDrafts() {
+  if (!elements.reportDraftList) return;
   const drafts = state.reportDrafts || [];
   elements.reportDraftList.innerHTML = drafts.length
     ? drafts
@@ -4240,6 +4240,10 @@ function bindEvents() {
   $("#clearFormButton").addEventListener("click", () => {
     elements.reportForm.reset();
     elements.reportPeriod.value = state.filters.period === "Todos" ? currentMonth() : state.filters.period;
+    elements.reportUploadStatus.textContent = "Sin archivo";
+    elements.reportUploadStatus.className = "status-pill neutral";
+    elements.reportUploadPreview.innerHTML = "";
+    state.reportDrafts = [];
   });
   elements.reportFormUploadInput.addEventListener("change", () => {
     const file = elements.reportFormUploadInput.files?.[0];
@@ -4252,31 +4256,8 @@ function bindEvents() {
     elements.reportUploadStatus.textContent = file ? file.name : "Sin archivo";
     elements.reportUploadStatus.className = `status-pill ${file ? "info" : "neutral"}`;
     elements.reportUploadPreview.innerHTML = file
-      ? `<p class="item-meta">${escapeHtml(file.name)} se adjuntara al reporte cuando lo envies a revision.</p>`
+      ? `<p class="item-meta">${escapeHtml(file.name)} se adjuntara al reporte para que quienes revisan y aprueban puedan abrirlo.</p>`
       : "";
-  });
-  elements.analyzeReportFormButton.addEventListener("click", () => {
-    analyzeReportFormFile(elements.reportFormUploadInput.files?.[0]);
-  });
-  elements.applyFirstDraftButton.addEventListener("click", () => {
-    const firstDraft = state.reportDrafts?.[0];
-    if (!firstDraft) {
-      showToast("No hay borradores para cargar.");
-      return;
-    }
-    applyDraftToReportForm(firstDraft);
-    showToast("Primer borrador cargado en captura.");
-  });
-  elements.submitDraftReportsButton.addEventListener("click", () => {
-    void submitDraftReports();
-  });
-  elements.reportDraftList.addEventListener("click", (event) => {
-    const draftIndex = Number(event.target.closest("[data-apply-draft]")?.dataset.applyDraft);
-    if (Number.isNaN(draftIndex)) return;
-    const draft = state.reportDrafts?.[draftIndex];
-    if (!draft) return;
-    applyDraftToReportForm(draft);
-    showToast("Borrador cargado en captura.");
   });
 
   $("#exportButton").addEventListener("click", exportCsv);
