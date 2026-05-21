@@ -23,6 +23,8 @@ import {
 const CHART_COLORS = ["#14b8a6", "#2563eb", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6"];
 let syncInFlight = false;
 let analyticsInFlight = false;
+let runtimeSyncTimerId = null;
+const RUNTIME_SYNC_INTERVAL_MS = 60000;
 
 function clone(value) {
   return structuredClone(value);
@@ -62,7 +64,20 @@ function saveStoredState(state) {
 }
 
 function commitStoredState(state, options = {}) {
-  saveStoredState(state);
+  let didChange = true;
+  try {
+    const nextRaw = JSON.stringify(state);
+    const currentRaw = window.localStorage.getItem(STORAGE_KEY);
+    didChange = currentRaw !== nextRaw;
+    if (didChange) {
+      window.localStorage.setItem(STORAGE_KEY, nextRaw);
+    }
+  } catch {
+    saveStoredState(state);
+  }
+  if (!didChange) {
+    return;
+  }
   if (options.broadcast !== false) {
     window.dispatchEvent(
       new CustomEvent("mel:state-synced", {
@@ -674,6 +689,7 @@ async function runSyncPass() {
   if (!isApiConfigured() || syncInFlight) return;
   syncInFlight = true;
   try {
+    await pullRemotePlanningData();
     await pushMissingReports();
     await pullRemoteReports();
     await pullRemoteNotifications();
@@ -745,6 +761,13 @@ export function startRuntimeBridge() {
     return;
   }
 
+  if (runtimeSyncTimerId === null) {
+    runtimeSyncTimerId = window.setInterval(() => {
+      if (document.hidden) return;
+      void runSyncPass();
+    }, RUNTIME_SYNC_INTERVAL_MS);
+  }
+
   const reportForm = document.querySelector("#reportForm");
   if (reportForm) {
     reportForm.addEventListener(
@@ -772,6 +795,20 @@ export function startRuntimeBridge() {
   window.addEventListener("mel:manual-refresh", () => {
     void runSyncPass();
     scheduleAnalyticsRefresh(50);
+  });
+
+  window.addEventListener("focus", () => {
+    void runSyncPass();
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) {
+      void runSyncPass();
+    }
+  });
+
+  window.addEventListener("online", () => {
+    void runSyncPass();
   });
 
   scheduleAnalyticsRefresh(100);

@@ -4847,6 +4847,7 @@ export function createMonitoringApp() {
     async start(authenticatedUser = null) {
       hydrateState();
       await syncAuthenticatedAccess(authenticatedUser);
+      await refreshConceptPapersFromApi();
       await refreshProgramCentersFromApi();
       await refreshProgramManualsFromApi();
       await refreshAttendanceFromApi();
@@ -4860,6 +4861,7 @@ export function createMonitoringApp() {
     async syncAccess(authenticatedUser = null) {
       hydrateState();
       await syncAuthenticatedAccess(authenticatedUser);
+      await refreshConceptPapersFromApi();
       await refreshProgramCentersFromApi();
       await refreshProgramManualsFromApi();
       await refreshAttendanceFromApi();

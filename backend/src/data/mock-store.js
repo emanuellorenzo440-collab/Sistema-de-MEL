@@ -259,7 +259,7 @@ function hydratePersistentStore() {
 
   if (Array.isArray(stored.programs) && stored.programs.length) replaceArray(programs, stored.programs);
   if (Array.isArray(stored.indicators) && stored.indicators.length) replaceArray(indicators, stored.indicators);
-  if (Array.isArray(stored.conceptPapers) && stored.conceptPapers.length) {
+  if (Array.isArray(stored.conceptPapers)) {
     replaceArray(conceptPapers, stored.conceptPapers.map(normalizedConceptPaper));
   }
   replaceArray(programManuals, Array.isArray(stored.programManuals) ? stored.programManuals.map(normalizedProgramManual) : []);
