@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260521b";
+import { $, $$, elements } from "../core/dom.js?v=20260521c";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -4052,9 +4052,9 @@ function resetProgramForm() {
   populateProgramProvinceChoices([]);
   if (elements.programCentersInput) elements.programCentersInput.value = "";
   elements.programPopulationInput.value = "";
-  elements.programCoordinatorEmailInput.value = "";
-  elements.programManagerEmailInput.value = "";
-  elements.programMelSupervisorEmailInput.value = "";
+  if (elements.programCoordinatorEmailInput) elements.programCoordinatorEmailInput.value = "";
+  if (elements.programManagerEmailInput) elements.programManagerEmailInput.value = "";
+  if (elements.programMelSupervisorEmailInput) elements.programMelSupervisorEmailInput.value = "";
 }
 
 function resetProgramCenterForm() {
@@ -4086,9 +4086,9 @@ function fillProgramForm(program) {
   if (elements.programCentersInput) {
     elements.programCentersInput.value = formatProgramCentersInput(program.name);
   }
-  elements.programCoordinatorEmailInput.value = program.coordinatorEmail || "";
-  elements.programManagerEmailInput.value = program.programManagerEmail || "";
-  elements.programMelSupervisorEmailInput.value = program.melSupervisorEmail || "";
+  if (elements.programCoordinatorEmailInput) elements.programCoordinatorEmailInput.value = program.coordinatorEmail || "";
+  if (elements.programManagerEmailInput) elements.programManagerEmailInput.value = program.programManagerEmail || "";
+  if (elements.programMelSupervisorEmailInput) elements.programMelSupervisorEmailInput.value = program.melSupervisorEmail || "";
   elements.programFocusInput.value = program.focus;
   elements.programPopulationInput.value = program.primaryPopulation || "";
   elements.programCrudForm?.scrollIntoView({ behavior: "smooth", block: "start" });
