@@ -419,8 +419,6 @@ function formatProgramCentersInput(programName) {
 }
 
 function provincesForProgram(programName) {
-  if (state.operationalProvinces?.length) return state.operationalProvinces;
-
   const centerProvinces = unique(
     registeredCenters()
       .filter((center) => !programName || center.program === programName)
@@ -432,16 +430,20 @@ function provincesForProgram(programName) {
   const programProvinces = Array.isArray(program?.provinces) ? program.provinces.filter(Boolean) : [];
   if (programProvinces.length) return unique(programProvinces);
 
+  if (state.operationalProvinces?.length) return state.operationalProvinces;
+
   return unique(registeredCenters().map((center) => center.province));
 }
 
 function centersForProgramProvince(programName, province) {
-  const centers = unique(
-    registeredCenters()
-      .filter((center) => center.program === programName && center.province === province)
-      .map((center) => center.name),
+  const programCenters = registeredCenters().filter((center) => center.program === programName);
+  const exactProvinceCenters = unique(
+    programCenters.filter((center) => center.province === province).map((center) => center.name),
   );
-  return centers.length ? centers : [NO_CENTER_OPTION];
+  if (exactProvinceCenters.length) return exactProvinceCenters;
+
+  const allProgramCenters = unique(programCenters.map((center) => center.name));
+  return allProgramCenters.length ? allProgramCenters : [NO_CENTER_OPTION];
 }
 
 function syncReportCaptureOptions() {
@@ -450,7 +452,14 @@ function syncReportCaptureOptions() {
   const selectedCenter = elements.reportCenter?.value || "";
   const selectedIndicator = elements.reportIndicator?.value || "";
   const provinces = provincesForProgram(programName);
-  const nextProvince = provinces.includes(selectedProvince) ? selectedProvince : provinces[0] || "";
+  const programCenters = registeredCenters().filter((center) => center.program === programName);
+  const provinceHasCenters = selectedProvince
+    ? programCenters.some((center) => center.province === selectedProvince)
+    : false;
+  const fallbackProvince = provinceHasCenters
+    ? selectedProvince
+    : programCenters[0]?.province || provinces[0] || "";
+  const nextProvince = provinces.includes(selectedProvince) && provinceHasCenters ? selectedProvince : fallbackProvince;
   const centers = centersForProgramProvince(programName, nextProvince);
   const nextCenter = centers.includes(selectedCenter) ? selectedCenter : centers[0] || "";
   const indicators = state.indicators.filter((indicator) => indicator.program === programName);
