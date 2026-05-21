@@ -189,9 +189,11 @@ function normalizeState(savedState) {
 
   nextState.programs = mergeByKey(savedState.programs || [], seedState.programs, (item) => item.name).map((program) => {
     const seeded = seedState.programs.find((item) => item.name === program.name) || {};
+    const programName = String(program.name || seeded.name || "").trim();
     return {
       ...seeded,
       ...program,
+      id: program.id || seeded.id || `prog-${slugify(programName)}`,
       expectedResults: program.expectedResults || seeded.expectedResults || [],
       primaryPopulation: program.primaryPopulation || seeded.primaryPopulation || "Participantes del programa",
       coordinatorEmail: program.coordinatorEmail || seeded.coordinatorEmail || "",
@@ -1792,8 +1794,8 @@ function renderPrograms() {
             <span>${registeredCenters().filter((center) => center.program === program.name).length} centros</span>
           </div>
           <div class="item-actions">
-            <button type="button" data-edit-program="${program.id}">Editar</button>
-            <button type="button" data-delete-program="${program.id}">Eliminar</button>
+            <button type="button" data-edit-program="${program.id}" data-edit-program-name="${escapeHtml(program.name)}">Editar</button>
+            <button type="button" data-delete-program="${program.id}" data-delete-program-name="${escapeHtml(program.name)}">Eliminar</button>
           </div>
         </article>
       `;
@@ -3979,6 +3981,8 @@ function fillProgramCenterForm(center) {
   elements.programCenterProgramInput.value = center.program || state.programs[0]?.name || "";
   elements.programCenterProvinceInput.value = center.province || state.operationalProvinces?.[0] || "";
   elements.programCenterNameInput.value = center.name || "";
+  elements.programCenterForm?.scrollIntoView({ behavior: "smooth", block: "start" });
+  elements.programCenterNameInput?.focus({ preventScroll: true });
 }
 
 function fillProgramForm(program) {
@@ -3996,6 +4000,8 @@ function fillProgramForm(program) {
   elements.programMelSupervisorEmailInput.value = program.melSupervisorEmail || "";
   elements.programFocusInput.value = program.focus;
   elements.programPopulationInput.value = program.primaryPopulation || "";
+  elements.programCrudForm?.scrollIntoView({ behavior: "smooth", block: "start" });
+  elements.programNameInput?.focus({ preventScroll: true });
 }
 
 async function saveProgramFromForm(formData) {
@@ -4711,16 +4717,20 @@ function bindEvents() {
 
   elements.programGrid.addEventListener("click", (event) => {
     const editId = event.target.closest("[data-edit-program]")?.dataset.editProgram;
+    const editName = event.target.closest("[data-edit-program-name]")?.dataset.editProgramName;
     const deleteId = event.target.closest("[data-delete-program]")?.dataset.deleteProgram;
+    const deleteName = event.target.closest("[data-delete-program-name]")?.dataset.deleteProgramName;
 
-    if (editId) {
-      const program = state.programs.find((item) => item.id === editId);
+    if (editId || editName) {
+      const program = state.programs.find((item) => item.id === editId) || state.programs.find((item) => item.name === editName);
       if (program) fillProgramForm(program);
     }
 
-    if (deleteId) {
-      const hasIndicators = state.indicators.some((indicator) => indicator.programId === deleteId);
-      const hasReports = state.reports.some((report) => report.programId === deleteId);
+    if (deleteId || deleteName) {
+      const targetProgram = state.programs.find((item) => item.id === deleteId) || state.programs.find((item) => item.name === deleteName);
+      if (!targetProgram) return;
+      const hasIndicators = state.indicators.some((indicator) => indicator.programId === targetProgram.id || indicator.program === targetProgram.name);
+      const hasReports = state.reports.some((report) => report.programId === targetProgram.id || report.program === targetProgram.name);
       if (hasIndicators || hasReports) {
         showToast("No se puede eliminar un programa con datos asociados.");
         return;
@@ -4728,9 +4738,9 @@ function bindEvents() {
       void (async () => {
         try {
           if (isApiConfigured()) {
-            await deleteApiProgram(deleteId, actorPayload());
+            await deleteApiProgram(targetProgram.id, actorPayload());
           }
-          removeById(state.programs, deleteId);
+          removeById(state.programs, targetProgram.id);
           saveState();
           renderAll();
           showToast("Programa eliminado.");
