@@ -1,7 +1,7 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260519f";
+import { $, $$, elements } from "../core/dom.js?v=20260521a";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
-import { seedState } from "../data/seed-state.js?v=20260519f";
+import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
   REPORT_STATUSES,
   canReviewReports,
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260519f";
+} from "../services/auth-service.js?v=20260521a";
 import {
   apiFileUrl,
   createApiConceptPaper,
@@ -57,7 +57,7 @@ import {
   updateApiProgram,
   updateApiProgramCenter,
   uploadApiFile,
-} from "../services/mel-api.js?v=20260519f";
+} from "../services/mel-api.js?v=20260521a";
 import {
   currentMonth,
   escapeHtml,
@@ -201,9 +201,13 @@ function normalizeState(savedState) {
   });
   nextState.indicators = mergeByKey(savedState.indicators || [], seedState.indicators, (item) => item.id || item.name);
   nextState.monitoringForms = mergeByKey(savedState.monitoringForms || [], seedState.monitoringForms, (item) => item.id);
-  nextState.conceptPapers = mergeByKey(savedState.conceptPapers || [], seedState.conceptPapers, (item) => item.id).map(
-    normalizeConceptPaperState,
-  );
+  nextState.deletedConceptPaperIds = Array.isArray(savedState.deletedConceptPaperIds) ? savedState.deletedConceptPaperIds.slice() : [];
+  const deletedConceptPaperIds = new Set(nextState.deletedConceptPaperIds);
+  nextState.conceptPapers = mergeByKey(
+    (savedState.conceptPapers || []).filter((paper) => !deletedConceptPaperIds.has(paper.id)),
+    seedState.conceptPapers.filter((paper) => !deletedConceptPaperIds.has(paper.id)),
+    (item) => item.id,
+  ).map(normalizeConceptPaperState);
   nextState.programManuals = Array.isArray(savedState.programManuals) ? savedState.programManuals.slice() : [];
   nextState.programCenters = mergeByKey(savedState.programCenters || [], seedState.programCenters || [], (item) =>
     [item.program, item.province, item.name].join("|"),
@@ -243,7 +247,10 @@ function normalizeState(savedState) {
   nextState.activeView = typeof savedState.activeView === "string" ? savedState.activeView : "dashboard";
   nextState.designProgram = savedState.designProgram || nextState.programs[0]?.name;
   nextState.formsProgram = savedState.formsProgram || nextState.designProgram || nextState.programs[0]?.name;
-  nextState.selectedConceptPaper = savedState.selectedConceptPaper || nextState.conceptPapers[0]?.id;
+  nextState.selectedConceptPaper =
+    savedState.selectedConceptPaper && nextState.conceptPapers.some((paper) => paper.id === savedState.selectedConceptPaper)
+      ? savedState.selectedConceptPaper
+      : nextState.conceptPapers[0]?.id || null;
   return nextState;
 }
 
@@ -874,13 +881,11 @@ async function programManualDocumentFromFile(file, formData) {
 async function refreshConceptPapersFromApi() {
   if (!isApiConfigured()) return;
   const remoteConceptPapers = await fetchApiConceptPapers();
-  if (remoteConceptPapers.length) {
-    state.conceptPapers = remoteConceptPapers;
-    if (!state.conceptPapers.some((paper) => paper.id === state.selectedConceptPaper)) {
-      state.selectedConceptPaper = state.conceptPapers[0]?.id;
-    }
-    saveState();
+  state.conceptPapers = remoteConceptPapers;
+  if (!state.conceptPapers.some((paper) => paper.id === state.selectedConceptPaper)) {
+    state.selectedConceptPaper = state.conceptPapers[0]?.id || null;
   }
+  saveState();
 }
 
 async function refreshProgramManualsFromApi() {
@@ -3999,7 +4004,18 @@ async function deleteConceptPaperFromUi(conceptPaperId) {
   );
   if (!confirmed) return;
 
+  const previousConceptPapers = state.conceptPapers || [];
+  const previousDeletedConceptPaperIds = state.deletedConceptPaperIds || [];
+  const previousSelectedConceptPaper = state.selectedConceptPaper;
   try {
+    state.deletedConceptPaperIds = Array.from(new Set([...(state.deletedConceptPaperIds || []), conceptPaperId]));
+    state.conceptPapers = (state.conceptPapers || []).filter((item) => item.id !== conceptPaperId);
+    if (state.selectedConceptPaper === conceptPaperId) {
+      state.selectedConceptPaper = state.conceptPapers[0]?.id || null;
+    }
+    saveState();
+    renderAll();
+
     if (isApiConfigured()) {
       await deleteApiConceptPaper(conceptPaperId, {
         ...actorPayload(),
@@ -4007,15 +4023,16 @@ async function deleteConceptPaperFromUi(conceptPaperId) {
       });
       await refreshConceptPapersFromApi();
     } else {
-      state.conceptPapers = (state.conceptPapers || []).filter((item) => item.id !== conceptPaperId);
-      if (state.selectedConceptPaper === conceptPaperId) {
-        state.selectedConceptPaper = state.conceptPapers[0]?.id || null;
-      }
       saveState();
     }
     renderAll();
     showToast("Concept Paper eliminado de la plataforma.");
   } catch (error) {
+    state.conceptPapers = previousConceptPapers;
+    state.deletedConceptPaperIds = previousDeletedConceptPaperIds;
+    state.selectedConceptPaper = previousSelectedConceptPaper;
+    saveState();
+    renderAll();
     console.error(error);
     showToast(error.message || "No pude eliminar el Concept Paper.");
   }
@@ -4036,7 +4053,12 @@ async function deleteProgramManualFromUi(manualId) {
   );
   if (!confirmed) return;
 
+  const previousManuals = state.programManuals || [];
   try {
+    state.programManuals = (state.programManuals || []).filter((item) => item.id !== manualId);
+    saveState();
+    renderAll();
+
     if (isApiConfigured()) {
       await deleteApiProgramManual(manualId, {
         ...actorPayload(),
@@ -4044,12 +4066,14 @@ async function deleteProgramManualFromUi(manualId) {
       });
       await refreshProgramManualsFromApi();
     } else {
-      state.programManuals = (state.programManuals || []).filter((item) => item.id !== manualId);
       saveState();
     }
     renderAll();
     showToast("Manual eliminado de la plataforma.");
   } catch (error) {
+    state.programManuals = previousManuals;
+    saveState();
+    renderAll();
     console.error(error);
     showToast(error.message || "No pude eliminar el manual.");
   }

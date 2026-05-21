@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { seedState } from "../data/seed-state.js?v=20260519f";
+import { seedState } from "../data/seed-state.js?v=20260521a";
 import { REPORT_STATUSES, isApprovedReportStatus, isPendingApprovalStatus } from "../../../shared/contracts/reporting.js?v=20260514a";
 import {
   createApiReport,
@@ -18,7 +18,7 @@ import {
   getApiBaseUrl,
   isApiConfigured,
   updateApiReportStatus,
-} from "./mel-api.js?v=20260519f";
+} from "./mel-api.js?v=20260521a";
 
 const CHART_COLORS = ["#14b8a6", "#2563eb", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6"];
 let syncInFlight = false;
@@ -108,7 +108,13 @@ function normalizeState(savedState = {}) {
   });
   nextState.indicators = mergeByKey(savedState.indicators || [], seedState.indicators, (item) => item.id || item.name);
   nextState.monitoringForms = mergeByKey(savedState.monitoringForms || [], seedState.monitoringForms, (item) => item.id);
-  nextState.conceptPapers = mergeByKey(savedState.conceptPapers || [], seedState.conceptPapers, (item) => item.id);
+  nextState.deletedConceptPaperIds = Array.isArray(savedState.deletedConceptPaperIds) ? savedState.deletedConceptPaperIds.slice() : [];
+  const deletedConceptPaperIds = new Set(nextState.deletedConceptPaperIds);
+  nextState.conceptPapers = mergeByKey(
+    (savedState.conceptPapers || []).filter((paper) => !deletedConceptPaperIds.has(paper.id)),
+    seedState.conceptPapers.filter((paper) => !deletedConceptPaperIds.has(paper.id)),
+    (item) => item.id,
+  );
   nextState.programManuals = Array.isArray(savedState.programManuals) ? savedState.programManuals.slice() : [];
   nextState.programCenters = Array.isArray(savedState.programCenters) ? savedState.programCenters.slice() : seedState.programCenters || [];
   nextState.operationalProvinces = [
@@ -126,7 +132,10 @@ function normalizeState(savedState = {}) {
   nextState.role = savedState.role || seedState.role;
   nextState.designProgram = savedState.designProgram || nextState.programs[0]?.name;
   nextState.formsProgram = savedState.formsProgram || nextState.designProgram || nextState.programs[0]?.name;
-  nextState.selectedConceptPaper = savedState.selectedConceptPaper || nextState.conceptPapers[0]?.id;
+  nextState.selectedConceptPaper =
+    savedState.selectedConceptPaper && nextState.conceptPapers.some((paper) => paper.id === savedState.selectedConceptPaper)
+      ? savedState.selectedConceptPaper
+      : nextState.conceptPapers[0]?.id || null;
   return recomputeIndicators(nextState);
 }
 
