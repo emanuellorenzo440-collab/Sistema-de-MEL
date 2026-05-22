@@ -855,7 +855,7 @@ function uploadFileUrl(fileRef) {
 async function attachmentFromFile(file, uploadedBy = null) {
   if (!file) return null;
   if (file.size > MAX_REPORT_ATTACHMENT_BYTES) {
-    throw new Error(`El documento adjunto supera ${formatFileSize(MAX_REPORT_ATTACHMENT_BYTES)}. Sube un archivo mas liviano.`);
+    throw new Error(`El documento adjunto supera ${formatFileSize(MAX_REPORT_ATTACHMENT_BYTES)}. Sube un archivo más liviano.`);
   }
 
   const uploadedFile = isApiConfigured() ? await uploadApiFile(file, { kind: "report-attachments" }) : null;
@@ -1200,7 +1200,7 @@ function renderConceptPapers() {
         <span>${activePaper.beneficiaries}</span>
         <span>Presupuesto: ${activePaper.budget}</span>
         <span>Archivo: ${activePaper.fileName}</span>
-        ${activePaper.size ? `<span>Tamano: ${formatFileSize(activePaper.size)}</span>` : ""}
+        ${activePaper.size ? `<span>Tamaño: ${formatFileSize(activePaper.size)}</span>` : ""}
       </div>
     </article>
     <div class="concept-detail-grid">
@@ -2090,7 +2090,7 @@ function renderAccessWorkspace() {
             <input name="fullName" type="text" required />
           </label>
           <label>
-            Correo electronico
+            Correo electrónico
             <input name="email" type="email" required />
           </label>
           <label>
@@ -2234,13 +2234,13 @@ function renderAccessWorkspace() {
                                 <input name="fullName" type="text" value="${escapeHtml(user.fullName || "")}" required />
                               </label>
                               <label>
-                                Correo electronico
+                                Correo electrónico
                                 <input name="email" type="email" value="${escapeHtml(user.email || "")}" required />
                               </label>
                               ${
                                 user.status === "active"
                                   ? `<label>
-                                      Nueva contrasena
+                                      Nueva contraseña
                                       <input name="password" type="password" minlength="8" autocomplete="new-password" placeholder="Dejar vacio para no cambiar" />
                                     </label>`
                                   : ""
@@ -2859,7 +2859,7 @@ function switchView(viewName, options = {}) {
     dashboard: "Resumen ejecutivo",
     report: "Nuevo reporte",
     indicators: "Matriz de indicadores",
-    design: "Diseno de monitoreo y evaluacion",
+    design: "Diseño de monitoreo y evaluación",
     forms: "Formularios descargables",
     charts: "Graficas automaticas",
     attendance: "Asistencia semanal",
@@ -4181,7 +4181,7 @@ async function deleteConceptPaperFromUi(conceptPaperId) {
     return;
   }
   const confirmed = window.confirm(
-    `Eliminar "${paper.title}" quitara tambien su resumen tecnico de la biblioteca para todos los usuarios. Quedara registro en auditoria. Deseas continuar?`,
+    `Eliminar "${paper.title}" quitará también su resumen técnico de la biblioteca para todos los usuarios. Quedará registro en auditoría. ¿Deseas continuar?`,
   );
   if (!confirmed) return;
 

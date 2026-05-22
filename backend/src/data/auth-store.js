@@ -339,7 +339,7 @@ function clearDeletionMarkersForEmail(email) {
 
 function createAuthEmailRecord({ user, type, link, expiresAt }) {
   const labels = {
-    "password-reset": "Enlace para restablecer contrasena",
+    "password-reset": "Enlace para restablecer contraseña",
   };
   return {
     id: crypto.randomUUID(),
@@ -348,7 +348,7 @@ function createAuthEmailRecord({ user, type, link, expiresAt }) {
     toName: user.fullName,
     subject: `${labels[type] || "Notificacion"} - Pulso M&E`,
     previewLink: link || null,
-    body: `Hola ${user.fullName}, abre este enlace para cambiar tu contrasena: ${link}. Expira el ${expiresAt}. Si no pediste este cambio, puedes ignorar este correo.`,
+    body: `Hola ${user.fullName}, abre este enlace para cambiar tu contraseña: ${link}. Expira el ${expiresAt}. Si no pediste este cambio, puedes ignorar este correo.`,
     status: "queued",
     createdAt: nowIso(),
     expiresAt,
@@ -401,7 +401,7 @@ export function completeRequiredPasswordChange({ email, currentPassword, passwor
     throw authError(401, "Contrasena temporal incorrecta.");
   }
   if (String(password || "").length < 8) {
-    throw authError(400, "La nueva contrasena debe tener al menos 8 caracteres.");
+    throw authError(400, "La nueva contraseña debe tener al menos 8 caracteres.");
   }
 
   const timestamp = nowIso();
@@ -465,7 +465,7 @@ export function resetPasswordWithToken({ token, password }) {
     throw authError(400, "El enlace de recuperacion esta incompleto.");
   }
   if (nextPassword.length < 8) {
-    throw authError(400, "La nueva contrasena debe tener al menos 8 caracteres.");
+    throw authError(400, "La nueva contraseña debe tener al menos 8 caracteres.");
   }
 
   const incomingHash = hashToken(rawToken);
@@ -505,13 +505,13 @@ export function createManagedAuthUser(payload, actorId) {
     throw authError(400, "El nombre completo es obligatorio.");
   }
   if (!email || !email.includes("@")) {
-    throw authError(400, "El correo electronico no es valido.");
+    throw authError(400, "El correo electrónico no es válido.");
   }
   if (findUserByEmail(email)) {
     throw authError(409, "Ya existe un usuario con ese correo.");
   }
   if (temporaryPassword.length < 8) {
-    throw authError(400, "La contrasena temporal debe tener al menos 8 caracteres.");
+    throw authError(400, "La contraseña temporal debe tener al menos 8 caracteres.");
   }
 
   clearDeletionMarkersForEmail(email);
@@ -557,7 +557,7 @@ export function updateManagedAuthUser(id, updates, actorId) {
   const primaryRole = updates.primaryRole || user.primaryRole || SYSTEM_ROLES.facilitator;
   const nextPassword = String(updates.password || updates.temporaryPassword || "").trim();
   if (nextPassword && nextPassword.length < 8) {
-    throw authError(400, "La nueva contrasena debe tener al menos 8 caracteres.");
+    throw authError(400, "La nueva contraseña debe tener al menos 8 caracteres.");
   }
 
   user.fullName = String(updates.fullName ?? user.fullName).trim() || user.fullName;

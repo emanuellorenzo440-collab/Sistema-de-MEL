@@ -37,7 +37,7 @@ export const seedState = {
     "La Romana",
     "La Vega",
     "Maria Trinidad Sanchez",
-    "Monsenor Nouel",
+    "Monseñor Nouel",
     "Monte Cristi",
     "Monte Plata",
     "Pedernales",
@@ -77,14 +77,14 @@ export const seedState = {
       provinces: ["Centros de programa"],
       beneficiaries: 1500,
       budget: "US$ 4,369",
-      focus: "Club de chicas con enfoque en desarrollo integral de adolescentes de 13 a 17 anos",
+      focus: "Club de chicas con enfoque en desarrollo integral de adolescentes de 13 a 17 años",
       expectedResults: [
         "Adolescentes fortalecen identidad, valores, autoestima, resiliencia y habilidades para la vida en un espacio seguro.",
         "Chicas participan en encuentros semanales con devocionales, talleres tematicos, mentorias y actividades recreativas.",
         "Participantes aumentan liderazgo, integracion social, servicio comunitario y capacidad para tomar decisiones responsables.",
         "Mentoras y centros aplican una metodologia de evaluacion con seguimiento semanal y linea base documentada.",
       ],
-      primaryPopulation: "Adolescentes de 13 a 17 anos, familias, comunidad local e iglesia",
+      primaryPopulation: "Adolescentes de 13 a 17 años, familias, comunidad local e iglesia",
       indicatorBlueprints: [
         {
           name: "Chicas inscritas y activas en el club",
@@ -142,14 +142,14 @@ export const seedState = {
       provinces: ["Centros de programa"],
       beneficiaries: 1500,
       budget: "No especificado",
-      focus: "Club de chicos con enfoque en desarrollo espiritual, emocional, social y fisico de adolescentes de 11 a 17 anos",
+      focus: "Club de chicos con enfoque en desarrollo espiritual, emocional, social y físico de adolescentes de 11 a 17 años",
       expectedResults: [
-        "Adolescentes fortalecen caracter, identidad y valores cristianos para vivir de manera saludable.",
+        "Adolescentes fortalecen carácter, identidad y valores cristianos para vivir de manera saludable.",
         "Chicos desarrollan autoestima, autocontrol y habilidades para tomar decisiones responsables.",
         "Participantes construyen confianza, vinculo y capacidad para expresar emociones e ideas sin temor.",
-        "Mentores aplican seguimiento cercano y herramientas practicas para abordar temas de desarrollo integral.",
+        "Mentores aplican seguimiento cercano y herramientas prácticas para abordar temas de desarrollo integral.",
       ],
-      primaryPopulation: "Adolescentes varones de 11 a 17 anos, mentores, familias y comunidad",
+      primaryPopulation: "Adolescentes varones de 11 a 17 años, mentores, familias y comunidad",
       indicatorBlueprints: [
         {
           name: "Chicos inscritos y activos en el club",
@@ -209,7 +209,7 @@ export const seedState = {
       budget: "Pendiente",
       focus: "Programa CFI pendiente de completar desde su Concept Paper.",
       expectedResults: [
-        "Participantes reciben acompanamiento de acuerdo con la metodologia del programa.",
+        "Participantes reciben acompañamiento de acuerdo con la metodología del programa.",
         "El equipo documenta avances, aprendizajes y resultados para M&E.",
         "El Concept Paper alimenta indicadores, formularios y seguimiento operativo.",
       ],
@@ -274,7 +274,7 @@ export const seedState = {
       focus: "Programa IGA de mujeres pendiente de completar desde su Concept Paper.",
       expectedResults: [
         "Mujeres participantes fortalecen capacidades y oportunidades de generacion de ingresos.",
-        "El equipo registra capacitaciones, acompanamiento y avances por participante.",
+        "El equipo registra capacitaciones, acompañamiento y avances por participante.",
         "Los datos del programa alimentan indicadores, graficas y aprendizaje institucional.",
       ],
       primaryPopulation: "Mujeres participantes del programa IGA",
@@ -449,7 +449,7 @@ export const seedState = {
         "Mentora responsable",
         "Tema trabajado segun manual",
         "Chicas inscritas",
-        "Chicas presentes de 13 a 17 anos",
+        "Chicas presentes de 13 a 17 años",
         "Chicas ausentes",
         "Devocional realizado",
         "Taller o actividad complementaria",
@@ -460,7 +460,7 @@ export const seedState = {
         "Acuerdos para el proximo encuentro",
       ],
       mappings: [
-        { field: "Chicas presentes de 13 a 17 anos", indicatorId: "ind-ge-1", mode: "number" },
+        { field: "Chicas presentes de 13 a 17 años", indicatorId: "ind-ge-1", mode: "number" },
         { field: "Mentorias realizadas", indicatorId: "ind-ge-6", mode: "number" },
         { field: "Proyecto o servicio comunitario relacionado", indicatorId: "ind-ge-4", mode: "presence" },
         { field: "Evidencias disponibles", indicatorId: "ind-ge-5", mode: "presence" },
@@ -482,7 +482,7 @@ export const seedState = {
         "Habilidades sociales iniciales",
         "Participacion comunitaria inicial",
         "Interes en liderazgo o servicio",
-        "Necesidades de acompanamiento",
+        "Necesidades de acompañamiento",
         "Observaciones de la mentora",
       ],
       mappings: [
@@ -548,7 +548,7 @@ export const seedState = {
         "Mentor responsable",
         "Tema trabajado",
         "Chicos inscritos",
-        "Chicos presentes de 11 a 17 anos",
+        "Chicos presentes de 11 a 17 años",
         "Chicos ausentes",
         "Actividad recreativa o deportiva",
         "Reflexion espiritual desarrollada",
@@ -557,7 +557,7 @@ export const seedState = {
         "Acuerdos para la proxima semana",
       ],
       mappings: [
-        { field: "Chicos presentes de 11 a 17 anos", indicatorId: "ind-bc-1", mode: "number" },
+        { field: "Chicos presentes de 11 a 17 años", indicatorId: "ind-bc-1", mode: "number" },
         { field: "Evidencias disponibles", indicatorId: "ind-bc-4", mode: "presence" },
       ],
     },
@@ -576,7 +576,7 @@ export const seedState = {
         "Identidad y valores iniciales",
         "Manejo emocional inicial",
         "Entorno familiar o social",
-        "Necesidades de acompanamiento",
+        "Necesidades de acompañamiento",
         "Observaciones del mentor",
       ],
       mappings: [
@@ -642,26 +642,26 @@ export const seedState = {
       status: "Cargado",
       objective:
         "Promover el desarrollo integral de adolescentes en un espacio seguro, dinamico y cristocentrico donde fortalezcan identidad, valores y habilidades para la vida.",
-      beneficiaries: "1,500 adolescentes de 13 a 17 anos como beneficiarias directas; familias, comunidad local e iglesia como beneficiarios indirectos.",
+      beneficiaries: "1,500 adolescentes de 13 a 17 años como beneficiarias directas; familias, comunidad local e iglesia como beneficiarios indirectos.",
       budget: "US$ 4,369",
       methodology: [
         "Reuniones semanales con dinamicas biblicas, reflexiones y debates.",
         "Talleres sobre autoestima, comunicacion, manejo de emociones, salud, arte y creatividad.",
-        "Mentorias personales con acompanamiento de mujeres adultas cristianas.",
+        "Mentorías personales con acompañamiento de mujeres adultas cristianas.",
         "Actividades comunitarias y espacios recreativos.",
         "Capacitacion metodologica de dos semanas y evaluacion semanal de mentoras.",
       ],
       expectedImpact: [
-        "Adolescentes con una fe mas firme y activa.",
-        "Jovenes con mejor autoestima y habilidades de liderazgo.",
+        "Adolescentes con una fe más firme y activa.",
+        "Jóvenes con mejor autoestima y habilidades de liderazgo.",
         "Chicas con herramientas para tomar decisiones responsables.",
         "Mayor integracion social y espiritu de servicio en la comunidad.",
       ],
       measurableResults: [
-        "Numero de chicas participantes y nivel de permanencia en el club.",
+        "Número de chicas participantes y nivel de permanencia en el club.",
         "Incremento en participacion en proyectos comunitarios.",
-        "Evaluaciones de autoestima y habilidades sociales antes y despues del programa.",
-        "Testimonios de transformacion personal y espiritual.",
+        "Evaluaciones de autoestima y habilidades sociales antes y después del programa.",
+        "Testimonios de transformación personal y espiritual.",
       ],
       recommendedForms: ["Monitoreo semanal", "Linea base", "Evaluacion final", "Seguimiento a mentoras"],
       achievementIndicators: [
@@ -681,23 +681,23 @@ export const seedState = {
       year: "2026",
       status: "Cargado",
       objective:
-        "Fomentar y desarrollar en los ninos valores espirituales y morales para que puedan vivir de una manera saludable.",
-      beneficiaries: "1,500 ninos y adolescentes de 11 a 17 anos como beneficiarios directos, junto con mentores, familias y comunidad.",
+        "Fomentar y desarrollar en los niños valores espirituales y morales para que puedan vivir de una manera saludable.",
+      beneficiaries: "1,500 niños y adolescentes de 11 a 17 años como beneficiarios directos, junto con mentores, familias y comunidad.",
       budget: "No especificado",
       methodology: [
-        "Capacitacion y seguimiento a mentores de iglesias locales y comunidad.",
-        "Encuentros del club con acompanamiento cercano de mentores responsables de grupos de adolescentes.",
+        "Capacitación y seguimiento a mentores de iglesias locales y comunidad.",
+        "Encuentros del club con acompañamiento cercano de mentores responsables de grupos de adolescentes.",
         "Talleres, actividades recreativas y deportivas, y material espiritual para desarrollo integral.",
         "Abordaje de temas sobre emociones, sexualidad, vida social, autoeficacia y espiritualidad.",
       ],
       expectedImpact: [
-        "Formacion de caracter basado en valores cristianos.",
+        "Formación de carácter basado en valores cristianos.",
         "Mejora en autoestima e identidad.",
-        "Habilidades para afrontar presion social y decisiones dificiles.",
+        "Habilidades para afrontar presión social y decisiones difíciles.",
         "Mayor confianza, vinculo, manejo emocional y respeto hacia otros.",
       ],
       measurableResults: [
-        "Numero de chicos inscritos y activos en el club.",
+        "Número de chicos inscritos y activos en el club.",
         "Participantes muestran crecimiento espiritual, autoestima e identidad fortalecida.",
         "Adolescentes demuestran mayor autocontrol y decisiones responsables.",
         "Mentores aplican seguimiento semanal con evidencia y acuerdos de mejora.",
@@ -712,3 +712,4 @@ export const seedState = {
     },
   ],
 };
+

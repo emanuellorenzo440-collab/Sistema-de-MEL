@@ -127,15 +127,40 @@ function sendStoredUpload(response, storagePath, options = {}) {
   fs.createReadStream(absolutePath).pipe(response);
 }
 
-function pdfText(value = "") {
-  return String(value)
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^\x20-\x7E]/g, "");
-}
+const PDF_WIN_ANSI_MAP = {
+  Á: "\\301",
+  É: "\\311",
+  Í: "\\315",
+  Ñ: "\\321",
+  Ó: "\\323",
+  Ú: "\\332",
+  Ü: "\\334",
+  á: "\\341",
+  é: "\\351",
+  í: "\\355",
+  ñ: "\\361",
+  ó: "\\363",
+  ú: "\\372",
+  ü: "\\374",
+  "¿": "\\277",
+  "¡": "\\241",
+};
 
 function pdfEscape(value = "") {
-  return pdfText(value).replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+  return Array.from(String(value || ""))
+    .map((character) => {
+      if (character === "\\") return "\\\\";
+      if (character === "(") return "\\(";
+      if (character === ")") return "\\)";
+      if (PDF_WIN_ANSI_MAP[character]) return PDF_WIN_ANSI_MAP[character];
+      const codePoint = character.codePointAt(0);
+      if (codePoint >= 0x20 && codePoint <= 0x7e) return character;
+      return String(character)
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^\x20-\x7E]/g, "");
+    })
+    .join("");
 }
 
 function wrapText(value = "", maxLength = 92) {
@@ -175,7 +200,7 @@ function conceptPaperFallbackLines(paper = {}) {
     `Beneficiarios: ${paper.beneficiaries || "Pendiente"}`,
     `Presupuesto: ${paper.budget || "Pendiente"}`,
     "",
-    ...listLines("Metodologia", paper.methodology),
+    ...listLines("Metodología", paper.methodology),
     "",
     ...listLines("Impacto esperado", paper.expectedImpact),
     "",
@@ -762,6 +787,11 @@ export async function handleConceptPaperFile(_request, response, conceptPaperId)
           fileName: paper.fileName || `${paper.title || "concept-paper"}.pdf`,
           disposition: "inline",
         });
+        return;
+      }
+      const isBundledConceptPaper = /^assets\/concept-papers\//i.test(String(paper.path || ""));
+      if (isBundledConceptPaper) {
+        sendConceptPaperFallbackPdf(response, paper);
         return;
       }
       if (!path.isAbsolute(paper.path) && fs.existsSync(path.resolve(frontendDir, paper.path.replace(/^\/+/, "")))) {
@@ -1773,3 +1803,4 @@ export function startServer(port = PORT) {
 }
 
 startServer();
+

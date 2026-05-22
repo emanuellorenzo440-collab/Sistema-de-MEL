@@ -185,14 +185,14 @@ function bindLobbyEvents() {
           const emailInput = $("#forcePasswordEmail");
           if (emailInput) emailInput.value = result.user.email;
           showSection("force-password");
-          showToastMessage("Debes cambiar tu contrasena provisional para entrar.");
+          showToastMessage("Debes cambiar tu contraseña provisional para entrar.");
           return;
         }
         await updateLobbyVisibility();
         showToastMessage("Sesion iniciada.");
       } catch (error) {
         const message = error.message || "No pude iniciar sesion.";
-        const isPasswordError = /contrasena|contraseña|password/i.test(message);
+        const isPasswordError = /contraseña|contrasena|password/i.test(message);
         setSignInError(isPasswordError ? "Contrasena incorrecta." : message);
         showToastMessage(isPasswordError ? "Contrasena incorrecta." : message);
       } finally {
@@ -217,7 +217,7 @@ function bindLobbyEvents() {
     const password = String(formData.get("password") || "");
     const confirmPassword = String(formData.get("confirmPassword") || "");
     if (password !== confirmPassword) {
-      showToastMessage("Las contrasenas no coinciden.");
+      showToastMessage("Las contraseñas no coinciden.");
       return;
     }
 
@@ -237,7 +237,7 @@ function bindLobbyEvents() {
         await updateLobbyVisibility();
         showToastMessage("Contrasena actualizada. Ya estas dentro.");
       } catch (error) {
-        showToastMessage(error.message || "No pude cambiar la contrasena.");
+        showToastMessage(error.message || "No pude cambiar la contraseña.");
       } finally {
         if (submitButton) {
           submitButton.disabled = false;
@@ -253,7 +253,7 @@ function bindLobbyEvents() {
     const password = String(formData.get("password") || "");
     const confirmPassword = String(formData.get("confirmPassword") || "");
     if (password !== confirmPassword) {
-      showToastMessage("Las contrasenas no coinciden.");
+      showToastMessage("Las contraseñas no coinciden.");
       return;
     }
 
@@ -283,7 +283,7 @@ function bindLobbyEvents() {
         });
         const message = $("#resetRequestMessage");
         if (message) {
-          message.textContent = `Te enviamos un enlace de recuperacion a ${result.email}. Abre ese enlace para crear tu nueva contrasena.`;
+          message.textContent = `Te enviamos un enlace de recuperación a ${result.email}. Abre ese enlace para crear tu nueva contraseña.`;
           if (result.delivery !== "email" && result.previewLink) {
             message.textContent = "El enlace fue generado. El correo real necesita estar configurado en Railway; mientras tanto puedes abrirlo aqui: ";
             const link = document.createElement("a");
@@ -307,7 +307,7 @@ function bindLobbyEvents() {
     const password = String(formData.get("password") || "");
     const confirmPassword = String(formData.get("confirmPassword") || "");
     if (password !== confirmPassword) {
-      showToastMessage("Las contrasenas no coinciden.");
+      showToastMessage("Las contraseñas no coinciden.");
       return;
     }
 
@@ -321,7 +321,7 @@ function bindLobbyEvents() {
         showSection("signin");
         showToastMessage("Contrasena actualizada.");
       } catch (error) {
-        showToastMessage(error.message || "No pude cambiar la contrasena.");
+        showToastMessage(error.message || "No pude cambiar la contraseña.");
       }
     })();
   });
@@ -337,7 +337,7 @@ function bindLobbyEvents() {
       return;
     }
     if (password !== confirmPassword) {
-      showToastMessage("Las contrasenas no coinciden.");
+      showToastMessage("Las contraseñas no coinciden.");
       return;
     }
 
@@ -350,9 +350,9 @@ function bindLobbyEvents() {
         pendingPasswordResetToken = null;
         event.currentTarget.reset();
         showSection("signin");
-        showToastMessage("Contrasena actualizada. Ya puedes entrar con tu nueva contrasena.");
+        showToastMessage("Contraseña actualizada. Ya puedes entrar con tu nueva contraseña.");
       } catch (error) {
-        showToastMessage(error.message || "No pude cambiar la contrasena.");
+        showToastMessage(error.message || "No pude cambiar la contraseña.");
       }
     })();
   });

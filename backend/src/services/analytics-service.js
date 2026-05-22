@@ -160,13 +160,13 @@ function buildInsights(summary, indicatorChart, programChart, scope) {
     insights.push({
       title: "Calidad de datos a reforzar",
       severity: "warning",
-      message: `${summary.needsCorrectionReports} reportes necesitan correccion. Vale la pena revisar evidencia, consistencia y acompanamiento a campo.`,
+      message: `${summary.needsCorrectionReports} reportes necesitan corrección. Vale la pena revisar evidencia, consistencia y acompañamiento a campo.`,
     });
   }
 
   if (fragileIndicators.length) {
     insights.push({
-      title: "Indicadores con senal debil",
+      title: "Indicadores con señal débil",
       severity: "danger",
       message: `Conviene intervenir primero en ${fragileIndicators.map((indicator) => indicator.label).join(", ")}, porque siguen por debajo del 50% de su meta acumulada.`,
     });
@@ -233,3 +233,4 @@ export function buildAnalyticsConfig() {
     statuses: Object.values(REPORT_STATUSES),
   };
 }
+

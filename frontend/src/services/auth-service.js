@@ -19,7 +19,7 @@ export const VIEW_DEFINITIONS = [
   { id: "dashboard", label: "Resumen" },
   { id: "report", label: "Reportar" },
   { id: "indicators", label: "Indicadores" },
-  { id: "design", label: "Diseno M&E" },
+  { id: "design", label: "Diseño M&E" },
   { id: "forms", label: "Formularios" },
   { id: "charts", label: "Graficas" },
   { id: "attendance", label: "Asistencia" },
@@ -425,7 +425,7 @@ function passwordResetBaseUrl() {
 function createEmailRecord({ user, type, code, link, expiresAt }) {
   const labels = {
     verification: "Enlace de verificacion",
-    reset: "Enlace para restablecer contrasena",
+    reset: "Enlace para restablecer contraseña",
     "temporary-password": "Credenciales provisionales",
   };
   const body =
@@ -433,7 +433,7 @@ function createEmailRecord({ user, type, code, link, expiresAt }) {
       ? `Hola ${user.fullName}, abre este enlace para verificar tu cuenta: ${link}. Expira el ${expiresAt}.`
       : type === "temporary-password"
         ? `Hola ${user.fullName}, tu cuenta de Pulso M&E fue creada. Correo: ${user.email}. Clave provisional: ${code}. El sistema te pedira cambiarla al entrar.`
-        : `Hola ${user.fullName}, abre este enlace para cambiar tu contrasena: ${link}. Expira el ${expiresAt}.`;
+        : `Hola ${user.fullName}, abre este enlace para cambiar tu contraseña: ${link}. Expira el ${expiresAt}.`;
   return {
     id: `mail-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
     type,
@@ -890,13 +890,13 @@ export async function signUpUser(payload = {}) {
   const state = await ensureAuthState();
   const email = normalizeEmail(payload.email);
   if (!email) {
-    throw new Error("Debes indicar un correo electronico.");
+    throw new Error("Debes indicar un correo electrónico.");
   }
   if (!String(payload.fullName || "").trim()) {
     throw new Error("Debes indicar el nombre del usuario.");
   }
   if (!String(payload.password || "").trim() || String(payload.password || "").trim().length < 8) {
-    throw new Error("La contrasena debe tener al menos 8 caracteres.");
+    throw new Error("La contraseña debe tener al menos 8 caracteres.");
   }
   if (state.users.some((user) => user.email === email)) {
     throw new Error("Ya existe una cuenta registrada con ese correo.");
@@ -955,10 +955,10 @@ export async function createManagedUser(payload = {}) {
     throw new Error("Debes indicar el nombre del usuario.");
   }
   if (!email) {
-    throw new Error("Debes indicar un correo electronico.");
+    throw new Error("Debes indicar un correo electrónico.");
   }
   if (!password || password.length < 8) {
-    throw new Error("La contrasena debe tener al menos 8 caracteres.");
+    throw new Error("La contraseña debe tener al menos 8 caracteres.");
   }
   if (state.users.some((user) => user.email === email)) {
     throw new Error("Ya existe una cuenta registrada con ese correo.");
@@ -1122,7 +1122,7 @@ export async function signInUser(payload = {}) {
 
   const passwordHash = await sha256(password);
   if (passwordHash !== user.passwordHash) {
-    throw new Error("La contrasena no coincide.");
+    throw new Error("La contraseña no coincide.");
   }
   if (!user.verifiedAt) {
     throw new Error("Debes verificar tu correo antes de entrar.");
@@ -1217,16 +1217,16 @@ export async function completeRequiredPasswordChange(payload = {}) {
     throw new Error("Tu cuenta no tiene acceso activo todavia.");
   }
   if (!nextPassword || nextPassword.length < 8) {
-    throw new Error("La nueva contrasena debe tener al menos 8 caracteres.");
+    throw new Error("La nueva contraseña debe tener al menos 8 caracteres.");
   }
 
   const currentHash = await sha256(currentPassword);
   const nextHash = await sha256(nextPassword);
   if (currentHash !== user.passwordHash) {
-    throw new Error("La contrasena provisional no coincide.");
+    throw new Error("La contraseña provisional no coincide.");
   }
   if (nextHash === user.passwordHash) {
-    throw new Error("La nueva contrasena debe ser distinta a la provisional.");
+    throw new Error("La nueva contraseña debe ser distinta a la provisional.");
   }
 
   user.passwordHash = nextHash;
@@ -1329,7 +1329,7 @@ export async function resetPassword(payload = {}) {
     throw new Error("Debes abrir el enlace de recuperacion enviado a tu correo.");
   }
   if (!nextPassword || nextPassword.length < 8) {
-    throw new Error("La nueva contrasena debe tener al menos 8 caracteres.");
+    throw new Error("La nueva contraseña debe tener al menos 8 caracteres.");
   }
   if (user.resetExpiresAt && Date.parse(user.resetExpiresAt) < Date.now()) {
     throw new Error("El enlace de recuperacion ya expiro.");
@@ -1377,13 +1377,13 @@ export async function updateManagedUserAccess(userId, updates = {}) {
     throw new Error("Debes indicar el nombre del usuario.");
   }
   if (!nextEmail) {
-    throw new Error("Debes indicar un correo electronico.");
+    throw new Error("Debes indicar un correo electrónico.");
   }
   if (nextEmail !== user.email && state.users.some((item) => item.email === nextEmail)) {
     throw new Error("Ya existe una cuenta registrada con ese correo.");
   }
   if (nextPassword && nextPassword.length < 8) {
-    throw new Error("La nueva contrasena debe tener al menos 8 caracteres.");
+    throw new Error("La nueva contraseña debe tener al menos 8 caracteres.");
   }
 
   try {
