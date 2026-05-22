@@ -9,7 +9,7 @@
         display: none !important;
       }
     </style>
-    <link rel="stylesheet" href="styles.css?v=20260521a" />
+    <link rel="stylesheet" href="styles.css?v=20260522k" />
   </head>
   <body>
     <section class="auth-shell" id="authShell">
@@ -385,23 +385,57 @@
                 </label>
                 <label class="span-2">
                   Evidencia
-                  <div class="inline-split">
+                  <div class="inline-split evidence-type-row">
                     <select id="reportEvidenceType" name="evidenceType">
                       <option value="note">Nota o referencia</option>
                       <option value="link">Enlace</option>
                       <option value="photo">Foto adjunta</option>
                       <option value="file">Archivo adjunto</option>
                     </select>
-                    <input id="reportEvidence" name="evidence" placeholder="Describe la evidencia o pega un enlace" />
+                  </div>
+                  <div class="evidence-input-stack">
+                    <label class="evidence-field" id="reportEvidenceNoteGroup">
+                      Detalle de la evidencia
+                      <textarea
+                        id="reportEvidenceNote"
+                        name="evidenceNote"
+                        rows="3"
+                        placeholder="Describe la evidencia o agrega una referencia breve"
+                      ></textarea>
+                    </label>
+                    <label class="evidence-field" id="reportEvidenceLinkGroup" hidden>
+                      Enlace de evidencia
+                      <input
+                        id="reportEvidenceLink"
+                        name="evidenceLink"
+                        type="url"
+                        inputmode="url"
+                        placeholder="https://..."
+                      />
+                    </label>
+                    <div class="evidence-field" id="reportEvidenceUploadGroup" hidden>
+                      <div class="evidence-upload-head">
+                        <span id="reportEvidenceUploadLabel">Adjuntar evidencia</span>
+                        <span class="item-meta" id="reportEvidenceUploadHint">Arrastra archivos aquí o selecciónalos.</span>
+                      </div>
+                      <button class="evidence-dropzone" id="reportEvidenceDropzone" type="button">
+                        <span class="evidence-dropzone-icon" aria-hidden="true">↑</span>
+                        <strong id="reportEvidenceDropzoneTitle">Arrastra archivos aquí</strong>
+                        <span id="reportEvidenceDropzoneText">o haz clic para seleccionarlos desde tu computadora</span>
+                      </button>
+                      <input
+                        id="reportFormUploadInput"
+                        type="file"
+                        accept=".csv,text/csv,.xlsx,.xls,.doc,.docx,.pdf,.txt,.jpg,.jpeg,.png"
+                        multiple
+                        hidden
+                      />
+                    </div>
                   </div>
                 </label>
                 <label class="span-2">
                   Observaciones
                   <textarea id="reportNotes" name="notes" rows="4" placeholder="Hallazgos, retos, acuerdos o alertas"></textarea>
-                </label>
-                <label class="span-2">
-                  Adjuntos de evidencia
-                  <input id="reportFormUploadInput" type="file" accept=".csv,text/csv,.xlsx,.xls,.doc,.docx,.pdf,.txt,.jpg,.jpeg,.png" multiple />
                 </label>
               </div>
               <div class="upload-preview" id="reportUploadPreview"></div>
@@ -904,7 +938,7 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="src/main.js?v=20260522j"></script>
+    <script type="module" src="src/main.js?v=20260522k"></script>
   </body>
 </html>
 

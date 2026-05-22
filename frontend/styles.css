@@ -775,6 +775,65 @@ textarea {
   resize: vertical;
 }
 
+.evidence-type-row {
+  margin-bottom: 10px;
+}
+
+.evidence-input-stack,
+.evidence-field {
+  display: grid;
+  gap: 10px;
+}
+
+.evidence-upload-head {
+  display: grid;
+  gap: 4px;
+}
+
+.evidence-dropzone {
+  align-items: center;
+  background: #f8faf9;
+  border: 1px dashed #8eb8b2;
+  border-radius: 8px;
+  color: var(--ink);
+  display: grid;
+  gap: 8px;
+  min-height: 144px;
+  padding: 20px;
+  text-align: center;
+  width: 100%;
+}
+
+.evidence-dropzone:hover,
+.evidence-dropzone.is-dragging {
+  background: #eef7f5;
+  border-color: var(--teal);
+}
+
+.evidence-dropzone-icon {
+  align-items: center;
+  background: #dcefeb;
+  border-radius: 999px;
+  color: var(--teal-dark);
+  display: inline-flex;
+  font-size: 1.2rem;
+  font-weight: 900;
+  height: 42px;
+  justify-content: center;
+  justify-self: center;
+  width: 42px;
+}
+
+.evidence-dropzone strong {
+  font-size: 1rem;
+}
+
+.evidence-dropzone span:last-child {
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
 .indicator-board {
   grid-template-columns: repeat(2, minmax(280px, 1fr));
 }
