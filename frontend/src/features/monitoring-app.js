@@ -1,5 +1,5 @@
 ﻿import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260522e";
+import { $, $$, elements } from "../core/dom.js?v=20260522f";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -84,6 +84,7 @@ let currentUserViews = VIEW_DEFINITIONS.map((view) => view.id);
 let accessRenderRequest = 0;
 const deletedAccessUserIds = new Set();
 let activeStatusReportId = null;
+let accessLibraryUploadInFlight = false;
 
 function loadState() {
   return loadStoredState(STORAGE_KEY, seedState, normalizeState);
@@ -2038,6 +2039,7 @@ function captureFormValues(form) {
   const values = {};
   Array.from(form.elements || []).forEach((control) => {
     if (!control.name || control.disabled) return;
+    if (control.type === "file") return;
     if (control.type === "checkbox") {
       const group = Array.from(form.elements).filter((item) => item.name === control.name && item.type === "checkbox");
       values[control.name] = group.length > 1
@@ -2058,6 +2060,7 @@ function restoreFormValues(form, values) {
   if (!form || !values) return;
   Array.from(form.elements || []).forEach((control) => {
     if (!control.name || control.disabled || !(control.name in values)) return;
+    if (control.type === "file") return;
     const value = values[control.name];
     if (control.type === "checkbox") {
       control.checked = Array.isArray(value) ? value.includes(control.value) : Boolean(value);
@@ -2071,10 +2074,19 @@ function restoreFormValues(form, values) {
   });
 }
 
+function hasPendingAccessLibraryFileSelection() {
+  if (!elements.accessUserGrid) return false;
+  return Array.from(elements.accessUserGrid.querySelectorAll('input[type="file"]')).some(
+    (input) => input instanceof HTMLInputElement && input.files && input.files.length > 0,
+  );
+}
+
 function captureAccessWorkspaceDraft() {
   if (!elements.accessUserGrid) return null;
   const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const createForm = elements.accessUserGrid.querySelector("#createManagedUserForm");
+  const conceptForm = elements.accessUserGrid.querySelector("#createConceptPaperForm");
+  const manualForm = elements.accessUserGrid.querySelector("#createProgramManualForm");
   const editForms = Array.from(elements.accessUserGrid.querySelectorAll("[data-user-access-form]"));
   const activeForm = activeElement?.closest?.("form");
 
@@ -2082,6 +2094,10 @@ function captureAccessWorkspaceDraft() {
     activeFormId:
       activeForm?.id === "createManagedUserForm"
         ? "create"
+        : activeForm?.id === "createConceptPaperForm"
+          ? "concept"
+          : activeForm?.id === "createProgramManualForm"
+            ? "manual"
         : activeForm?.dataset?.userAccessForm
           ? `edit:${activeForm.dataset.userAccessForm}`
           : null,
@@ -2089,6 +2105,8 @@ function captureAccessWorkspaceDraft() {
     selectionStart: typeof activeElement?.selectionStart === "number" ? activeElement.selectionStart : null,
     selectionEnd: typeof activeElement?.selectionEnd === "number" ? activeElement.selectionEnd : null,
     create: captureFormValues(createForm),
+    concept: captureFormValues(conceptForm),
+    manual: captureFormValues(manualForm),
     edits: editForms.map((form) => ({
       id: form.dataset.userAccessForm,
       values: captureFormValues(form),
@@ -2099,6 +2117,8 @@ function captureAccessWorkspaceDraft() {
 function restoreAccessWorkspaceDraft(snapshot) {
   if (!snapshot || !elements.accessUserGrid) return;
   restoreFormValues(elements.accessUserGrid.querySelector("#createManagedUserForm"), snapshot.create);
+  restoreFormValues(elements.accessUserGrid.querySelector("#createConceptPaperForm"), snapshot.concept);
+  restoreFormValues(elements.accessUserGrid.querySelector("#createProgramManualForm"), snapshot.manual);
   snapshot.edits?.forEach((entry) => {
     restoreFormValues(elements.accessUserGrid.querySelector(`[data-user-access-form="${entry.id}"]`), entry.values);
   });
@@ -2106,6 +2126,10 @@ function restoreAccessWorkspaceDraft(snapshot) {
   const activeForm =
     snapshot.activeFormId === "create"
       ? elements.accessUserGrid.querySelector("#createManagedUserForm")
+      : snapshot.activeFormId === "concept"
+        ? elements.accessUserGrid.querySelector("#createConceptPaperForm")
+      : snapshot.activeFormId === "manual"
+        ? elements.accessUserGrid.querySelector("#createProgramManualForm")
       : snapshot.activeFormId?.startsWith("edit:")
         ? elements.accessUserGrid.querySelector(`[data-user-access-form="${snapshot.activeFormId.slice(5)}"]`)
         : null;
@@ -2123,8 +2147,12 @@ function restoreAccessWorkspaceDraft(snapshot) {
   }
 }
 
-function renderAccessWorkspace() {
+function renderAccessWorkspace(options = {}) {
   if (!elements.accessUserGrid || !elements.accessRequestCount) return;
+  const { force = false } = options;
+  if (!force && state?.activeView === "access" && (accessLibraryUploadInFlight || hasPendingAccessLibraryFileSelection())) {
+    return;
+  }
   const renderRequest = ++accessRenderRequest;
 
   void (async () => {
@@ -5065,6 +5093,7 @@ function bindEvents() {
       const formData = new FormData(form);
       const file = form.elements.conceptFile?.files?.[0] || null;
       void (async () => {
+        accessLibraryUploadInFlight = true;
         try {
           const conceptPaper = await conceptPaperDocumentFromFile(file, formData);
           const savedPaper = isApiConfigured() ? await createApiConceptPaper({ ...conceptPaper, ...actorPayload() }) : conceptPaper;
@@ -5073,11 +5102,14 @@ function bindEvents() {
           saveState();
           form.reset();
           await refreshConceptPapersFromApi();
+          accessLibraryUploadInFlight = false;
           renderAll();
           showToast("Concept Paper cargado y disponible para todos.");
         } catch (error) {
           console.error(error);
-          showToast(error.message || "No pude cargar el Concept Paper.");
+          showToast(error.status === 403 ? "Solo Supervision M&E puede cargar Concept Papers." : error.message || "No pude cargar el Concept Paper.");
+        } finally {
+          accessLibraryUploadInFlight = false;
         }
       })();
       return;
@@ -5089,6 +5121,7 @@ function bindEvents() {
       const formData = new FormData(form);
       const file = form.elements.manualFile?.files?.[0] || null;
       void (async () => {
+        accessLibraryUploadInFlight = true;
         try {
           const manual = await programManualDocumentFromFile(file, formData);
           const savedManual = isApiConfigured() ? await createApiProgramManual({ ...manual, ...actorPayload() }) : manual;
@@ -5096,11 +5129,14 @@ function bindEvents() {
           saveState();
           form.reset();
           await refreshProgramManualsFromApi();
+          accessLibraryUploadInFlight = false;
           renderAll();
           showToast("Manual cargado y disponible para todos.");
         } catch (error) {
           console.error(error);
-          showToast(error.message || "No pude cargar el manual.");
+          showToast(error.status === 403 ? "Solo Supervision M&E puede cargar manuales." : error.message || "No pude cargar el manual.");
+        } finally {
+          accessLibraryUploadInFlight = false;
         }
       })();
       return;
