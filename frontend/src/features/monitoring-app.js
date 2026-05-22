@@ -1,5 +1,5 @@
 ﻿import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260522f";
+import { $, $$, elements } from "../core/dom.js?v=20260522h";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -4490,6 +4490,7 @@ function bindEvents() {
   $("#seedButton").addEventListener("click", () => {
     if (appRefreshInFlight) return;
     const button = $("#seedButton");
+    const syncStatus = elements.syncStatus;
     let settled = false;
     const finishRefresh = () => {
       if (settled) return;
@@ -4498,6 +4499,10 @@ function bindEvents() {
       renderAll();
       appRefreshInFlight = false;
       window.removeEventListener("mel:state-synced", handleSynced);
+      if (syncStatus) {
+        syncStatus.hidden = true;
+        syncStatus.classList.remove("is-active");
+      }
       if (button) {
         button.disabled = false;
         button.setAttribute("aria-label", "Actualizar vista");
@@ -4514,6 +4519,10 @@ function bindEvents() {
       button.textContent = "↻";
       button.setAttribute("aria-label", "Actualizando sistema");
       button.title = "Actualizando sistema";
+    }
+    if (syncStatus) {
+      syncStatus.hidden = false;
+      syncStatus.classList.add("is-active");
     }
     window.addEventListener("mel:state-synced", handleSynced, { once: true });
     window.dispatchEvent(new CustomEvent("mel:manual-refresh"));
