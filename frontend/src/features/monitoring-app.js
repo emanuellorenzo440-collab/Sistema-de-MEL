@@ -85,6 +85,7 @@ let accessRenderRequest = 0;
 const deletedAccessUserIds = new Set();
 let activeStatusReportId = null;
 let accessLibraryUploadInFlight = false;
+let appRefreshInFlight = false;
 
 function loadState() {
   return loadStoredState(STORAGE_KEY, seedState, normalizeState);
@@ -4487,10 +4488,36 @@ function bindEvents() {
   $("#quickReportButton").addEventListener("click", () => switchView("report"));
 
   $("#seedButton").addEventListener("click", () => {
-    hydrateState();
-    renderAll();
+    if (appRefreshInFlight) return;
+    const button = $("#seedButton");
+    let settled = false;
+    const finishRefresh = () => {
+      if (settled) return;
+      settled = true;
+      hydrateState();
+      renderAll();
+      appRefreshInFlight = false;
+      window.removeEventListener("mel:state-synced", handleSynced);
+      if (button) {
+        button.disabled = false;
+        button.setAttribute("aria-label", "Actualizar vista");
+        button.title = "Actualizar vista";
+      }
+      showToast("Sistema actualizado.");
+    };
+    const handleSynced = () => {
+      finishRefresh();
+    };
+    appRefreshInFlight = true;
+    if (button) {
+      button.disabled = true;
+      button.textContent = "↻";
+      button.setAttribute("aria-label", "Actualizando sistema");
+      button.title = "Actualizando sistema";
+    }
+    window.addEventListener("mel:state-synced", handleSynced, { once: true });
     window.dispatchEvent(new CustomEvent("mel:manual-refresh"));
-    showToast("Vista actualizada.");
+    window.setTimeout(finishRefresh, isApiConfigured() ? 2500 : 120);
   });
 
   $("#clearFormButton").addEventListener("click", () => {

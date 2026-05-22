@@ -124,15 +124,20 @@ async function updateLobbyVisibility() {
     paintSessionUser(currentUser);
     if (currentUser.id !== lastSessionUserId) {
       lastSessionUserId = currentUser.id;
-      sessionReadyPromise = Promise.resolve(onAuthenticatedCallback(currentUser)).finally(() => {
-        sessionReadyPromise = null;
-      });
-    }
-    if (sessionReadyPromise) {
-      await sessionReadyPromise;
+      sessionReadyPromise = Promise.resolve(onAuthenticatedCallback(currentUser))
+        .catch((error) => {
+          console.error(error);
+          showToastMessage("No pude cargar todo el sistema a la primera. Reintentando sincronizar.");
+        })
+        .finally(() => {
+          sessionReadyPromise = null;
+        });
     }
     if (appShell) appShell.hidden = false;
     if (authShell) authShell.hidden = true;
+    if (sessionReadyPromise) {
+      await sessionReadyPromise;
+    }
   } else {
     if (appShell) appShell.hidden = true;
     if (authShell) authShell.hidden = false;
@@ -379,6 +384,10 @@ function fillRequestedRoleOptions() {
 export async function initializeAccessLobby({ onAuthenticated, onSignedOut } = {}) {
   onAuthenticatedCallback = typeof onAuthenticated === "function" ? onAuthenticated : () => {};
   onSignedOutCallback = typeof onSignedOut === "function" ? onSignedOut : () => {};
+  const authShell = $("#authShell");
+  const appShell = $(".app-shell");
+  if (authShell) authShell.hidden = true;
+  if (appShell) appShell.hidden = true;
 
   await ensureAuthState();
   await consumeVerificationLink();
