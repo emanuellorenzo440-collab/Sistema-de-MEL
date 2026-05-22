@@ -2044,7 +2044,7 @@ function renderAccessWorkspace() {
             </select>
           </label>
           <label>
-            Ano
+            Año
             <input name="year" type="number" min="2000" max="2100" value="${new Date().getFullYear()}" required />
           </label>
           <label>
@@ -2136,7 +2136,7 @@ function renderAccessWorkspace() {
             </select>
           </label>
           <label>
-            Ano
+            Año
             <input name="year" type="number" min="2000" max="2100" value="${new Date().getFullYear()}" required />
           </label>
           <label>

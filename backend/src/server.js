@@ -165,7 +165,7 @@ function conceptPaperFallbackLines(paper = {}) {
   return [
     paper.title || "Concept Paper",
     `Programa: ${paper.program || "No definido"}`,
-    `Ano: ${paper.year || "No definido"}`,
+    `Año: ${paper.year || "No definido"}`,
     `Presentador: ${paper.presenter || paper.uploadedBy || "Equipo M&E"}`,
     `Archivo registrado: ${paper.fileName || "Sin archivo fisico disponible"}`,
     "",
