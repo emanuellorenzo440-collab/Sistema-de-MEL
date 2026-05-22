@@ -690,6 +690,15 @@ function isSystemAdminRole(role = activeRole()) {
   return normalizeRoleLabel(role) === "Supervision M&E";
 }
 
+function accessStatusLabel(status = "") {
+  const normalized = String(status || "").trim();
+  if (normalized === "pending_verification") return "Pendiente verificación";
+  if (normalized === "pending_approval") return "Pendiente aprobación";
+  if (normalized === "active") return "Activo";
+  if (normalized === "suspended") return "Suspendido";
+  return normalized || "Sin estado";
+}
+
 function viewIsEnabled(viewId) {
   return isSystemAdminRole() || currentUserViews.includes(viewId);
 }
@@ -702,12 +711,14 @@ function renderMetrics() {
   const pending = state.reports.filter((report) => isPendingApprovalStatus(report.status)).length;
   const riskCount = state.indicators.filter((indicator) => percent(indicator.value, indicator.target) < 70).length;
   const participants = reports.reduce((sum, report) => sum + reportParticipantTotal(report), 0);
+  const filterProgramLabel = state.filters.program && state.filters.program !== "Todos" ? state.filters.program : "todos los programas";
+  const filterPeriodLabel = state.filters.period && state.filters.period !== "Todos" ? state.filters.period : "todos los periodos";
 
   const metrics = [
-    { label: "Cumplimiento global", value: `${overallProgress}%`, delta: "avance consolidado", type: statusForProgress(overallProgress) },
-    { label: "Reportes del periodo", value: reports.length, delta: "segun filtros activos", type: "info" },
+    { label: "Cumplimiento global", value: `${overallProgress}%`, delta: `avance consolidado de ${filterProgramLabel}`, type: statusForProgress(overallProgress) },
+    { label: "Reportes del periodo", value: reports.length, delta: `${filterPeriodLabel} según filtros activos`, type: "info" },
     { label: "Pendientes de validar", value: pending, delta: "en cola de supervision", type: pending > 0 ? "warning" : "good" },
-    { label: "Participantes", value: participants.toLocaleString("es-DO"), delta: "desglose reportado", type: riskCount ? "warning" : "good" },
+    { label: "Participantes", value: participants.toLocaleString("es-DO"), delta: riskCount ? `${riskCount} indicadores piden atención` : "desglose reportado estable", type: riskCount ? "warning" : "good" },
   ];
 
   elements.metricGrid.innerHTML = metrics
@@ -2253,6 +2264,9 @@ function renderAccessWorkspace(options = {}) {
       { key: "suspended", label: "Usuarios suspendidos", empty: "No hay usuarios suspendidos." },
     ];
     const pendingCount = users.filter((user) => user.status === "pending_approval").length;
+    const totalUsers = users.length;
+    const activeUsers = users.filter((user) => user.status === "active").length;
+    const suspendedUsers = users.filter((user) => user.status === "suspended").length;
     elements.accessRequestCount.textContent = `${pendingCount} pendiente${pendingCount === 1 ? "" : "s"}`;
     elements.accessRequestCount.className = `status-pill ${pendingCount ? "warning" : "good"}`;
 
@@ -2302,95 +2316,124 @@ function renderAccessWorkspace(options = {}) {
     : "";
 
   const summaryMarkup = `
-      <form class="user-access-card create-user-card" id="createManagedUserForm">
-        <div class="user-access-top">
-          <div>
-            <p class="eyebrow">Nuevo usuario</p>
-            <h3>Crear acceso directo</h3>
+      <section class="access-admin-shell">
+        <article class="access-hero-card">
+          <div class="access-hero-copy">
+            <p class="eyebrow">Administración institucional</p>
+            <h2>Usuarios, permisos y biblioteca central</h2>
+            <p class="item-meta">Desde esta vista controlas accesos, cargas documentales y la trazabilidad de quién puede entrar, revisar o administrar el sistema.</p>
           </div>
-          <span class="status-pill info">Activo al guardar</span>
-        </div>
-        <div class="access-card-grid">
-          <label>
-            Nombre completo
-            <input name="fullName" type="text" required />
-          </label>
-          <label>
-            Correo electrónico
-            <input name="email" type="email" required />
-          </label>
-          <label>
-            Contrasena temporal
-            <input name="password" type="password" minlength="8" required />
-          </label>
-          <label class="access-chip access-wide">
-            <input name="mustChangePassword" type="checkbox" checked />
-            <span>Pedir cambio de clave al primer ingreso</span>
-          </label>
-          <label>
-            Rol principal
-            <select name="systemRole">
-              ${SYSTEM_ROLES.map((role) => `<option value="${role}" ${role === "Facilitador" ? "selected" : ""}>${role}</option>`).join("")}
-            </select>
-          </label>
-          <label>
-            Estado
-            <select name="status">
-              <option value="active" selected>Activo</option>
-              <option value="pending_approval">Pendiente aprobacion</option>
-              <option value="suspended">Suspendido</option>
-            </select>
-          </label>
-        </div>
-        <label>
-          Nota de acceso
-          <textarea name="accessNote" rows="2" placeholder="Ej. Creado por supervision para equipo de campo."></textarea>
-        </label>
-        <div class="item-actions">
-          <button class="primary-action" type="submit">Crear usuario</button>
-        </div>
-      </form>
-      <form class="user-access-card concept-upload-card" id="createConceptPaperForm">
-        <div class="user-access-top">
-          <div>
-            <p class="eyebrow">Concept Papers</p>
-            <h3>Cargar documento al sistema</h3>
+          <div class="access-hero-stats">
+            <article>
+              <strong>${totalUsers}</strong>
+              <span>usuarios registrados</span>
+            </article>
+            <article>
+              <strong>${activeUsers}</strong>
+              <span>cuentas activas</span>
+            </article>
+            <article>
+              <strong>${pendingCount}</strong>
+              <span>aprobaciones en cola</span>
+            </article>
+            <article>
+              <strong>${suspendedUsers}</strong>
+              <span>usuarios suspendidos</span>
+            </article>
           </div>
-          <span class="status-pill info">${state.conceptPapers.length} cargados</span>
+        </article>
+        <div class="access-admin-grid">
+          <form class="user-access-card create-user-card" id="createManagedUserForm">
+            <div class="user-access-top">
+              <div>
+                <p class="eyebrow">Nuevo usuario</p>
+                <h3>Crear acceso directo</h3>
+              </div>
+              <span class="status-pill info">Activo al guardar</span>
+            </div>
+            <div class="access-card-grid">
+              <label>
+                Nombre completo
+                <input name="fullName" type="text" required />
+              </label>
+              <label>
+                Correo electrónico
+                <input name="email" type="email" required />
+              </label>
+              <label>
+                Contrasena temporal
+                <input name="password" type="password" minlength="8" required />
+              </label>
+              <label class="access-chip access-wide">
+                <input name="mustChangePassword" type="checkbox" checked />
+                <span>Pedir cambio de clave al primer ingreso</span>
+              </label>
+              <label>
+                Rol principal
+                <select name="systemRole">
+                  ${SYSTEM_ROLES.map((role) => `<option value="${role}" ${role === "Facilitador" ? "selected" : ""}>${role}</option>`).join("")}
+                </select>
+              </label>
+              <label>
+                Estado
+                <select name="status">
+                  <option value="active" selected>Activo</option>
+                  <option value="pending_approval">Pendiente aprobacion</option>
+                  <option value="suspended">Suspendido</option>
+                </select>
+              </label>
+            </div>
+            <label>
+              Nota de acceso
+              <textarea name="accessNote" rows="2" placeholder="Ej. Creado por supervision para equipo de campo."></textarea>
+            </label>
+            <div class="item-actions">
+              <button class="primary-action" type="submit">Crear usuario</button>
+            </div>
+          </form>
+          <form class="user-access-card concept-upload-card" id="createConceptPaperForm">
+            <div class="user-access-top">
+              <div>
+                <p class="eyebrow">Concept Papers</p>
+                <h3>Cargar documento al sistema</h3>
+              </div>
+              <span class="status-pill info">${state.conceptPapers.length} cargados</span>
+            </div>
+            <div class="access-card-grid">
+              <label>
+                Programa
+                <select name="program" required>
+                  ${state.programs.map((program) => `<option value="${escapeHtml(program.name)}">${escapeHtml(program.name)}</option>`).join("")}
+                </select>
+              </label>
+              <label>
+                Año
+                <input name="year" type="number" min="2000" max="2100" value="${new Date().getFullYear()}" required />
+              </label>
+              <label>
+                Titulo
+                <input name="title" type="text" placeholder="Ej. Concept Paper 2026" required />
+              </label>
+              <label>
+                Responsable / presentador
+                <input name="presenter" type="text" value="${escapeHtml(currentUser?.fullName || "Supervision M&E")}" />
+              </label>
+              <label class="span-2">
+                Documento
+                <input name="conceptFile" type="file" required />
+              </label>
+              <label class="span-2">
+                Objetivo o nota breve
+                <textarea name="objective" rows="2" placeholder="Resumen breve para identificar el documento en Concept Papers."></textarea>
+              </label>
+            </div>
+            <div class="item-actions">
+              <button class="primary-action" type="submit">Subir a Concept Papers</button>
+            </div>
+          </form>
+          ${manualUploadMarkup}
         </div>
-        <div class="access-card-grid">
-          <label>
-            Programa
-            <select name="program" required>
-              ${state.programs.map((program) => `<option value="${escapeHtml(program.name)}">${escapeHtml(program.name)}</option>`).join("")}
-            </select>
-          </label>
-          <label>
-            Año
-            <input name="year" type="number" min="2000" max="2100" value="${new Date().getFullYear()}" required />
-          </label>
-          <label>
-            Titulo
-            <input name="title" type="text" placeholder="Ej. Concept Paper 2026" required />
-          </label>
-          <label>
-            Responsable / presentador
-            <input name="presenter" type="text" value="${escapeHtml(currentUser?.fullName || "Supervision M&E")}" />
-          </label>
-          <label class="span-2">
-            Documento
-            <input name="conceptFile" type="file" required />
-          </label>
-          <label class="span-2">
-            Objetivo o nota breve
-            <textarea name="objective" rows="2" placeholder="Resumen breve para identificar el documento en Concept Papers."></textarea>
-          </label>
-        </div>
-        <div class="item-actions">
-          <button class="primary-action" type="submit">Subir a Concept Papers</button>
-        </div>
-      </form>
-      ${manualUploadMarkup}
+      </section>
       <div class="access-summary-grid">
         ${groups
           .map((group) => {
@@ -2450,7 +2493,7 @@ function renderAccessWorkspace(options = {}) {
                                 <p class="item-meta">${user.email}</p>
                               </div>
                               <div class="access-status-stack">
-                                <span class="status-pill ${user.status === "active" ? "good" : user.status === "suspended" ? "danger" : "warning"}">${user.status}</span>
+                                <span class="status-pill ${user.status === "active" ? "good" : user.status === "suspended" ? "danger" : "warning"}">${accessStatusLabel(user.status)}</span>
                                 ${user.mustChangePassword ? '<span class="status-pill warning">Cambio de clave</span>' : ""}
                               </div>
                             </div>
