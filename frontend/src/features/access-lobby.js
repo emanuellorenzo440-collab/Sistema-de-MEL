@@ -14,6 +14,7 @@ import {
 
 const sections = ["signin", "signup", "forgot", "force-password", "reset-password"];
 const INACTIVITY_TIMEOUT_MS = 60 * 1000;
+const INACTIVITY_CHECK_INTERVAL_MS = 5000;
 const AUTH_ACTIVITY_KEY = "pulso-me-last-activity-v1";
 const ACTIVITY_WRITE_THROTTLE_MS = 5000;
 let wired = false;
@@ -24,6 +25,7 @@ let sessionReadyPromise = null;
 let pendingPasswordChange = null;
 let pendingPasswordResetToken = null;
 let inactivityTimerId = null;
+let inactivityIntervalId = null;
 let inactivityMonitoring = false;
 let lastActivityAt = 0;
 let lastActivityWriteAt = 0;
@@ -33,6 +35,13 @@ function clearInactivityTimer() {
   if (inactivityTimerId !== null) {
     window.clearTimeout(inactivityTimerId);
     inactivityTimerId = null;
+  }
+}
+
+function clearInactivityInterval() {
+  if (inactivityIntervalId !== null) {
+    window.clearInterval(inactivityIntervalId);
+    inactivityIntervalId = null;
   }
 }
 
@@ -74,6 +83,21 @@ function scheduleInactivityTimer() {
   }, delay);
 }
 
+function isSessionInactive() {
+  const effectiveLastActivity = Math.max(lastActivityAt, readStoredActivityAt());
+  return Date.now() - effectiveLastActivity >= INACTIVITY_TIMEOUT_MS;
+}
+
+function ensureInactivityInterval() {
+  clearInactivityInterval();
+  if (!inactivityMonitoring) return;
+  inactivityIntervalId = window.setInterval(() => {
+    if (!inactivityMonitoring || inactivitySignOutInFlight) return;
+    if (!isSessionInactive()) return;
+    void performSignOut("Sesión cerrada por inactividad.");
+  }, INACTIVITY_CHECK_INTERVAL_MS);
+}
+
 function registerActivity(forcePersist = false) {
   if (!inactivityMonitoring) return;
   lastActivityAt = Date.now();
@@ -86,11 +110,13 @@ function activateInactivityMonitor() {
   lastActivityAt = Math.max(Date.now(), readStoredActivityAt());
   writeStoredActivityAt(lastActivityAt, true);
   scheduleInactivityTimer();
+  ensureInactivityInterval();
 }
 
 function deactivateInactivityMonitor() {
   inactivityMonitoring = false;
   clearInactivityTimer();
+  clearInactivityInterval();
 }
 
 async function performSignOut(message = "Sesión cerrada.") {
@@ -254,10 +280,11 @@ function bindLobbyEvents() {
   ["#signinEmail", "#signinPassword"].forEach((selector) => {
     $(selector)?.addEventListener("input", () => setSignInError(""));
   });
-  ["pointerdown", "keydown", "mousemove", "scroll", "touchstart"].forEach((eventName) => {
+  ["pointerdown", "keydown", "click", "input", "touchstart", "wheel"].forEach((eventName) => {
     window.addEventListener(
       eventName,
-      () => {
+      (event) => {
+        if ("isTrusted" in event && event.isTrusted === false) return;
         registerActivity(false);
       },
       { passive: true },
