@@ -1,5 +1,5 @@
-import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260521c";
+﻿import { STORAGE_KEY } from "../core/config.js?v=20260514a";
+import { $, $$, elements } from "../core/dom.js?v=20260522e";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -105,6 +105,95 @@ const ROLE_LABELS = {
   "supervisión m&e": "Supervision M&E",
   supervisor: "Supervision M&E",
 };
+
+const REPORT_PARTICIPANT_FIELDS = {
+  women: {
+    key: "women",
+    label: "Mujeres",
+    element: () => elements.reportWomenField,
+    input: () => elements.reportWomenInput,
+  },
+  men: {
+    key: "men",
+    label: "Hombres",
+    element: () => elements.reportMenField,
+    input: () => elements.reportMenInput,
+  },
+  adolescents: {
+    key: "adolescents",
+    label: "Adolescentes",
+    element: () => elements.reportAdolescentsField,
+    input: () => elements.reportAdolescentsInput,
+  },
+  children: {
+    key: "children",
+    label: "Niños",
+    element: () => elements.reportChildrenField,
+    input: () => elements.reportChildrenInput,
+  },
+};
+
+function normalizedProgramKey(value = "") {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function reportParticipantFieldsForProgram(programName = "") {
+  const normalized = normalizedProgramKey(programName);
+  if (normalized === "girls empowerment") return ["adolescents"];
+  if (normalized === "club de chicos") return ["adolescents"];
+  if (normalized === "iga") return ["women", "men"];
+  if (normalized === "programa cfi" || normalized === "cfi") return ["adolescents", "children"];
+  if (normalized === "agricultura") return ["adolescents", "women", "men"];
+  return ["women", "men", "adolescents"];
+}
+
+function reportParticipantValue(report = {}, fieldKey = "") {
+  const breakdown = report?.participantBreakdown || {};
+  if (fieldKey === "adolescents") {
+    return Number(breakdown.adolescents ?? report.adolescents ?? report.youth ?? 0);
+  }
+  if (fieldKey === "children") {
+    return Number(breakdown.children ?? report.children ?? 0);
+  }
+  return Number(breakdown[fieldKey] ?? report[fieldKey] ?? 0);
+}
+
+function buildParticipantBreakdown(source = {}, programName = source.program || "") {
+  const configuredFields = reportParticipantFieldsForProgram(programName);
+  const breakdown = {
+    women: Number(source.participantBreakdown?.women ?? source.women ?? 0),
+    men: Number(source.participantBreakdown?.men ?? source.men ?? 0),
+    adolescents: Number(source.participantBreakdown?.adolescents ?? source.adolescents ?? source.youth ?? 0),
+    children: Number(source.participantBreakdown?.children ?? source.children ?? 0),
+  };
+  Object.keys(breakdown).forEach((key) => {
+    breakdown[key] = Number.isFinite(breakdown[key]) ? Math.max(0, breakdown[key]) : 0;
+    if (!configuredFields.includes(key)) breakdown[key] = 0;
+  });
+  return breakdown;
+}
+
+function reportParticipantTotal(report = {}) {
+  return reportParticipantFieldsForProgram(report.program).reduce(
+    (sum, fieldKey) => sum + reportParticipantValue(report, fieldKey),
+    0,
+  );
+}
+
+function reportParticipantSummary(report = {}, separator = " · ") {
+  const parts = reportParticipantFieldsForProgram(report.program)
+    .map((fieldKey) => {
+      const config = REPORT_PARTICIPANT_FIELDS[fieldKey];
+      const value = reportParticipantValue(report, fieldKey);
+      return `${Number(value || 0).toLocaleString("es-DO")} ${config.label.toLowerCase()}`;
+    })
+    .filter(Boolean);
+  return parts.length ? parts.join(separator) : "Sin desglose";
+}
 
 function normalizeRoleLabel(value) {
   const normalized = String(value || "")
@@ -482,6 +571,27 @@ function syncReportCaptureOptions() {
   setOptions(elements.reportProvince, provinces, nextProvince);
   setOptions(elements.reportCenter, centers, nextCenter);
   setOptions(elements.reportIndicator, indicatorNames, nextIndicator);
+  syncReportParticipantInputs(programName);
+}
+
+function syncReportParticipantInputs(programName = elements.reportProgram?.value || state.programs[0]?.name || "") {
+  const activeFields = new Set(reportParticipantFieldsForProgram(programName));
+  Object.values(REPORT_PARTICIPANT_FIELDS).forEach((fieldConfig) => {
+    const wrapper = fieldConfig.element?.();
+    const input = fieldConfig.input?.();
+    const isActive = activeFields.has(fieldConfig.key);
+    if (wrapper) {
+      wrapper.hidden = !isActive;
+      const textNode = Array.from(wrapper.childNodes).find((node) => node.nodeType === Node.TEXT_NODE);
+      if (textNode) {
+        textNode.textContent = `${fieldConfig.label}\n                  `;
+      }
+    }
+    if (input) {
+      input.disabled = !isActive;
+      if (!isActive) input.value = 0;
+    }
+  });
 }
 
 function reportLocation(report) {
@@ -583,13 +693,13 @@ function renderMetrics() {
   const overallProgress = percent(totalValue, totalTarget);
   const pending = state.reports.filter((report) => isPendingApprovalStatus(report.status)).length;
   const riskCount = state.indicators.filter((indicator) => percent(indicator.value, indicator.target) < 70).length;
-  const participants = reports.reduce((sum, report) => sum + report.women + report.men, 0);
+  const participants = reports.reduce((sum, report) => sum + reportParticipantTotal(report), 0);
 
   const metrics = [
     { label: "Cumplimiento global", value: `${overallProgress}%`, delta: "avance consolidado", type: statusForProgress(overallProgress) },
     { label: "Reportes del periodo", value: reports.length, delta: "segun filtros activos", type: "info" },
     { label: "Pendientes de validar", value: pending, delta: "en cola de supervision", type: pending > 0 ? "warning" : "good" },
-    { label: "Participantes", value: participants.toLocaleString("es-DO"), delta: "mujeres y hombres", type: riskCount ? "warning" : "good" },
+    { label: "Participantes", value: participants.toLocaleString("es-DO"), delta: "desglose reportado", type: riskCount ? "warning" : "good" },
   ];
 
   elements.metricGrid.innerHTML = metrics
@@ -1667,7 +1777,7 @@ function renderReviewQueue() {
     ? pendingReports
         .map((report) => {
           const indicator = indicatorById(report.indicatorId);
-          const participants = `${Number(report.women || 0).toLocaleString("es-DO")} mujeres, ${Number(report.men || 0).toLocaleString("es-DO")} hombres`;
+          const participants = reportParticipantSummary(report, " · ");
           return `
             <article class="review-item">
               <div class="review-top">
@@ -1681,7 +1791,6 @@ function renderReviewQueue() {
               ${renderAttachmentLinks(report)}
               <div class="coverage">
                 <span>${participants}</span>
-                <span>${Number(report.youth || 0).toLocaleString("es-DO")} jovenes</span>
                 <span>${report.period}</span>
               </div>
               ${report.notes ? `<p class="item-meta">${report.notes}</p>` : ""}
@@ -1729,6 +1838,7 @@ function renderReportStatusDetail(report) {
   const nextStage = reviewRoleForStatus(report.status);
   const deleteAllowed = canDeleteReport(report);
   const isSupervisorDelete = isSystemAdminRole() && report.status !== REPORT_STATUSES.NEEDS_CORRECTION;
+  const participants = reportParticipantSummary(report, " · ");
   return `
     <article class="notification-item high">
       <div class="notification-top">
@@ -1741,6 +1851,7 @@ function renderReportStatusDetail(report) {
       </div>
       <p>${report.value.toLocaleString("es-DO")} reportados por ${report.owner}. ${nextStage ? `Pendiente para ${nextStage}.` : ""}</p>
       ${renderAttachmentLinks(report)}
+      <p class="item-meta"><strong>Desglose reportado:</strong> ${escapeHtml(participants)}</p>
       ${report.notes ? `<p class="item-meta"><strong>Nota original:</strong> ${escapeHtml(report.notes)}</p>` : ""}
       ${
         correctionNote
@@ -1762,7 +1873,7 @@ function renderReportStatusDetail(report) {
 function renderReportInboxCard(report, role) {
   const indicator = indicatorById(report.indicatorId);
   const currentStage = reviewRoleForStatus(report.status);
-  const participants = `${Number(report.women || 0).toLocaleString("es-DO")} mujeres · ${Number(report.men || 0).toLocaleString("es-DO")} hombres`;
+  const participants = reportParticipantSummary(report, " · ");
   const correctionNote = latestCorrectionNote(report);
   const roleMessage =
     report.status === REPORT_STATUSES.NEEDS_CORRECTION
@@ -1783,7 +1894,6 @@ function renderReportInboxCard(report, role) {
       <p>${report.value.toLocaleString("es-DO")} reportados por ${report.owner}. ${roleMessage}</p>
       <div class="coverage">
         <span>${participants}</span>
-        <span>${Number(report.youth || 0).toLocaleString("es-DO")} jovenes</span>
       </div>
       ${report.evidence ? `<p class="item-meta">Evidencia: ${report.evidence}</p>` : ""}
       ${renderAttachmentLinks(report)}
@@ -2346,7 +2456,7 @@ function buildPeriodChartSeries(reports) {
       label: period,
       value,
       valueText: Number(value).toLocaleString("es-DO"),
-      meta: "valor reportado",
+      meta: "dato reportado",
       tone: "info",
     }));
 }
@@ -2392,7 +2502,7 @@ function buildAutomaticStats(reports) {
   const programSeries = buildProgramChartSeries(reports);
   const statusSeries = buildStatusChartSeries(reports);
   const approved = reports.filter((report) => report.status === REPORT_STATUSES.APPROVED).length;
-  const participants = reports.reduce((sum, report) => sum + Number(report.women || 0) + Number(report.men || 0), 0);
+  const participants = reports.reduce((sum, report) => sum + reportParticipantTotal(report), 0);
   const strongestPeriod = periodSeries.slice().sort((left, right) => right.value - left.value)[0];
   const topPeriod = strongestPeriod?.label || "Sin datos";
   const topProgram = programSeries[0]?.label || "Sin datos";
@@ -2404,7 +2514,7 @@ function buildAutomaticStats(reports) {
     { label: "Periodo mas fuerte", value: topPeriod, meta: strongestPeriod ? `${strongestPeriod.valueText} reportado` : "sin actividad aun", tone: strongestPeriod ? "info" : "neutral" },
     { label: "Programa lider", value: topProgram, meta: programSeries[0] ? `${programSeries[0].valueText} acumulado` : "sin comparativa aun", tone: programSeries[0] ? "good" : "neutral" },
     { label: "Tasa de aprobacion", value: `${approvalRate}%`, meta: `${approved} aprobados y ${pendingCount} pendientes`, tone: approvalRate >= 70 ? "good" : approvalRate >= 40 ? "warning" : "danger" },
-    { label: "Participacion reportada", value: participants.toLocaleString("es-DO"), meta: "mujeres y hombres acumulados", tone: participants ? "info" : "neutral" },
+    { label: "Participación reportada", value: participants.toLocaleString("es-DO"), meta: "desglose reportado acumulado", tone: participants ? "info" : "neutral" },
     { label: "Estados activos", value: statusSeries.length, meta: "tipos de estado presentes en reportes", tone: statusSeries.length ? "info" : "neutral" },
   ];
 }
@@ -3287,12 +3397,15 @@ function applyDraftToReportForm(draft) {
   elements.reportPeriod.value = draft.period || currentMonth();
   document.querySelector("#reportOwner").value = draft.owner || "";
   document.querySelector("#reportValue").value = draft.value || 0;
-  document.querySelector("#reportWomen").value = draft.women || 0;
-  document.querySelector("#reportMen").value = draft.men || 0;
-  document.querySelector("#reportYouth").value = draft.youth || 0;
+  const participantBreakdown = buildParticipantBreakdown(draft, draft.program);
+  if (elements.reportWomenInput) elements.reportWomenInput.value = participantBreakdown.women || 0;
+  if (elements.reportMenInput) elements.reportMenInput.value = participantBreakdown.men || 0;
+  if (elements.reportAdolescentsInput) elements.reportAdolescentsInput.value = participantBreakdown.adolescents || 0;
+  if (elements.reportChildrenInput) elements.reportChildrenInput.value = participantBreakdown.children || 0;
   if (elements.reportEvidenceType) elements.reportEvidenceType.value = "note";
   document.querySelector("#reportEvidence").value = draft.evidence || "";
   document.querySelector("#reportNotes").value = draft.botSummary || draft.notes || "";
+  syncReportParticipantInputs(draft.program);
   syncEvidencePlaceholder();
 }
 
@@ -3454,6 +3567,16 @@ async function addReport(formData) {
   }
   const evidenceType = String(formData.get("evidenceType") || "note").trim();
   const evidenceDetail = String(formData.get("evidence") || "").trim();
+  const participantBreakdown = buildParticipantBreakdown(
+    {
+      program: formData.get("program"),
+      women: formData.get("women"),
+      men: formData.get("men"),
+      adolescents: formData.get("adolescents"),
+      children: formData.get("children"),
+    },
+    formData.get("program"),
+  );
   const attachedFiles = Array.from(elements.reportFormUploadInput.files || []);
   let attachedDocuments = [];
   try {
@@ -3481,9 +3604,12 @@ async function addReport(formData) {
     center: selectedCenter,
     indicatorId: indicator.id,
     value,
-    women: Number(formData.get("women") || 0),
-    men: Number(formData.get("men") || 0),
-    youth: Number(formData.get("youth") || 0),
+    women: participantBreakdown.women,
+    men: participantBreakdown.men,
+    adolescents: participantBreakdown.adolescents,
+    children: participantBreakdown.children,
+    youth: participantBreakdown.adolescents,
+    participantBreakdown,
     owner: formData.get("owner"),
     evidence: buildEvidenceSummary(evidenceType, evidenceDetail, attachedDocuments),
     notes: formData.get("notes"),
@@ -3511,7 +3637,7 @@ async function addReport(formData) {
 
 function exportCsv() {
   const rows = [
-    ["fecha", "periodo", "programa", "provincia", "centro", "indicador", "valor", "mujeres", "hombres", "jovenes", "responsable", "estado"],
+    ["fecha", "periodo", "programa", "provincia", "centro", "indicador", "valor", "mujeres", "hombres", "adolescentes", "niños", "responsable", "estado"],
     ...state.reports.map((report) => [
       report.date,
       report.period,
@@ -3520,9 +3646,10 @@ function exportCsv() {
       report.center || "",
       indicatorById(report.indicatorId)?.name ?? "",
       report.value,
-      report.women,
-      report.men,
-      report.youth,
+      reportParticipantValue(report, "women"),
+      reportParticipantValue(report, "men"),
+      reportParticipantValue(report, "adolescents"),
+      reportParticipantValue(report, "children"),
       report.owner,
       report.status,
     ]),
@@ -3739,6 +3866,7 @@ function rowsToReports(rows, fileName) {
   const dataRows = rows.slice(headerIndex + 1).filter((row) => row.some((cell) => String(cell || "").trim()));
   const reports = [];
   const submissionId = `sub-${Date.now()}`;
+  const participantFields = reportParticipantFieldsForProgram(form.program);
 
   dataRows.forEach((row, rowIndex) => {
     const record = {};
@@ -3751,6 +3879,17 @@ function rowsToReports(rows, fileName) {
       const value = parseMetricValue(record[mapping.field], mapping.mode);
       if (!indicator || value <= 0) return;
 
+      const participantBreakdown = buildParticipantBreakdown(
+        {
+          program: form.program,
+          adolescents: participantFields.includes("adolescents") ? value : 0,
+          children: 0,
+          women: participantFields.includes("women") ? value : 0,
+          men: 0,
+        },
+        form.program,
+      );
+
       reports.push({
         id: `rep-${Date.now()}-${rowIndex}-${mapping.indicatorId}`,
         date: record.fecha || new Date().toISOString().slice(0, 10),
@@ -3760,9 +3899,12 @@ function rowsToReports(rows, fileName) {
         center: record.centro || "",
         indicatorId: indicator.id,
         value,
-        women: indicator.unit === "chicas" ? value : 0,
-        men: 0,
-        youth: indicator.unit === "chicas" ? value : 0,
+        women: participantBreakdown.women,
+        men: participantBreakdown.men,
+        adolescents: participantBreakdown.adolescents,
+        children: participantBreakdown.children,
+        youth: participantBreakdown.adolescents,
+        participantBreakdown,
         owner: record.responsable || metadata.responsable || form.owner,
         evidence: record.evidencia || fileName,
         notes: record.observaciones || `${form.title}: ${mapping.field}`,
@@ -3965,7 +4107,7 @@ function createFormTemplate(type) {
     : [
         "Actividad realizada",
         "Comunidad o punto de servicio",
-        "Participantes por sexo y edad",
+        "Participantes según desglose del programa",
         "Indicador asociado",
         "Evidencia disponible",
         "Alertas, riesgos o necesidades",
@@ -4325,6 +4467,7 @@ function bindEvents() {
 
   $("#clearFormButton").addEventListener("click", () => {
     elements.reportForm.reset();
+    syncReportCaptureOptions();
     elements.reportPeriod.value = state.filters.period === "Todos" ? currentMonth() : state.filters.period;
     if (elements.reportEvidenceType) elements.reportEvidenceType.value = "note";
     syncEvidencePlaceholder();
@@ -5088,3 +5231,4 @@ export function createMonitoringApp() {
     },
   };
 }
+

@@ -303,6 +303,12 @@ function hydratePersistentStore() {
 
 function normalizedReport(input = {}) {
   const timestamp = nowIso();
+  const participantBreakdown = {
+    women: asNumber(input.participantBreakdown?.women ?? input.women),
+    men: asNumber(input.participantBreakdown?.men ?? input.men),
+    adolescents: asNumber(input.participantBreakdown?.adolescents ?? input.adolescents ?? input.youth),
+    children: asNumber(input.participantBreakdown?.children ?? input.children),
+  };
   return {
     id: String(input.id || `rep-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`),
     companyId: String(input.companyId || DEFAULT_COMPANY_ID),
@@ -314,9 +320,12 @@ function normalizedReport(input = {}) {
     center: String(input.center || input.centre || ""),
     indicatorId: String(input.indicatorId || ""),
     value: asNumber(input.value),
-    women: asNumber(input.women),
-    men: asNumber(input.men),
-    youth: asNumber(input.youth),
+    women: participantBreakdown.women,
+    men: participantBreakdown.men,
+    adolescents: participantBreakdown.adolescents,
+    children: participantBreakdown.children,
+    youth: participantBreakdown.adolescents,
+    participantBreakdown,
     owner: String(input.owner || ""),
     evidence: String(input.evidence || ""),
     notes: String(input.notes || ""),
@@ -480,7 +489,7 @@ function createEmailOutboxItem({ report, notification, recipient }) {
       `Indicador: ${indicator?.name || report.indicatorId}`,
       `Periodo: ${report.period}`,
       `Responsable: ${report.owner}`,
-      `Valor reportado: ${report.value}`,
+      `Dato reportado: ${report.value}`,
     ].join("\n"),
     provider: "pending-email-provider",
     status: "queued",

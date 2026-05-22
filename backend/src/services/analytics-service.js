@@ -22,6 +22,16 @@ function sum(values) {
   return values.reduce((total, value) => total + asNumber(value), 0);
 }
 
+function participantCount(report = {}) {
+  const breakdown = report?.participantBreakdown || {};
+  return sum([
+    breakdown.women ?? report.women,
+    breakdown.men ?? report.men,
+    breakdown.adolescents ?? report.adolescents ?? report.youth,
+    breakdown.children ?? report.children,
+  ]);
+}
+
 function groupTotals(items, keyFn, valueFn) {
   return items.reduce((groups, item) => {
     const key = keyFn(item);
@@ -99,7 +109,7 @@ function buildMetrics(summary, programChart) {
       id: "participants",
       label: "Participantes reportados",
       value: summary.participants,
-      delta: "mujeres y hombres acumulados",
+      delta: "desglose reportado acumulado",
       type: "info",
     },
     {
@@ -199,7 +209,7 @@ export function buildAnalyticsOverview({ programs = [], indicators = [], reports
     analyzedReports: analyzedReports.length,
     excludedReports: Math.max(visibleReports.length - analyzedReports.length, 0),
     totalValue: sum(analyzedReports.map((report) => report.value)),
-    participants: sum(analyzedReports.map((report) => asNumber(report.women) + asNumber(report.men))),
+    participants: sum(analyzedReports.map((report) => participantCount(report))),
     approvedReports: visibleReports.filter((report) => report.status === REPORT_STATUSES.APPROVED).length,
     pendingReports: visibleReports.filter((report) => isPendingApprovalStatus(report.status)).length,
     needsCorrectionReports: visibleReports.filter((report) => report.status === REPORT_STATUSES.NEEDS_CORRECTION).length,

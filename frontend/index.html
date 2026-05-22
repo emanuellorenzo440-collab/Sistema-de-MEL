@@ -363,20 +363,24 @@
                   <select id="reportIndicator" name="indicator" required></select>
                 </label>
                 <label>
-                  Valor reportado
+                  Dato reportado
                   <input id="reportValue" name="value" min="0" step="1" type="number" required />
                 </label>
-                <label>
+                <label id="reportWomenField">
                   Mujeres
                   <input id="reportWomen" name="women" min="0" step="1" type="number" value="0" />
                 </label>
-                <label>
+                <label id="reportMenField">
                   Hombres
                   <input id="reportMen" name="men" min="0" step="1" type="number" value="0" />
                 </label>
-                <label>
-                  Jovenes
-                  <input id="reportYouth" name="youth" min="0" step="1" type="number" value="0" />
+                <label id="reportAdolescentsField">
+                  Adolescentes
+                  <input id="reportAdolescents" name="adolescents" min="0" step="1" type="number" value="0" />
+                </label>
+                <label id="reportChildrenField" hidden>
+                  Niños
+                  <input id="reportChildren" name="children" min="0" step="1" type="number" value="0" />
                 </label>
                 <label class="span-2">
                   Evidencia
@@ -899,7 +903,7 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="src/main.js?v=20260522d"></script>
+    <script type="module" src="src/main.js?v=20260522e"></script>
   </body>
 </html>
 
