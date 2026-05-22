@@ -1907,7 +1907,13 @@ function renderProgramCenters() {
                   canManage
                     ? `
                       <button type="button" data-edit-program-center="${escapeHtml(center.id)}">Editar</button>
-                      <button type="button" data-delete-program-center="${escapeHtml(center.id)}">Eliminar</button>
+                      <button
+                        type="button"
+                        data-delete-program-center="${escapeHtml(center.id)}"
+                        data-delete-program-center-program="${escapeHtml(center.program)}"
+                        data-delete-program-center-province="${escapeHtml(center.province)}"
+                        data-delete-program-center-name="${escapeHtml(center.name)}"
+                      >Eliminar</button>
                     `
                     : ""
                 }
@@ -4840,6 +4846,9 @@ function bindEvents() {
   elements.programCenterGrid.addEventListener("click", (event) => {
     const editId = event.target.closest("[data-edit-program-center]")?.dataset.editProgramCenter;
     const deleteId = event.target.closest("[data-delete-program-center]")?.dataset.deleteProgramCenter;
+    const deleteProgram = event.target.closest("[data-delete-program-center-program]")?.dataset.deleteProgramCenterProgram;
+    const deleteProvince = event.target.closest("[data-delete-program-center-province]")?.dataset.deleteProgramCenterProvince;
+    const deleteName = event.target.closest("[data-delete-program-center-name]")?.dataset.deleteProgramCenterName;
 
     if (editId) {
       const center = state.programCenters.find((item) => item.id === editId);
@@ -4852,15 +4861,45 @@ function bindEvents() {
         return;
       }
       void (async () => {
+        const previousCenters = state.programCenters.slice();
+        const matchesTarget = (center) =>
+          center.id === deleteId ||
+          (deleteProgram &&
+            deleteProvince &&
+            deleteName &&
+            center.program === deleteProgram &&
+            center.province === deleteProvince &&
+            String(center.name || "").toLowerCase() === String(deleteName || "").toLowerCase());
         try {
-          if (isApiConfigured()) {
-            await deleteApiProgramCenter(deleteId, actorPayload());
-          }
-          removeById(state.programCenters, deleteId);
+          state.programCenters = (state.programCenters || []).filter((center) => !matchesTarget(center));
           saveState();
+          renderAll();
+          if (isApiConfigured()) {
+            await deleteApiProgramCenter(deleteId, {
+              ...actorPayload(),
+              program: deleteProgram,
+              province: deleteProvince,
+              name: deleteName,
+            });
+            await refreshProgramCentersFromApi();
+          }
+          window.dispatchEvent(new CustomEvent("mel:manual-refresh"));
           renderAll();
           showToast("Centro eliminado.");
         } catch (error) {
+          if (error.status === 404) {
+            if (isApiConfigured()) {
+              await refreshProgramCentersFromApi();
+            }
+            window.dispatchEvent(new CustomEvent("mel:manual-refresh"));
+            saveState();
+            renderAll();
+            showToast("Centro eliminado.");
+            return;
+          }
+          state.programCenters = previousCenters;
+          saveState();
+          renderAll();
           console.error(error);
           showToast(error.message || "No pude eliminar el centro.");
         }

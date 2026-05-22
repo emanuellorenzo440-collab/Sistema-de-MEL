@@ -542,11 +542,12 @@ export async function handleProgramCenterUpdate(request, response, centerId) {
 export async function handleProgramCenterDelete(request, response, centerId) {
   const payload = await readOptionalJsonBody(request);
   if (!requireActorRole(response, payload, ["Supervision M&E", "Coordinador de programa"], "eliminar centros")) return;
-  if (!deleteProgramCenter(centerId)) {
+  const deleted = deleteProgramCenter(centerId, payload);
+  if (!deleted) {
     sendJson(response, 404, { error: "No encontre el centro solicitado." });
     return;
   }
-  sendEmpty(response);
+  sendJson(response, 200, { data: deleted });
 }
 
 export async function handleProgramCreate(request, response) {

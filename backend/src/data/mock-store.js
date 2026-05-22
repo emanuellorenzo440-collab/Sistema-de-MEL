@@ -691,12 +691,25 @@ export function updateProgramCenter(centerId, input) {
   return structuredClone(next);
 }
 
-export function deleteProgramCenter(centerId) {
-  const index = programCenters.findIndex((center) => center.id === centerId);
-  if (index < 0) return false;
-  programCenters.splice(index, 1);
+export function deleteProgramCenter(centerId, input = {}) {
+  let index = programCenters.findIndex((center) => center.id === centerId);
+  if (index < 0) {
+    const program = normalizeString(input.program);
+    const province = normalizeString(input.province);
+    const name = normalizeString(input.name);
+    if (program && province && name) {
+      index = programCenters.findIndex(
+        (center) =>
+          center.program === program &&
+          center.province === province &&
+          center.name.toLowerCase() === name.toLowerCase(),
+      );
+    }
+  }
+  if (index < 0) return null;
+  const [deleted] = programCenters.splice(index, 1);
   persistStore();
-  return true;
+  return structuredClone(deleted);
 }
 
 export function findProgramById(programId) {
