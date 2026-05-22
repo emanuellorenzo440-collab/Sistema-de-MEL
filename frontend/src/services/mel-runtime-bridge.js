@@ -131,7 +131,9 @@ function normalizeState(savedState = {}) {
     (item) => item.id,
   );
   nextState.programManuals = Array.isArray(savedState.programManuals) ? savedState.programManuals.slice() : [];
-  nextState.programCenters = Array.isArray(savedState.programCenters) ? savedState.programCenters.slice() : seedState.programCenters || [];
+  nextState.programCenters = Array.isArray(savedState.programCenters)
+    ? savedState.programCenters.slice()
+    : (seedState.programCenters || []).slice();
   nextState.operationalProvinces = [
     ...new Set([...(savedState.operationalProvinces || []), ...(seedState.operationalProvinces || [])]),
   ].sort((a, b) => a.localeCompare(b));

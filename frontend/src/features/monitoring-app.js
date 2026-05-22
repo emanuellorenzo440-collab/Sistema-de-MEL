@@ -210,9 +210,7 @@ function normalizeState(savedState) {
     (item) => item.id,
   ).map(normalizeConceptPaperState);
   nextState.programManuals = Array.isArray(savedState.programManuals) ? savedState.programManuals.slice() : [];
-  nextState.programCenters = mergeByKey(savedState.programCenters || [], seedState.programCenters || [], (item) =>
-    [item.program, item.province, item.name].join("|"),
-  ).map((center) => ({
+  nextState.programCenters = (Array.isArray(savedState.programCenters) ? savedState.programCenters : seedState.programCenters || []).map((center) => ({
     id:
       center.id ||
       `center-${slugify(String(center.program || ""))}-${slugify(String(center.province || ""))}-${slugify(String(center.name || ""))}`,
