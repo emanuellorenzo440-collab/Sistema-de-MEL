@@ -13,6 +13,9 @@ import {
 } from "../services/auth-service.js?v=20260518d";
 
 const sections = ["signin", "signup", "forgot", "force-password", "reset-password"];
+const INACTIVITY_TIMEOUT_MS = 60 * 1000;
+const AUTH_ACTIVITY_KEY = "pulso-me-last-activity-v1";
+const ACTIVITY_WRITE_THROTTLE_MS = 5000;
 let wired = false;
 let onAuthenticatedCallback = () => {};
 let onSignedOutCallback = () => {};
@@ -20,6 +23,91 @@ let lastSessionUserId = null;
 let sessionReadyPromise = null;
 let pendingPasswordChange = null;
 let pendingPasswordResetToken = null;
+let inactivityTimerId = null;
+let inactivityMonitoring = false;
+let lastActivityAt = 0;
+let lastActivityWriteAt = 0;
+let inactivitySignOutInFlight = false;
+
+function clearInactivityTimer() {
+  if (inactivityTimerId !== null) {
+    window.clearTimeout(inactivityTimerId);
+    inactivityTimerId = null;
+  }
+}
+
+function readStoredActivityAt() {
+  try {
+    const raw = window.localStorage.getItem(AUTH_ACTIVITY_KEY);
+    const value = Number(raw || 0);
+    return Number.isFinite(value) ? value : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeStoredActivityAt(timestamp, force = false) {
+  const nextTimestamp = Number(timestamp || Date.now());
+  if (!force && nextTimestamp - lastActivityWriteAt < ACTIVITY_WRITE_THROTTLE_MS) return;
+  lastActivityWriteAt = nextTimestamp;
+  try {
+    window.localStorage.setItem(AUTH_ACTIVITY_KEY, String(nextTimestamp));
+  } catch {
+    // ignore storage write issues
+  }
+}
+
+function scheduleInactivityTimer() {
+  clearInactivityTimer();
+  if (!inactivityMonitoring) return;
+  const elapsed = Math.max(0, Date.now() - (lastActivityAt || Date.now()));
+  const delay = Math.max(250, INACTIVITY_TIMEOUT_MS - elapsed);
+  inactivityTimerId = window.setTimeout(() => {
+    if (!inactivityMonitoring || inactivitySignOutInFlight) return;
+    const effectiveLastActivity = Math.max(lastActivityAt, readStoredActivityAt());
+    if (Date.now() - effectiveLastActivity < INACTIVITY_TIMEOUT_MS) {
+      lastActivityAt = effectiveLastActivity;
+      scheduleInactivityTimer();
+      return;
+    }
+    void performSignOut("Sesión cerrada por inactividad.");
+  }, delay);
+}
+
+function registerActivity(forcePersist = false) {
+  if (!inactivityMonitoring) return;
+  lastActivityAt = Date.now();
+  writeStoredActivityAt(lastActivityAt, forcePersist);
+  scheduleInactivityTimer();
+}
+
+function activateInactivityMonitor() {
+  inactivityMonitoring = true;
+  lastActivityAt = Math.max(Date.now(), readStoredActivityAt());
+  writeStoredActivityAt(lastActivityAt, true);
+  scheduleInactivityTimer();
+}
+
+function deactivateInactivityMonitor() {
+  inactivityMonitoring = false;
+  clearInactivityTimer();
+}
+
+async function performSignOut(message = "Sesión cerrada.") {
+  if (inactivitySignOutInFlight) return;
+  inactivitySignOutInFlight = true;
+  try {
+    deactivateInactivityMonitor();
+    await signOutUser();
+    pendingPasswordChange = null;
+    pendingPasswordResetToken = null;
+    await updateLobbyVisibility();
+    showSection("signin");
+    showToastMessage(message);
+  } finally {
+    inactivitySignOutInFlight = false;
+  }
+}
 
 function $(selector) {
   return document.querySelector(selector);
@@ -138,7 +226,9 @@ async function updateLobbyVisibility() {
     if (sessionReadyPromise) {
       await sessionReadyPromise;
     }
+    activateInactivityMonitor();
   } else {
+    deactivateInactivityMonitor();
     if (appShell) appShell.hidden = true;
     if (authShell) authShell.hidden = false;
   }
@@ -163,6 +253,29 @@ function bindLobbyEvents() {
   });
   ["#signinEmail", "#signinPassword"].forEach((selector) => {
     $(selector)?.addEventListener("input", () => setSignInError(""));
+  });
+  ["pointerdown", "keydown", "mousemove", "scroll", "touchstart"].forEach((eventName) => {
+    window.addEventListener(
+      eventName,
+      () => {
+        registerActivity(false);
+      },
+      { passive: true },
+    );
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) {
+      registerActivity(true);
+    }
+  });
+  window.addEventListener("storage", (event) => {
+    if (event.key !== AUTH_ACTIVITY_KEY) return;
+    const timestamp = Number(event.newValue || 0);
+    if (!Number.isFinite(timestamp) || timestamp <= 0) return;
+    lastActivityAt = Math.max(lastActivityAt, timestamp);
+    if (inactivityMonitoring) {
+      scheduleInactivityTimer();
+    }
   });
   $("#signinForm")?.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -363,14 +476,7 @@ function bindLobbyEvents() {
   });
 
   $("#signOutButton")?.addEventListener("click", () => {
-    void (async () => {
-      await signOutUser();
-      pendingPasswordChange = null;
-      pendingPasswordResetToken = null;
-      await updateLobbyVisibility();
-      showSection("signin");
-      showToastMessage("Sesion cerrada.");
-    })();
+    void performSignOut("Sesión cerrada.");
   });
 
 }
