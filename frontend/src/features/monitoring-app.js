@@ -20,11 +20,12 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260521a";
+} from "../services/auth-service.js?v=20260522m";
 import {
   apiFileUrl,
   createApiConceptPaper,
   createApiAttendanceParticipant,
+  createApiFormSubmission,
   createApiIndicator,
   createApiProgram,
   createApiProgramCenter,
@@ -43,6 +44,7 @@ import {
   fetchApiConceptPapers,
   fetchApiAttendanceParticipants,
   fetchApiAttendanceSessions,
+  fetchApiFormSubmissions,
   fetchApiNotifications,
   fetchApiProgramCenters,
   fetchApiProgramManuals,
@@ -57,7 +59,7 @@ import {
   updateApiProgram,
   updateApiProgramCenter,
   uploadApiFile,
-} from "../services/mel-api.js?v=20260521a";
+} from "../services/mel-api.js?v=20260522m";
 import {
   currentMonth,
   escapeHtml,
@@ -674,9 +676,13 @@ function canManageProgramCenters(role = activeRole()) {
 }
 
 function actorPayload() {
+  const organizationId = currentUser?.organizationId || "org-convoy-of-hope";
   return {
     actorId: currentUser?.id || currentUser?.email || `local-${slugify(activeRole())}`,
     actorRole: activeRole(),
+    organizationId,
+    companyId: organizationId,
+    organizationName: currentUser?.organizationName || "Convoy of Hope",
   };
 }
 
@@ -1170,7 +1176,9 @@ async function programManualDocumentFromFile(file, formData) {
   const uploadedFile = isApiConfigured() ? await uploadApiFile(file, { kind: "program-manuals" }) : null;
   return {
     id: `manual-${slugify(program || title || file.name)}-${Date.now()}`,
-    companyId: "org-default",
+    companyId: currentUser?.organizationId || "org-convoy-of-hope",
+    organizationId: currentUser?.organizationId || "org-convoy-of-hope",
+    organizationName: currentUser?.organizationName || "Convoy of Hope",
     program,
     title,
     fileName: file.name,
@@ -3135,7 +3143,7 @@ function createLocalReviewNotifications(report) {
 
   return [recipient].map((stageRecipient) => ({
     id: `notif-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
-    companyId: report.companyId || "org-default",
+    companyId: report.companyId || report.organizationId || currentUser?.organizationId || "org-convoy-of-hope",
     programId: report.programId || program?.id || null,
     program: report.program,
     reportId: report.id,
@@ -3163,12 +3171,14 @@ function queueReportForReview(report) {
 
 async function refreshReportsAndNotificationsFromApi() {
   if (!isApiConfigured()) return;
-  const [remoteReports, remoteNotifications] = await Promise.all([
+  const [remoteReports, remoteNotifications, remoteFormSubmissions] = await Promise.all([
     fetchApiReports({ scope: "all" }),
     fetchApiNotifications(),
+    fetchApiFormSubmissions(),
   ]);
   state.reports = remoteReports;
   state.notifications = remoteNotifications;
+  state.formSubmissions = remoteFormSubmissions;
   recomputeIndicatorValues();
   saveState();
 }
@@ -3565,6 +3575,63 @@ function buildDraftsFromImportedRows(rows, fileName, sourceAttachment = null) {
   return { form, drafts, submissionId };
 }
 
+function uniqueSubmissionAttachments(attachments = []) {
+  const seen = new Set();
+  return (attachments || []).filter((attachment) => {
+    if (!attachment) return false;
+    const key = [attachment.path || "", attachment.fileUrl || "", attachment.dataUrl || "", attachment.name || ""].join("|");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function buildFormSubmissionRecord({
+  id,
+  fileName,
+  formId = null,
+  formTitle = "",
+  program = "",
+  period = currentMonth(),
+  reportCount = 0,
+  sourceType = "csv",
+  processing = "automatico",
+  reportIds = [],
+  attachments = [],
+}) {
+  return {
+    id: id || `sub-${Date.now()}`,
+    companyId: currentUser?.organizationId || "org-convoy-of-hope",
+    organizationId: currentUser?.organizationId || "org-convoy-of-hope",
+    organizationName: currentUser?.organizationName || "Convoy of Hope",
+    fileName: fileName || "formulario.csv",
+    formId,
+    sourceFormId: formId,
+    formTitle: formTitle || fileName || "Formulario importado",
+    program,
+    period,
+    reportCount,
+    importedAt: new Date().toISOString(),
+    sourceType,
+    processing,
+    reportIds: Array.isArray(reportIds) ? reportIds.filter(Boolean) : [],
+    attachments: uniqueSubmissionAttachments(attachments),
+    importedBy: currentUser?.email || currentUser?.fullName || activeRole(),
+    importedByRole: activeRole(),
+  };
+}
+
+function upsertLocalFormSubmission(submission) {
+  const nextSubmission = {
+    ...submission,
+    attachments: uniqueSubmissionAttachments(submission.attachments || []),
+  };
+  state.formSubmissions = [
+    nextSubmission,
+    ...(state.formSubmissions || []).filter((item) => item.id !== nextSubmission.id),
+  ];
+}
+
 function analyzeReportFormFile(file) {
   if (!file) {
     showToast("Selecciona un formulario para leer.");
@@ -3626,21 +3693,10 @@ async function submitDraftReports() {
       formTitle: undefined,
       sourceFileName: undefined,
   }));
-
-  try {
-    if (isApiConfigured()) {
-      await createApiReportsBulk(reportsToSubmit);
-      await refreshReportsAndNotificationsFromApi();
-    } else {
-      reportsToSubmit.forEach((report) => queueReportForReview(report));
-    }
-  } catch (error) {
-    console.error(error);
-    showToast(error.message || "No pude enviar los reportes a la API.");
-    return;
-  }
-
-  state.formSubmissions.unshift({
+  const sourceAttachments = uniqueSubmissionAttachments(
+    drafts.flatMap((draft) => (Array.isArray(draft.attachments) ? draft.attachments.slice(0, 1) : [])),
+  );
+  const submissionRecord = buildFormSubmissionRecord({
     id: drafts[0].submissionId || `sub-${Date.now()}`,
     fileName: drafts[0].sourceFileName || "formulario.csv",
     formId: drafts[0].sourceFormId || null,
@@ -3648,10 +3704,26 @@ async function submitDraftReports() {
     program: drafts[0].program,
     period: drafts[0].period,
     reportCount: drafts.length,
-    importedAt: new Date().toISOString(),
     sourceType: "csv",
     processing: "automatico",
+    reportIds: reportsToSubmit.map((report) => report.id),
+    attachments: sourceAttachments,
   });
+
+  try {
+    if (isApiConfigured()) {
+      await createApiReportsBulk(reportsToSubmit);
+      await createApiFormSubmission(submissionRecord);
+      await refreshReportsAndNotificationsFromApi();
+    } else {
+      reportsToSubmit.forEach((report) => queueReportForReview(report));
+      upsertLocalFormSubmission(submissionRecord);
+    }
+  } catch (error) {
+    console.error(error);
+    showToast(error.message || "No pude enviar los reportes a la API.");
+    return;
+  }
 
   state.reportDrafts = [];
   saveState();
@@ -3705,7 +3777,9 @@ async function addReport(formData) {
   }
   const newReport = {
     id: `rep-${Date.now()}`,
-    companyId: "org-default",
+    companyId: currentUser?.organizationId || "org-convoy-of-hope",
+    organizationId: currentUser?.organizationId || "org-convoy-of-hope",
+    organizationName: currentUser?.organizationName || "Convoy of Hope",
     date: new Date().toISOString().slice(0, 10),
     period: formData.get("period"),
     program: formData.get("program"),
@@ -4037,24 +4111,39 @@ function importCompletedForm(file) {
   const extension = fileExtension(file.name);
   if (["pdf", "doc", "docx", "xls", "xlsx"].includes(extension)) {
     const selectedProgram = selectedFormsProgram();
-    state.formSubmissions.unshift({
-      id: `sub-${Date.now()}`,
-      fileName: file.name,
-      formId: null,
-      formTitle: "Archivo de soporte",
-      program: selectedProgram.name,
-      period: currentMonth(),
-      reportCount: 0,
-      importedAt: new Date().toISOString(),
-      sourceType: extension,
-      processing: "soporte",
-    });
-    saveState();
-    renderAll();
-    elements.uploadStatus.textContent = "Soporte cargado";
-    elements.uploadStatus.className = "status-pill info";
-    elements.uploadPreview.innerHTML = `<p class="item-meta">${file.name} fue subido como soporte. Para alimentar graficas automaticamente, usa la plantilla CSV del sistema.</p>`;
-    showToast("Archivo subido como soporte.");
+    void (async () => {
+      try {
+        const supportAttachment = await attachmentFromFile(file, activeRole());
+        const submissionRecord = buildFormSubmissionRecord({
+          fileName: file.name,
+          formId: null,
+          formTitle: "Archivo de soporte",
+          program: selectedProgram.name,
+          period: currentMonth(),
+          reportCount: 0,
+          sourceType: extension,
+          processing: "soporte",
+          attachments: supportAttachment ? [supportAttachment] : [],
+        });
+        if (isApiConfigured()) {
+          await createApiFormSubmission(submissionRecord);
+          await refreshReportsAndNotificationsFromApi();
+        } else {
+          upsertLocalFormSubmission(submissionRecord);
+        }
+        saveState();
+        renderAll();
+        elements.uploadStatus.textContent = "Soporte cargado";
+        elements.uploadStatus.className = "status-pill info";
+        elements.uploadPreview.innerHTML = `<p class="item-meta">${file.name} fue subido como soporte. Para alimentar graficas automaticamente, usa la plantilla CSV del sistema.</p>`;
+        showToast("Archivo subido como soporte.");
+      } catch (error) {
+        elements.uploadStatus.textContent = "Error";
+        elements.uploadStatus.className = "status-pill danger";
+        elements.uploadPreview.innerHTML = `<p class="item-meta">${error.message}</p>`;
+        showToast(error.message || "No pude subir el archivo de soporte.");
+      }
+    })();
     return;
   }
 
@@ -4071,6 +4160,7 @@ function importCompletedForm(file) {
     void (async () => {
     try {
       const rows = parseCsv(String(reader.result || ""));
+      const sourceAttachment = await attachmentFromFile(file, activeRole());
       const { form, reports, submissionId } = rowsToReports(rows, file.name);
 
       if (!reports.length) {
@@ -4079,16 +4169,7 @@ function importCompletedForm(file) {
         return;
       }
 
-      if (isApiConfigured()) {
-        await createApiReportsBulk(reports);
-        await refreshReportsAndNotificationsFromApi();
-      } else {
-        reports.forEach((report) => {
-          queueReportForReview(report);
-        });
-      }
-
-      state.formSubmissions.unshift({
+      const submissionRecord = buildFormSubmissionRecord({
         id: submissionId,
         fileName: file.name,
         formId: form.id,
@@ -4096,10 +4177,22 @@ function importCompletedForm(file) {
         program: form.program,
         period: reports[0].period,
         reportCount: reports.length,
-        importedAt: new Date().toISOString(),
         sourceType: extension,
         processing: "automatico",
+        reportIds: reports.map((report) => report.id),
+        attachments: sourceAttachment ? [sourceAttachment] : [],
       });
+
+      if (isApiConfigured()) {
+        await createApiReportsBulk(reports);
+        await createApiFormSubmission(submissionRecord);
+        await refreshReportsAndNotificationsFromApi();
+      } else {
+        reports.forEach((report) => {
+          queueReportForReview(report);
+        });
+        upsertLocalFormSubmission(submissionRecord);
+      }
       state.filters.period = reports[0].period;
       saveState();
       renderAll();

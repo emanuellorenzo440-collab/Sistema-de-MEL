@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from "./mel-api.js?v=20260514a";
+import { getApiBaseUrl } from "./mel-api.js?v=20260522m";
 
 const AUTH_STORAGE_KEY = "pulso-me-auth-v1";
 const AUTH_SESSION_KEY = "pulso-me-session-v1";
@@ -82,6 +82,10 @@ const LEGACY_USER_PURGE_MATCHERS = [
   /ap+lehost/i,
   /applehost/i,
 ];
+const DEFAULT_ORGANIZATION = {
+  id: "org-convoy-of-hope",
+  name: "Convoy of Hope",
+};
 let presetAccountTemplatesPromise = null;
 let authStateCache = null;
 let authHydrationPromise = null;
@@ -93,6 +97,16 @@ function authApiBaseUrl() {
     return getApiBaseUrl();
   } catch {
     return null;
+  }
+}
+
+function storedSessionToken() {
+  try {
+    const raw = window.localStorage.getItem(AUTH_SESSION_KEY);
+    const session = raw ? JSON.parse(raw) : null;
+    return String(session?.sessionToken || "").trim();
+  } catch {
+    return "";
   }
 }
 
@@ -140,6 +154,10 @@ async function requestAuthApi(pathname, options = {}) {
   const headers = { ...(options.headers || {}) };
   if (options.body) {
     headers["content-type"] = headers["content-type"] || "application/json";
+  }
+  const sessionToken = storedSessionToken();
+  if (sessionToken) {
+    headers["x-mel-session-token"] = sessionToken;
   }
 
   try {
@@ -231,6 +249,15 @@ async function syncRemoteManagedUsers(eventType = "remote-users-synced") {
   return remoteUsersSyncPromise;
 }
 
+async function syncRemoteSessionState(eventType = "remote-session-validated") {
+  const response = await requestAuthApi("session");
+  const remoteUser = {
+    ...(response.user || {}),
+    sessionToken: response.session?.token || response.user?.sessionToken || storedSessionToken(),
+  };
+  return startRemoteSession(remoteUser, eventType);
+}
+
 async function startRemoteSession(remoteUser, eventType = "signed-in") {
   const state = await ensureAuthState();
   const nextUser = mapRemoteUser(remoteUser);
@@ -244,6 +271,7 @@ async function startRemoteSession(remoteUser, eventType = "signed-in") {
     userId: nextUser.id,
     activeRole: normalizeRoleLabel(nextUser.systemRole),
     createdAt: nowIso(),
+    sessionToken: remoteUser.sessionToken || state.session?.sessionToken || "",
   };
   writeStoredAuthState(state, eventType);
   return nextUser;
@@ -466,6 +494,8 @@ async function getPresetAccountTemplates() {
         requestedRole: "Supervision M&E",
         allowedRoles: SYSTEM_ROLES.slice(),
         viewPermissions: VIEW_DEFINITIONS.map((view) => view.id),
+        organizationId: DEFAULT_ORGANIZATION.id,
+        organizationName: DEFAULT_ORGANIZATION.name,
         verifiedAt: SEEDED_ACCOUNTS_CREATED_AT,
         accessNote: "Cuenta inicial para gestionar accesos del sistema.",
       },
@@ -479,6 +509,8 @@ async function getPresetAccountTemplates() {
         requestedRole: "Supervision M&E",
         allowedRoles: SYSTEM_ROLES.slice(),
         viewPermissions: VIEW_DEFINITIONS.map((view) => view.id),
+        organizationId: DEFAULT_ORGANIZATION.id,
+        organizationName: DEFAULT_ORGANIZATION.name,
         verifiedAt: SEEDED_ACCOUNTS_CREATED_AT,
         accessNote: "Cuenta habilitada para revisar solicitudes y administrar accesos.",
       },
@@ -492,6 +524,8 @@ async function getPresetAccountTemplates() {
         requestedRole: "Facilitador",
         allowedRoles: ["Facilitador"],
         viewPermissions: defaultPermissionsForRole("Facilitador"),
+        organizationId: DEFAULT_ORGANIZATION.id,
+        organizationName: DEFAULT_ORGANIZATION.name,
         verifiedAt: SEEDED_ACCOUNTS_CREATED_AT,
         accessNote: "Cuenta facilitadora configurada para iniciar sesion directamente.",
       },
@@ -531,6 +565,8 @@ function normalizeUser(user = {}) {
     temporaryPasswordIssuedAt: user.temporaryPasswordIssuedAt || null,
     lastLoginAt: user.lastLoginAt || null,
     accessNote: user.accessNote || "",
+    organizationId: String(user.organizationId || DEFAULT_ORGANIZATION.id),
+    organizationName: String(user.organizationName || DEFAULT_ORGANIZATION.name),
     createdAt: user.createdAt || nowIso(),
     updatedAt: user.updatedAt || nowIso(),
   };
@@ -603,6 +639,7 @@ function normalizeAuthState(rawState = {}) {
       state.session = {
         ...state.session,
         activeRole: allowedRoles.includes(activeRole) ? activeRole : sessionUser.systemRole,
+        sessionToken: String(state.session.sessionToken || ""),
       };
     }
   }
@@ -664,12 +701,13 @@ function restorePersistedSession(state) {
 
   return normalizeAuthState({
     ...normalized,
-    session: {
-      userId: sessionUser.id,
-      activeRole: normalizeRoleLabel(persistedSession.activeRole || sessionUser.systemRole),
-      createdAt: persistedSession.createdAt || nowIso(),
-    },
-  });
+      session: {
+        userId: sessionUser.id,
+        activeRole: normalizeRoleLabel(persistedSession.activeRole || sessionUser.systemRole),
+        createdAt: persistedSession.createdAt || nowIso(),
+        sessionToken: String(persistedSession.sessionToken || ""),
+      },
+    });
 }
 
 function readStoredAuthState() {
@@ -808,9 +846,14 @@ export async function getCurrentUser() {
   if (state.session?.userId && Date.now() - lastRemoteSessionSyncAt > REMOTE_SESSION_SYNC_INTERVAL_MS) {
     lastRemoteSessionSyncAt = Date.now();
     try {
-      await syncRemoteManagedUsers("remote-session-validated");
+      await syncRemoteSessionState("remote-session-validated");
       state = await ensureAuthState();
     } catch (error) {
+      if (error?.status === 401 || error?.status === 403) {
+        state.session = null;
+        writeStoredAuthState(state, "remote-session-invalid");
+        return null;
+      }
       if (!isNetworkAuthError(error)) throw error;
     }
   }
@@ -1100,7 +1143,7 @@ export async function signInUser(payload = {}) {
         user: mapRemoteUser(response.user),
       });
     }
-    const user = await startRemoteSession(response.user, "signed-in-remote");
+    const user = await startRemoteSession({ ...(response.user || {}), sessionToken: response.sessionToken || "" }, "signed-in-remote");
     return clone({
       user: {
         id: user.id,
@@ -1171,6 +1214,13 @@ export async function signInUser(payload = {}) {
 
 export async function signOutUser() {
   const state = await ensureAuthState();
+  try {
+    await requestAuthApi("sign-out", {
+      method: "POST",
+    });
+  } catch (error) {
+    if (!shouldUseLocalAuthFallback(error)) throw sharedAuthApiError(error);
+  }
   state.session = null;
   try {
     window.sessionStorage.setItem(AUTH_SIGNED_OUT_KEY, "1");

@@ -5,6 +5,8 @@ import { seedState } from "../../../frontend/src/data/seed-state.js";
 import { REPORT_STATUSES, reviewRoleForStatus } from "../../../shared/contracts/reporting.js";
 
 const STORE_VERSION = 1;
+const DEFAULT_COMPANY_ID = "org-convoy-of-hope";
+const DEFAULT_COMPANY_NAME = "Convoy of Hope";
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const defaultDataDir = path.resolve(dirname, "..", "..", "data");
 const dataDir = process.env.MEL_DATA_DIR || process.env.RAILWAY_VOLUME_MOUNT_PATH || defaultDataDir;
@@ -30,11 +32,17 @@ function nowIso() {
 
 const seededPrograms = seedState.programs.map((program) => ({
   id: `prog-${slugify(program.name)}`,
+  companyId: DEFAULT_COMPANY_ID,
+  organizationId: DEFAULT_COMPANY_ID,
+  organizationName: DEFAULT_COMPANY_NAME,
   ...structuredClone(program),
 }));
 const programs = structuredClone(seededPrograms);
 const seededProgramCenters = (seedState.programCenters || []).map((center) => ({
   id: `center-${slugify(center.program)}-${slugify(center.province)}-${slugify(center.name)}`,
+  companyId: DEFAULT_COMPANY_ID,
+  organizationId: DEFAULT_COMPANY_ID,
+  organizationName: DEFAULT_COMPANY_NAME,
   ...structuredClone(center),
 }));
 const programCenters = structuredClone(seededProgramCenters);
@@ -45,6 +53,9 @@ function programIdByName() {
 
 const indicators = seedState.indicators.map((indicator) => ({
   ...structuredClone(indicator),
+  companyId: DEFAULT_COMPANY_ID,
+  organizationId: DEFAULT_COMPANY_ID,
+  organizationName: DEFAULT_COMPANY_NAME,
   programId: programIdByName().get(indicator.program) || null,
 }));
 
@@ -82,6 +93,9 @@ function normalizedConceptPaper(input = {}) {
   const expectedResults = Array.isArray(programInfo.expectedResults) ? programInfo.expectedResults.filter(Boolean) : [];
   return {
     id: String(input.id || `cp-${slugify(program || fileName)}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`),
+    companyId: String(input.companyId || input.organizationId || DEFAULT_COMPANY_ID),
+    organizationId: String(input.organizationId || input.companyId || DEFAULT_COMPANY_ID),
+    organizationName: String(input.organizationName || DEFAULT_COMPANY_NAME),
     program,
     title,
     presenter: String(input.presenter || input.uploadedBy || "Equipo M&E"),
@@ -111,7 +125,9 @@ function normalizedProgramManual(input = {}) {
   const fileName = String(input.fileName || input.name || "manual.pdf");
   return {
     id: String(input.id || `manual-${slugify(program || fileName)}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`),
-    companyId: String(input.companyId || DEFAULT_COMPANY_ID),
+    companyId: String(input.companyId || input.organizationId || DEFAULT_COMPANY_ID),
+    organizationId: String(input.organizationId || input.companyId || DEFAULT_COMPANY_ID),
+    organizationName: String(input.organizationName || DEFAULT_COMPANY_NAME),
     program,
     title: String(input.title || fileName || "Manual de programa"),
     fileName,
@@ -137,12 +153,12 @@ const reports = [];
 const reportStatusHistory = [];
 const deletedReports = [];
 const deletedLibraryDocuments = [];
+const formSubmissions = [];
 const attendanceParticipants = [];
 const attendanceSessions = [];
 const attendanceArchive = [];
 const notifications = [];
 const emailOutbox = [];
-const DEFAULT_COMPANY_ID = "org-default";
 function attendanceProgramNames() {
   const names = programs.map((program) => normalizeString(program.name)).filter(Boolean);
   return names.length ? names : ["Programa general"];
@@ -182,6 +198,9 @@ function normalizedAttendanceParticipant(input = {}) {
   const program = validPrograms.includes(requestedProgram) ? requestedProgram : validPrograms[0];
   return {
     id: normalizeString(input.id, `attp-${slugify(program)}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`),
+    companyId: normalizeString(input.companyId, DEFAULT_COMPANY_ID),
+    organizationId: normalizeString(input.organizationId, input.companyId || DEFAULT_COMPANY_ID),
+    organizationName: normalizeString(input.organizationName, DEFAULT_COMPANY_NAME),
     program,
     name: normalizeString(input.name, "Participante"),
     status: normalizeString(input.status, "active"),
@@ -201,6 +220,9 @@ function normalizedAttendanceSession(input = {}) {
   const actorRole = normalizeString(input.actorRole, "");
   return {
     id: normalizeString(input.id, `atts-${slugify(program)}-${slugify(center)}-${period}-${weekStart}`),
+    companyId: normalizeString(input.companyId, DEFAULT_COMPANY_ID),
+    organizationId: normalizeString(input.organizationId, input.companyId || DEFAULT_COMPANY_ID),
+    organizationName: normalizeString(input.organizationName, DEFAULT_COMPANY_NAME),
     program,
     weekStart,
     center,
@@ -243,6 +265,7 @@ function snapshotStore() {
     reportStatusHistory,
     deletedReports,
     deletedLibraryDocuments,
+    formSubmissions,
     attendanceParticipants,
     attendanceSessions,
     attendanceArchive,
@@ -288,6 +311,7 @@ function hydratePersistentStore() {
   replaceArray(reports, Array.isArray(stored.reports) ? stored.reports.map(normalizedReport) : []);
   replaceArray(reportStatusHistory, Array.isArray(stored.reportStatusHistory) ? stored.reportStatusHistory : []);
   replaceArray(deletedReports, Array.isArray(stored.deletedReports) ? stored.deletedReports : []);
+  replaceArray(formSubmissions, Array.isArray(stored.formSubmissions) ? stored.formSubmissions.map(normalizedFormSubmission) : []);
   replaceArray(
     attendanceParticipants,
     Array.isArray(stored.attendanceParticipants) ? stored.attendanceParticipants.map(normalizedAttendanceParticipant) : [],
@@ -312,6 +336,8 @@ function normalizedReport(input = {}) {
   return {
     id: String(input.id || `rep-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`),
     companyId: String(input.companyId || DEFAULT_COMPANY_ID),
+    organizationId: String(input.organizationId || input.companyId || DEFAULT_COMPANY_ID),
+    organizationName: String(input.organizationName || DEFAULT_COMPANY_NAME),
     date: String(input.date || timestamp.slice(0, 10)),
     period: String(input.period || timestamp.slice(0, 7)),
     program: String(input.program || ""),
@@ -354,6 +380,50 @@ function normalizedReport(input = {}) {
   };
 }
 
+function normalizedFormSubmission(input = {}) {
+  const timestamp = nowIso();
+  const attachments = Array.isArray(input.attachments)
+    ? input.attachments
+        .map((attachment) => ({
+          id: String(attachment.id || `subatt-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`),
+          name: String(attachment.name || attachment.fileName || "archivo"),
+          fileName: String(attachment.fileName || attachment.name || "archivo"),
+          type: String(attachment.type || attachment.mimeType || "application/octet-stream"),
+          mimeType: String(attachment.mimeType || attachment.type || "application/octet-stream"),
+          size: asNumber(attachment.size),
+          path: String(attachment.path || ""),
+          fileUrl: String(attachment.fileUrl || ""),
+          dataUrl: attachment.dataUrl || null,
+          uploadedAt: attachment.uploadedAt || timestamp,
+          uploadedBy: attachment.uploadedBy || input.importedBy || null,
+        }))
+        .filter((attachment) => attachment.name)
+    : [];
+
+  return {
+    id: String(input.id || `sub-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`),
+    companyId: String(input.companyId || input.organizationId || DEFAULT_COMPANY_ID),
+    organizationId: String(input.organizationId || input.companyId || DEFAULT_COMPANY_ID),
+    organizationName: String(input.organizationName || DEFAULT_COMPANY_NAME),
+    fileName: normalizeString(input.fileName, "formulario.csv"),
+    formId: input.formId || null,
+    formTitle: normalizeString(input.formTitle, input.fileName || "Formulario importado"),
+    program: normalizeString(input.program, ""),
+    period: normalizeString(input.period, timestamp.slice(0, 7)),
+    reportCount: asNumber(input.reportCount),
+    importedAt: input.importedAt || timestamp,
+    sourceType: normalizeString(input.sourceType, "csv"),
+    processing: normalizeString(input.processing, "automatico"),
+    sourceFormId: input.sourceFormId || input.formId || null,
+    reportIds: Array.isArray(input.reportIds) ? input.reportIds.map((reportId) => String(reportId || "")).filter(Boolean) : [],
+    attachments,
+    importedBy: normalizeString(input.importedBy, ""),
+    importedByRole: normalizeString(input.importedByRole, ""),
+    createdAt: input.createdAt || timestamp,
+    updatedAt: input.updatedAt || timestamp,
+  };
+}
+
 function normalizedProgramCenter(input = {}, existing = {}) {
   const timestamp = nowIso();
   const program = normalizeString(input.program, existing.program);
@@ -361,6 +431,9 @@ function normalizedProgramCenter(input = {}, existing = {}) {
   const name = normalizeString(input.name, existing.name);
   return {
     id: normalizeString(input.id, existing.id || `center-${slugify(program)}-${slugify(province)}-${Date.now()}`),
+    companyId: normalizeString(input.companyId, existing.companyId || DEFAULT_COMPANY_ID),
+    organizationId: normalizeString(input.organizationId, existing.organizationId || input.companyId || existing.companyId || DEFAULT_COMPANY_ID),
+    organizationName: normalizeString(input.organizationName, existing.organizationName || DEFAULT_COMPANY_NAME),
     program,
     programId: input.programId || existing.programId || programIdByName().get(program) || null,
     province,
@@ -408,6 +481,9 @@ function syncProgramCentersForProgram(program, centerEntries = []) {
         item.name.toLowerCase() === center.name.toLowerCase(),
     );
     if (existing) {
+      existing.companyId = program.companyId || existing.companyId || DEFAULT_COMPANY_ID;
+      existing.organizationId = program.organizationId || existing.organizationId || DEFAULT_COMPANY_ID;
+      existing.organizationName = program.organizationName || existing.organizationName || DEFAULT_COMPANY_NAME;
       existing.program = program.name;
       existing.programId = program.id;
       existing.province = center.province;
@@ -417,6 +493,9 @@ function syncProgramCentersForProgram(program, centerEntries = []) {
     }
     programCenters.push(
       normalizedProgramCenter({
+        companyId: program.companyId || DEFAULT_COMPANY_ID,
+        organizationId: program.organizationId || DEFAULT_COMPANY_ID,
+        organizationName: program.organizationName || DEFAULT_COMPANY_NAME,
         program: program.name,
         programId: program.id,
         province: center.province,
@@ -425,7 +504,7 @@ function syncProgramCentersForProgram(program, centerEntries = []) {
     );
   });
 
-  return listProgramCenters({ program: program.name });
+  return listProgramCenters({ organizationId: program.organizationId || program.companyId || DEFAULT_COMPANY_ID, program: program.name });
 }
 
 function contactEmail(name, role) {
@@ -614,6 +693,9 @@ function normalizedProgram(input = {}, existing = {}) {
   const timestamp = nowIso();
   return {
     id: normalizeString(input.id, existing.id || `prog-${slugify(name)}-${Date.now()}`),
+    companyId: normalizeString(input.companyId, existing.companyId || DEFAULT_COMPANY_ID),
+    organizationId: normalizeString(input.organizationId, existing.organizationId || input.companyId || existing.companyId || DEFAULT_COMPANY_ID),
+    organizationName: normalizeString(input.organizationName, existing.organizationName || DEFAULT_COMPANY_NAME),
     name,
     lead: normalizeString(input.lead, existing.lead || "Equipo de programa"),
     provinces: normalizeStringList(input.provinces?.length ? input.provinces : existing.provinces).length
@@ -645,6 +727,12 @@ function normalizedIndicator(input = {}, existing = {}) {
   const timestamp = nowIso();
   return {
     id: normalizeString(input.id, existing.id || `ind-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`),
+    companyId: normalizeString(input.companyId, existing.companyId || program?.companyId || DEFAULT_COMPANY_ID),
+    organizationId: normalizeString(
+      input.organizationId,
+      existing.organizationId || program?.organizationId || input.companyId || program?.companyId || DEFAULT_COMPANY_ID,
+    ),
+    organizationName: normalizeString(input.organizationName, existing.organizationName || program?.organizationName || DEFAULT_COMPANY_NAME),
     program: program?.name || normalizeString(input.program, existing.program),
     programId: program?.id || input.programId || existing.programId || programIdByName().get(input.program) || null,
     name: normalizeString(input.name, existing.name),
@@ -662,14 +750,23 @@ function normalizedIndicator(input = {}, existing = {}) {
 
 hydratePersistentStore();
 
-export function listPrograms() {
-  return programs.map((program) => structuredClone(program));
+export function listPrograms(filters = {}) {
+  const { companyId, organizationId } = filters;
+  return programs
+    .filter((program) => {
+      const scopedOrganizationId = organizationId || companyId;
+      if (scopedOrganizationId && (program.organizationId || program.companyId || DEFAULT_COMPANY_ID) !== scopedOrganizationId) return false;
+      return true;
+    })
+    .map((program) => structuredClone(program));
 }
 
 export function listProgramCenters(filters = {}) {
-  const { program, province } = filters;
+  const { companyId, organizationId, program, province } = filters;
   return programCenters
     .filter((center) => {
+      const scopedOrganizationId = organizationId || companyId;
+      if (scopedOrganizationId && (center.organizationId || center.companyId || DEFAULT_COMPANY_ID) !== scopedOrganizationId) return false;
       if (program && center.program !== program) return false;
       if (province && center.province !== province) return false;
       return true;
@@ -681,6 +778,7 @@ export function createProgramCenter(input) {
   const center = normalizedProgramCenter(input);
   const duplicate = programCenters.find(
     (item) =>
+      (item.organizationId || item.companyId || DEFAULT_COMPANY_ID) === (center.organizationId || center.companyId || DEFAULT_COMPANY_ID) &&
       item.program === center.program &&
       item.province === center.province &&
       item.name.toLowerCase() === center.name.toLowerCase(),
@@ -798,8 +896,17 @@ export function deleteProgram(programId) {
   return true;
 }
 
-export function listIndicators() {
-  return indicators.map((indicator) => structuredClone(indicator));
+export function listIndicators(filters = {}) {
+  const { companyId, organizationId, programId, program } = filters;
+  return indicators
+    .filter((indicator) => {
+      const scopedOrganizationId = organizationId || companyId;
+      if (scopedOrganizationId && (indicator.organizationId || indicator.companyId || DEFAULT_COMPANY_ID) !== scopedOrganizationId) return false;
+      if (programId && indicator.programId !== programId) return false;
+      if (program && indicator.program !== program) return false;
+      return true;
+    })
+    .map((indicator) => structuredClone(indicator));
 }
 
 export function findIndicatorById(indicatorId) {
@@ -838,9 +945,11 @@ export function deleteIndicator(indicatorId) {
 }
 
 export function listConceptPapers(filters = {}) {
-  const { program, year, status } = filters;
+  const { companyId, organizationId, program, year, status } = filters;
   return conceptPapers
     .filter((paper) => {
+      const scopedOrganizationId = organizationId || companyId;
+      if (scopedOrganizationId && (paper.organizationId || paper.companyId || DEFAULT_COMPANY_ID) !== scopedOrganizationId) return false;
       if (program && paper.program !== program) return false;
       if (year && paper.year !== year) return false;
       if (status && paper.status !== status) return false;
@@ -918,10 +1027,11 @@ export function deleteConceptPaper(conceptPaperId, options = {}) {
 }
 
 export function listProgramManuals(filters = {}) {
-  const { companyId, program, year, status } = filters;
+  const { companyId, organizationId, program, year, status } = filters;
   return programManuals
     .filter((manual) => {
-      if (companyId && manual.companyId !== companyId) return false;
+      const scopedOrganizationId = organizationId || companyId;
+      if (scopedOrganizationId && (manual.organizationId || manual.companyId || DEFAULT_COMPANY_ID) !== scopedOrganizationId) return false;
       if (program && manual.program !== program) return false;
       if (year && manual.year !== year) return false;
       if (status && manual.status !== status) return false;
@@ -967,10 +1077,46 @@ export function isLibraryDocumentPathDeleted(storagePath = "") {
   });
 }
 
+export function listFormSubmissions(filters = {}) {
+  const { companyId, organizationId, program, period, formId, processing, sourceType } = filters;
+  return formSubmissions
+    .filter((submission) => {
+      const scopedOrganizationId = organizationId || companyId;
+      if (scopedOrganizationId && (submission.organizationId || submission.companyId || DEFAULT_COMPANY_ID) !== scopedOrganizationId) return false;
+      if (program && submission.program !== program) return false;
+      if (period && submission.period !== period) return false;
+      if (formId && submission.formId !== formId && submission.sourceFormId !== formId) return false;
+      if (processing && submission.processing !== processing) return false;
+      if (sourceType && submission.sourceType !== sourceType) return false;
+      return true;
+    })
+    .sort((left, right) => String(right.importedAt || right.createdAt || "").localeCompare(String(left.importedAt || left.createdAt || "")))
+    .map((submission) => structuredClone(submission));
+}
+
+export function createFormSubmission(input = {}) {
+  const submission = normalizedFormSubmission(input);
+  const index = formSubmissions.findIndex((item) => item.id === submission.id);
+  if (index >= 0) {
+    formSubmissions[index] = {
+      ...formSubmissions[index],
+      ...submission,
+      createdAt: formSubmissions[index].createdAt || submission.createdAt,
+      updatedAt: nowIso(),
+    };
+  } else {
+    formSubmissions.unshift(submission);
+  }
+  persistStore();
+  return structuredClone(index >= 0 ? formSubmissions[index] : submission);
+}
+
 export function listAttendanceParticipants(filters = {}) {
-  const { program, status } = filters;
+  const { companyId, organizationId, program, status } = filters;
   return attendanceParticipants
     .filter((participant) => {
+      const scopedOrganizationId = organizationId || companyId;
+      if (scopedOrganizationId && (participant.organizationId || participant.companyId || DEFAULT_COMPANY_ID) !== scopedOrganizationId) return false;
       if (program && participant.program !== program) return false;
       if (status && participant.status !== status) return false;
       return true;
@@ -986,9 +1132,11 @@ export function createAttendanceParticipant(input = {}) {
 }
 
 export function listAttendanceSessions(filters = {}) {
-  const { program, weekStart, center, period } = filters;
+  const { companyId, organizationId, program, weekStart, center, period } = filters;
   return attendanceSessions
     .filter((session) => {
+      const scopedOrganizationId = organizationId || companyId;
+      if (scopedOrganizationId && (session.organizationId || session.companyId || DEFAULT_COMPANY_ID) !== scopedOrganizationId) return false;
       if (program && session.program !== program) return false;
       if (weekStart && session.weekStart !== weekStart) return false;
       if (center && (session.center || "General") !== center) return false;
@@ -1164,9 +1312,11 @@ export function resetAttendanceProgram(program, options = {}) {
 }
 
 export function listAttendanceArchive(filters = {}) {
-  const { program, type } = filters;
+  const { companyId, organizationId, program, type } = filters;
   return attendanceArchive
     .filter((record) => {
+      const scopedOrganizationId = organizationId || companyId;
+      if (scopedOrganizationId && (record.organizationId || record.companyId || DEFAULT_COMPANY_ID) !== scopedOrganizationId) return false;
       if (program && record.program !== program) return false;
       if (type && record.type !== type) return false;
       return true;
@@ -1175,9 +1325,11 @@ export function listAttendanceArchive(filters = {}) {
 }
 
 export function queryReports(filters = {}) {
-  const { program, programId, province, center, period } = filters;
+  const { companyId, organizationId, program, programId, province, center, period } = filters;
   return reports
     .filter((report) => {
+      const scopedOrganizationId = organizationId || companyId;
+      if (scopedOrganizationId && (report.organizationId || report.companyId || DEFAULT_COMPANY_ID) !== scopedOrganizationId) return false;
       if (program && report.program !== program) return false;
       if (programId && report.programId !== programId) return false;
       if (province && report.province !== province) return false;
@@ -1190,6 +1342,10 @@ export function queryReports(filters = {}) {
 
 export function createReport(input) {
   const report = normalizedReport(input);
+  const existing = reports.find((item) => item.id === report.id);
+  if (existing) {
+    return structuredClone(existing);
+  }
   reports.unshift(report);
   reportStatusHistory.unshift({
     id: `hist-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
@@ -1276,7 +1432,7 @@ export function deleteCorrectableReport(reportId, decision = {}) {
 }
 
 export function listDeletedReports(filters = {}) {
-  const { program, programId, province, period, actorRole } = filters;
+  const { companyId, organizationId, program, programId, province, period, actorRole } = filters;
   const deletedById = new Map(deletedReports.map((report) => [report.id, structuredClone(report)]));
   reportStatusHistory
     .filter((entry) => String(entry.status || "").startsWith("Eliminado"))
@@ -1295,6 +1451,8 @@ export function listDeletedReports(filters = {}) {
 
   return Array.from(deletedById.values())
     .filter((report) => {
+      const scopedOrganizationId = organizationId || companyId;
+      if (scopedOrganizationId && (report.organizationId || report.companyId || DEFAULT_COMPANY_ID) !== scopedOrganizationId) return false;
       if (program && report.program !== program) return false;
       if (programId && report.programId !== programId) return false;
       if (province && report.province !== province) return false;
@@ -1357,11 +1515,33 @@ export function listReportStatusHistory(reportId) {
     .map((entry) => structuredClone(entry));
 }
 
+export function listAllReportStatusHistory(filters = {}) {
+  const { companyId, organizationId, reportId, program, period, status } = filters;
+  const reportsById = new Map(reports.map((report) => [report.id, report]));
+  const deletedById = new Map(deletedReports.map((report) => [report.id, report]));
+  return reportStatusHistory
+    .filter((entry) => {
+      const report = reportsById.get(entry.reportId) || deletedById.get(entry.reportId) || null;
+      const scopedOrganizationId = organizationId || companyId;
+      if (scopedOrganizationId) {
+        const reportOrganizationId = report?.organizationId || report?.companyId || DEFAULT_COMPANY_ID;
+        if (reportOrganizationId !== scopedOrganizationId) return false;
+      }
+      if (reportId && entry.reportId !== reportId) return false;
+      if (status && entry.status !== status) return false;
+      if (program && report?.program !== program) return false;
+      if (period && report?.period !== period) return false;
+      return true;
+    })
+    .map((entry) => structuredClone(entry));
+}
+
 export function listNotifications(filters = {}) {
-  const { companyId, programId, reportId, recipientRole, status } = filters;
+  const { companyId, organizationId, programId, reportId, recipientRole, status } = filters;
   return notifications
     .filter((notification) => {
-      if (companyId && notification.companyId !== companyId) return false;
+      const scopedOrganizationId = organizationId || companyId;
+      if (scopedOrganizationId && (notification.organizationId || notification.companyId || DEFAULT_COMPANY_ID) !== scopedOrganizationId) return false;
       if (programId && notification.programId !== programId) return false;
       if (reportId && notification.reportId !== reportId) return false;
       if (recipientRole && notification.recipientRole !== recipientRole) return false;
@@ -1382,10 +1562,11 @@ export function markNotificationRead(notificationId, actorId = null) {
 }
 
 export function listEmailOutbox(filters = {}) {
-  const { companyId, programId, reportId, status } = filters;
+  const { companyId, organizationId, programId, reportId, status } = filters;
   return emailOutbox
     .filter((email) => {
-      if (companyId && email.companyId !== companyId) return false;
+      const scopedOrganizationId = organizationId || companyId;
+      if (scopedOrganizationId && (email.organizationId || email.companyId || DEFAULT_COMPANY_ID) !== scopedOrganizationId) return false;
       if (programId && email.programId !== programId) return false;
       if (reportId && email.reportId !== reportId) return false;
       if (status && email.status !== status) return false;

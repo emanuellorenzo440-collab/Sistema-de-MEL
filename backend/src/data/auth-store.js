@@ -5,6 +5,13 @@ import { fileURLToPath } from "node:url";
 
 const CURRENT_AUTH_DATA_VERSION = 1;
 const PRESET_ACCOUNT_VERSION = 4;
+const PASSWORD_HASH_VERSION = "pbkdf2-sha512";
+const PASSWORD_ITERATIONS = 120000;
+const SESSION_DURATION_MS = 12 * 60 * 60 * 1000;
+const DEFAULT_ORGANIZATION = {
+  id: "org-convoy-of-hope",
+  name: "Convoy of Hope",
+};
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const defaultDataDir = path.resolve(dirname, "..", "..", "data");
@@ -83,6 +90,8 @@ const SEEDED_ACCOUNTS = [
     status: "active",
     accessNote: "Cuenta administradora base del sistema.",
     mustChangePassword: false,
+    organizationId: DEFAULT_ORGANIZATION.id,
+    organizationName: DEFAULT_ORGANIZATION.name,
   },
   {
     id: "llorenzo-supervision",
@@ -93,6 +102,8 @@ const SEEDED_ACCOUNTS = [
     status: "active",
     accessNote: "Cuenta administradora configurada para iniciar sesion directamente.",
     mustChangePassword: false,
+    organizationId: DEFAULT_ORGANIZATION.id,
+    organizationName: DEFAULT_ORGANIZATION.name,
   },
   {
     id: "apujols-facilitator",
@@ -103,6 +114,8 @@ const SEEDED_ACCOUNTS = [
     status: "active",
     accessNote: "Cuenta facilitadora configurada para iniciar sesion directamente.",
     mustChangePassword: false,
+    organizationId: DEFAULT_ORGANIZATION.id,
+    organizationName: DEFAULT_ORGANIZATION.name,
   },
 ];
 
@@ -117,14 +130,39 @@ function normalizeEmail(email) {
 }
 
 function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const digest = crypto.pbkdf2Sync(String(password || ""), salt, PASSWORD_ITERATIONS, 64, "sha512").toString("hex");
+  return `${PASSWORD_HASH_VERSION}$${PASSWORD_ITERATIONS}$${salt}$${digest}`;
+}
+
+function legacyHashPassword(password) {
   return crypto.createHash("sha256").update(String(password || "")).digest("hex");
 }
 
+function verifyPassword(password, storedHash) {
+  const normalizedHash = String(storedHash || "");
+  if (!normalizedHash) return false;
+  if (!normalizedHash.startsWith(`${PASSWORD_HASH_VERSION}$`)) {
+    return legacyHashPassword(password) === normalizedHash;
+  }
+  const [, iterationsText, salt, expectedDigest] = normalizedHash.split("$");
+  const iterations = Number(iterationsText || PASSWORD_ITERATIONS);
+  if (!salt || !expectedDigest || !Number.isFinite(iterations)) return false;
+  const actualDigest = crypto.pbkdf2Sync(String(password || ""), salt, iterations, 64, "sha512").toString("hex");
+  const expectedBuffer = Buffer.from(expectedDigest, "hex");
+  const actualBuffer = Buffer.from(actualDigest, "hex");
+  return expectedBuffer.length === actualBuffer.length && crypto.timingSafeEqual(expectedBuffer, actualBuffer);
+}
+
 function hashToken(token) {
-  return hashPassword(token);
+  return crypto.createHash("sha256").update(String(token || "")).digest("hex");
 }
 
 function createResetToken() {
+  return crypto.randomBytes(32).toString("hex");
+}
+
+function createSessionToken() {
   return crypto.randomBytes(32).toString("hex");
 }
 
@@ -147,6 +185,8 @@ function createSeedUser(account) {
     primaryRole: account.primaryRole,
     enabledProfiles: [account.primaryRole],
     viewPermissions: permissions,
+    organizationId: account.organizationId || DEFAULT_ORGANIZATION.id,
+    organizationName: account.organizationName || DEFAULT_ORGANIZATION.name,
     status: account.status || "active",
     accessNote: account.accessNote || "",
     mustChangePassword: Boolean(account.mustChangePassword),
@@ -162,7 +202,9 @@ function buildInitialState() {
   return {
     authDataVersion: CURRENT_AUTH_DATA_VERSION,
     presetAccountVersion: PRESET_ACCOUNT_VERSION,
+    organizations: [structuredClone(DEFAULT_ORGANIZATION)],
     users: SEEDED_ACCOUNTS.map(createSeedUser),
+    activeSessions: [],
     deletedUserRegistry: [],
     emailOutbox: [],
     auditLog: [],
@@ -201,6 +243,8 @@ function safeUser(user) {
     email: normalizeEmail(publicUser.email),
     enabledProfiles: normalizeList(publicUser.enabledProfiles, [publicUser.primaryRole]),
     viewPermissions: normalizeList(publicUser.viewPermissions, rolePermissions(publicUser.primaryRole)),
+    organizationId: publicUser.organizationId || DEFAULT_ORGANIZATION.id,
+    organizationName: publicUser.organizationName || DEFAULT_ORGANIZATION.name,
     mustChangePassword: Boolean(publicUser.mustChangePassword),
   };
 }
@@ -214,6 +258,8 @@ function normalizeUser(user) {
     primaryRole,
     enabledProfiles: normalizeList(user.enabledProfiles, [primaryRole]),
     viewPermissions: normalizeList(user.viewPermissions, rolePermissions(primaryRole)),
+    organizationId: String(user.organizationId || DEFAULT_ORGANIZATION.id),
+    organizationName: String(user.organizationName || DEFAULT_ORGANIZATION.name),
     status: user.status === "suspended" ? "suspended" : "active",
     accessNote: String(user.accessNote || ""),
     mustChangePassword: Boolean(user.mustChangePassword),
@@ -230,6 +276,18 @@ function normalizeUser(user) {
   };
 }
 
+function normalizeSession(session = {}) {
+  return {
+    id: String(session.id || crypto.randomUUID()),
+    userId: String(session.userId || ""),
+    organizationId: String(session.organizationId || DEFAULT_ORGANIZATION.id),
+    tokenHash: String(session.tokenHash || ""),
+    createdAt: session.createdAt || nowIso(),
+    lastSeenAt: session.lastSeenAt || nowIso(),
+    expiresAt: session.expiresAt || new Date(Date.now() + SESSION_DURATION_MS).toISOString(),
+  };
+}
+
 function migrateState(state) {
   const next = {
     ...buildInitialState(),
@@ -238,6 +296,13 @@ function migrateState(state) {
     deletedUserRegistry: Array.isArray(state?.deletedUserRegistry) ? state.deletedUserRegistry : [],
     emailOutbox: Array.isArray(state?.emailOutbox) ? state.emailOutbox : [],
     auditLog: Array.isArray(state?.auditLog) ? state.auditLog : [],
+    organizations: Array.isArray(state?.organizations) && state.organizations.length
+      ? state.organizations.map((organization) => ({
+          id: String(organization.id || DEFAULT_ORGANIZATION.id),
+          name: String(organization.name || DEFAULT_ORGANIZATION.name),
+        }))
+      : [structuredClone(DEFAULT_ORGANIZATION)],
+    activeSessions: Array.isArray(state?.activeSessions) ? state.activeSessions.map(normalizeSession) : [],
     authDataVersion: CURRENT_AUTH_DATA_VERSION,
     presetAccountVersion: Number(state?.presetAccountVersion || 0),
   };
@@ -268,6 +333,11 @@ function migrateState(state) {
   }
 
   next.presetAccountVersion = PRESET_ACCOUNT_VERSION;
+  next.activeSessions = next.activeSessions.filter((session) => {
+    if (!session.userId || !session.tokenHash) return false;
+    if (session.expiresAt && Date.parse(session.expiresAt) < Date.now()) return false;
+    return next.users.some((user) => user.id === session.userId && user.status === "active");
+  });
 
   return next;
 }
@@ -287,6 +357,46 @@ function getState() {
 
 function persist() {
   writeStateToDisk(getState());
+}
+
+function pruneExpiredSessions(state = getState()) {
+  const before = state.activeSessions.length;
+  state.activeSessions = state.activeSessions.filter((session) => {
+    if (!session.userId || !session.tokenHash) return false;
+    if (session.expiresAt && Date.parse(session.expiresAt) < Date.now()) return false;
+    const sessionUser = state.users.find((user) => user.id === session.userId);
+    return Boolean(sessionUser && sessionUser.status === "active");
+  });
+  return before !== state.activeSessions.length;
+}
+
+function clearUserSessions(userId) {
+  const state = getState();
+  state.activeSessions = state.activeSessions.filter((session) => session.userId !== userId);
+}
+
+function createSessionForUser(user) {
+  const token = createSessionToken();
+  const session = normalizeSession({
+    userId: user.id,
+    organizationId: user.organizationId || DEFAULT_ORGANIZATION.id,
+    tokenHash: hashToken(token),
+    createdAt: nowIso(),
+    lastSeenAt: nowIso(),
+    expiresAt: new Date(Date.now() + SESSION_DURATION_MS).toISOString(),
+  });
+  const state = getState();
+  state.activeSessions.unshift(session);
+  pruneExpiredSessions(state);
+  return {
+    sessionToken: token,
+    session,
+  };
+}
+
+function touchSession(session) {
+  session.lastSeenAt = nowIso();
+  session.expiresAt = new Date(Date.now() + SESSION_DURATION_MS).toISOString();
 }
 
 function authError(status, message) {
@@ -315,8 +425,41 @@ function findUserById(id) {
   return getState().users.find((user) => user.id === id) || null;
 }
 
-function requireAccessAdmin(actorId) {
-  const actor = findUserById(actorId);
+export function restoreAuthSession(sessionToken) {
+  const tokenHash = hashToken(sessionToken);
+  const state = getState();
+  const changed = pruneExpiredSessions(state);
+  const session = state.activeSessions.find((item) => item.tokenHash === tokenHash) || null;
+  if (!session) {
+    if (changed) persist();
+    return null;
+  }
+  const actor = findUserById(session.userId);
+  if (!actor || actor.status !== "active") {
+    state.activeSessions = state.activeSessions.filter((item) => item.id !== session.id);
+    persist();
+    return null;
+  }
+  touchSession(session);
+  persist();
+  return {
+    session: structuredClone(session),
+    user: safeUser(actor),
+  };
+}
+
+export function signOutAuthSession(sessionToken) {
+  const tokenHash = hashToken(sessionToken);
+  const state = getState();
+  const before = state.activeSessions.length;
+  state.activeSessions = state.activeSessions.filter((session) => session.tokenHash !== tokenHash);
+  if (before !== state.activeSessions.length) {
+    persist();
+  }
+}
+
+function requireAccessAdmin(actorOrId) {
+  const actor = typeof actorOrId === "string" ? findUserById(actorOrId) : actorOrId;
   if (!actor) {
     throw authError(401, "No se encontro una sesion administradora valida.");
   }
@@ -355,8 +498,11 @@ function createAuthEmailRecord({ user, type, link, expiresAt }) {
   };
 }
 
-export function listAuthUsers() {
-  return getState().users.map(safeUser);
+export function listAuthUsers(actor = null) {
+  const scopedUsers = actor?.organizationId
+    ? getState().users.filter((user) => user.organizationId === actor.organizationId)
+    : getState().users;
+  return scopedUsers.map(safeUser);
 }
 
 export function signInAuthUser({ email, password }) {
@@ -367,7 +513,7 @@ export function signInAuthUser({ email, password }) {
   if (user.status !== "active") {
     throw authError(403, "Esta cuenta esta suspendida o eliminada.");
   }
-  if (user.passwordHash !== hashPassword(password)) {
+  if (!verifyPassword(password, user.passwordHash)) {
     throw authError(401, "Contrasena incorrecta.");
   }
 
@@ -380,12 +526,18 @@ export function signInAuthUser({ email, password }) {
 
   user.lastLoginAt = nowIso();
   user.updatedAt = nowIso();
+  if (!String(user.passwordHash || "").startsWith(`${PASSWORD_HASH_VERSION}$`)) {
+    user.passwordHash = hashPassword(password);
+    user.passwordChangedAt = user.passwordChangedAt || nowIso();
+  }
+  const { sessionToken } = createSessionForUser(user);
   audit("auth.signIn", { userId: user.id, email: user.email });
   persist();
 
   return {
     passwordChangeRequired: false,
     user: safeUser(user),
+    sessionToken,
   };
 }
 
@@ -397,7 +549,7 @@ export function completeRequiredPasswordChange({ email, currentPassword, passwor
   if (user.status !== "active") {
     throw authError(403, "Esta cuenta esta suspendida o eliminada.");
   }
-  if (user.passwordHash !== hashPassword(currentPassword)) {
+  if (!verifyPassword(currentPassword, user.passwordHash)) {
     throw authError(401, "Contrasena temporal incorrecta.");
   }
   if (String(password || "").length < 8) {
@@ -410,10 +562,15 @@ export function completeRequiredPasswordChange({ email, currentPassword, passwor
   user.passwordChangedAt = timestamp;
   user.lastLoginAt = timestamp;
   user.updatedAt = timestamp;
+  clearUserSessions(user.id);
+  const { sessionToken } = createSessionForUser(user);
   audit("auth.completePasswordChange", { userId: user.id, email: user.email });
   persist();
 
-  return safeUser(user);
+  return {
+    ...safeUser(user),
+    sessionToken,
+  };
 }
 
 export function requestPasswordResetLink({ email, resetBaseUrl }) {
@@ -488,14 +645,15 @@ export function resetPasswordWithToken({ token, password }) {
   user.resetRequestedAt = null;
   user.passwordChangedAt = timestamp;
   user.updatedAt = timestamp;
+  clearUserSessions(user.id);
   audit("auth.passwordResetCompleted", { userId: user.id, email: user.email });
   persist();
 
   return safeUser(user);
 }
 
-export function createManagedAuthUser(payload, actorId) {
-  const actor = requireAccessAdmin(actorId);
+export function createManagedAuthUser(payload, actorOrId) {
+  const actor = requireAccessAdmin(actorOrId);
   const email = normalizeEmail(payload.email);
   const fullName = String(payload.fullName || "").trim();
   const temporaryPassword = String(payload.temporaryPassword || payload.password || "");
@@ -524,6 +682,8 @@ export function createManagedAuthUser(payload, actorId) {
     primaryRole,
     enabledProfiles: normalizeList(payload.enabledProfiles, [primaryRole]),
     viewPermissions: normalizeList(payload.viewPermissions, rolePermissions(primaryRole)),
+    organizationId: actor.organizationId || DEFAULT_ORGANIZATION.id,
+    organizationName: actor.organizationName || DEFAULT_ORGANIZATION.name,
     status: payload.status === "suspended" ? "suspended" : "active",
     accessNote: payload.accessNote || "",
     mustChangePassword: true,
@@ -541,11 +701,14 @@ export function createManagedAuthUser(payload, actorId) {
   return safeUser(user);
 }
 
-export function updateManagedAuthUser(id, updates, actorId) {
-  const actor = requireAccessAdmin(actorId);
+export function updateManagedAuthUser(id, updates, actorOrId) {
+  const actor = requireAccessAdmin(actorOrId);
   const user = findUserById(id);
   if (!user) {
     throw authError(404, "No encontre ese usuario.");
+  }
+  if (user.organizationId !== actor.organizationId) {
+    throw authError(403, "No puedes editar usuarios de otra organizacion.");
   }
 
   const nextEmail = updates.email ? normalizeEmail(updates.email) : user.email;
@@ -565,6 +728,8 @@ export function updateManagedAuthUser(id, updates, actorId) {
   user.primaryRole = primaryRole;
   user.enabledProfiles = normalizeList(updates.enabledProfiles, [primaryRole]);
   user.viewPermissions = normalizeList(updates.viewPermissions, rolePermissions(primaryRole));
+  user.organizationId = actor.organizationId || user.organizationId || DEFAULT_ORGANIZATION.id;
+  user.organizationName = actor.organizationName || user.organizationName || DEFAULT_ORGANIZATION.name;
   user.status = updates.status === "suspended" ? "suspended" : "active";
   user.accessNote = String(updates.accessNote ?? user.accessNote ?? "");
   if (nextPassword) {
@@ -573,6 +738,9 @@ export function updateManagedAuthUser(id, updates, actorId) {
     user.resetTokenHash = null;
     user.resetExpiresAt = null;
     user.resetRequestedAt = null;
+  }
+  if (user.status !== "active") {
+    clearUserSessions(user.id);
   }
   if (typeof updates.mustChangePassword === "boolean") {
     user.mustChangePassword = updates.mustChangePassword;
@@ -586,8 +754,8 @@ export function updateManagedAuthUser(id, updates, actorId) {
   return safeUser(user);
 }
 
-export function deleteManagedAuthUser(id, actorId) {
-  const actor = requireAccessAdmin(actorId);
+export function deleteManagedAuthUser(id, actorOrId) {
+  const actor = requireAccessAdmin(actorOrId);
   if (actor.id === id) {
     throw authError(400, "No puedes eliminar tu propia cuenta mientras estas dentro.");
   }
@@ -596,8 +764,12 @@ export function deleteManagedAuthUser(id, actorId) {
   if (index < 0) {
     throw authError(404, "No encontre ese usuario.");
   }
+  if (state.users[index].organizationId !== actor.organizationId) {
+    throw authError(403, "No puedes eliminar usuarios de otra organizacion.");
+  }
 
   const [deleted] = state.users.splice(index, 1);
+  clearUserSessions(deleted.id);
   const timestamp = nowIso();
   state.deletedUserRegistry.unshift({
     id: crypto.randomUUID(),

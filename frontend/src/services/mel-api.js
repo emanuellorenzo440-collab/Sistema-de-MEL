@@ -1,4 +1,5 @@
 import { API_BASE_STORAGE_KEY, DEFAULT_API_BASE_URL } from "../core/config.js?v=20260507i";
+const AUTH_SESSION_KEY = "pulso-me-session-v1";
 
 function trimTrailingSlash(value) {
   return String(value || "").replace(/\/+$/, "");
@@ -57,10 +58,24 @@ function buildApiUrl(pathname, params = {}) {
   return url;
 }
 
+function readSessionToken() {
+  try {
+    const raw = window.localStorage.getItem(AUTH_SESSION_KEY);
+    const session = raw ? JSON.parse(raw) : null;
+    return String(session?.sessionToken || "").trim();
+  } catch {
+    return "";
+  }
+}
+
 async function requestJson(pathname, options = {}, params = {}) {
   const headers = { ...(options.headers || {}) };
   if (options.body) {
     headers["content-type"] = headers["content-type"] || "application/json";
+  }
+  const sessionToken = readSessionToken();
+  if (sessionToken) {
+    headers["x-mel-session-token"] = sessionToken;
   }
 
   const response = await fetch(buildApiUrl(pathname, params), {
@@ -92,6 +107,7 @@ export function apiFileUrl(fileRef = {}) {
 
 export async function uploadApiFile(file, { kind = "general" } = {}) {
   if (!file) return null;
+  const sessionToken = readSessionToken();
   const response = await fetch(
     buildApiUrl("uploads", {
       kind,
@@ -101,6 +117,7 @@ export async function uploadApiFile(file, { kind = "general" } = {}) {
       method: "POST",
       headers: {
         "content-type": file.type || "application/octet-stream",
+        ...(sessionToken ? { "x-mel-session-token": sessionToken } : {}),
       },
       body: file,
     },
@@ -345,6 +362,24 @@ export async function fetchApiEmailOutbox(filters = {}) {
 
 export async function fetchApiAnalyticsOverview(filters = {}) {
   const response = await requestJson("analytics/overview", {}, filters);
+  return response.data;
+}
+
+export async function fetchApiAnalyticsPowerBi(filters = {}) {
+  const response = await requestJson("analytics/power-bi", {}, filters);
+  return response.data;
+}
+
+export async function fetchApiFormSubmissions(filters = {}) {
+  const response = await requestJson("form-submissions", {}, filters);
+  return response.data || [];
+}
+
+export async function createApiFormSubmission(submission) {
+  const response = await requestJson("form-submissions", {
+    method: "POST",
+    body: JSON.stringify(submission),
+  });
   return response.data;
 }
 

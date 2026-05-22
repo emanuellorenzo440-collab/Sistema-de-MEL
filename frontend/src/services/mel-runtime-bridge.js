@@ -9,6 +9,7 @@ import {
   fetchApiAttendanceSessions,
   fetchApiConceptPapers,
   fetchApiDeletedReports,
+  fetchApiFormSubmissions,
   fetchApiIndicators,
   fetchApiNotifications,
   fetchApiProgramCenters,
@@ -18,7 +19,7 @@ import {
   getApiBaseUrl,
   isApiConfigured,
   updateApiReportStatus,
-} from "./mel-api.js?v=20260521a";
+} from "./mel-api.js?v=20260522m";
 
 const CHART_COLORS = ["#14b8a6", "#2563eb", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6"];
 let syncInFlight = false;
@@ -197,7 +198,8 @@ function mergeRemoteReports(localReports = [], remoteReports = [], deletedReport
 function mapLocalReportToApi(report) {
   return {
     id: report.id,
-    companyId: report.companyId || "org-default",
+    companyId: report.companyId || report.organizationId || "org-convoy-of-hope",
+    organizationId: report.organizationId || report.companyId || "org-convoy-of-hope",
     date: report.date,
     period: report.period,
     program: report.program,
@@ -580,12 +582,20 @@ async function pullRemoteNotifications() {
 }
 
 async function pullRemotePlanningData() {
-  const [remotePrograms, remoteIndicators, remoteConceptPapers, remoteProgramCenters, remoteProgramManuals] = await Promise.all([
+  const [
+    remotePrograms,
+    remoteIndicators,
+    remoteConceptPapers,
+    remoteProgramCenters,
+    remoteProgramManuals,
+    remoteFormSubmissions,
+  ] = await Promise.all([
     fetchApiPrograms(),
     fetchApiIndicators(),
     fetchApiConceptPapers(),
     fetchApiProgramCenters(),
     fetchApiProgramManuals(),
+    fetchApiFormSubmissions(),
   ]);
   const currentState = normalizeState(readStoredState());
   const nextState = recomputeIndicators({
@@ -595,6 +605,7 @@ async function pullRemotePlanningData() {
     conceptPapers: remoteConceptPapers,
     programCenters: remoteProgramCenters,
     programManuals: remoteProgramManuals,
+    formSubmissions: remoteFormSubmissions,
   });
   commitStoredState(nextState, { source: "pullRemotePlanningData" });
   return nextState;

@@ -11,6 +11,7 @@ import {
   createProgramManual,
   createReport,
   createReportsBulk,
+  createFormSubmission,
   deleteAttendanceParticipant,
   deleteAttendanceParticipantsForProgram,
   deleteAttendanceSession,
@@ -29,11 +30,13 @@ import {
   listAttendanceSessions,
   listConceptPapers,
   listEmailOutbox,
+  listFormSubmissions,
   listIndicators,
   listNotifications,
   listPrograms,
   listProgramCenters,
   listProgramManuals,
+  listAllReportStatusHistory,
   listDeletedReports,
   listReportStatusHistory,
   markNotificationRead,
@@ -51,12 +54,14 @@ import {
   deleteManagedAuthUser,
   listAuthUsers,
   requestPasswordResetLink,
+  restoreAuthSession,
   resetPasswordWithToken,
+  signOutAuthSession,
   signInAuthUser,
   updateManagedAuthUser,
 } from "./data/auth-store.js";
 import { resolveAnalyticsScope, validateReportStatusChange } from "./domain/reporting-rules.js";
-import { buildAnalyticsConfig, buildAnalyticsOverview } from "./services/analytics-service.js";
+import { buildAnalyticsConfig, buildAnalyticsOverview, buildPowerBiDataset } from "./services/analytics-service.js";
 
 const PORT = Number(process.env.PORT || 8080);
 const dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -80,7 +85,7 @@ const MIME_TYPES = {
 const CORS_HEADERS = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
-  "access-control-allow-headers": "content-type,x-mel-actor-id",
+  "access-control-allow-headers": "content-type,x-mel-actor-id,x-mel-session-token",
 };
 const MAX_UPLOAD_FILE_BYTES = 200 * 1024 * 1024;
 const MAX_JSON_BODY_BYTES = 12 * 1024 * 1024;
@@ -492,16 +497,6 @@ function validatePayloadUploads(payload, label = "archivo") {
   return null;
 }
 
-function requireActorRole(response, payload = {}, allowedRoles = [], action = "realizar esta accion") {
-  const actorRole = String(payload.actorRole || "").trim();
-  if (allowedRoles.includes(actorRole)) return true;
-  sendJson(response, 403, {
-    error: `No tienes permiso para ${action}.`,
-    details: { actorRole: actorRole || null, allowedRoles },
-  });
-  return false;
-}
-
 async function readOptionalJsonBody(request) {
   try {
     return await readJsonBody(request);
@@ -516,18 +511,24 @@ function filterReportsByScope(reports, scope) {
 }
 
 export async function handlePrograms(_request, response) {
-  sendJson(response, 200, { data: listPrograms() });
+  const actor = requireAuthenticatedUser(_request, response);
+  if (!actor) return;
+  sendJson(response, 200, { data: listPrograms(actorScopeFilters(_request)) });
 }
 
 export async function handleProgramCenters(_request, response, url) {
-  const filters = {
+  const actor = requireAuthenticatedUser(_request, response);
+  if (!actor) return;
+  const filters = actorScopeFilters(_request, {
     program: url.searchParams.get("program") || undefined,
     province: url.searchParams.get("province") || undefined,
-  };
+  });
   sendJson(response, 200, { data: listProgramCenters(filters), filters });
 }
 
 export async function handleProgramCenterCreate(request, response) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
   let payload;
   try {
     payload = await readJsonBody(request);
@@ -541,12 +542,14 @@ export async function handleProgramCenterCreate(request, response) {
     sendJson(response, 400, required);
     return;
   }
-  if (!requireActorRole(response, payload, ["Supervision M&E", "Coordinador de programa"], "crear centros")) return;
+  if (!requireActorRole(response, actor, ["Supervision M&E", "Coordinador de programa"], "crear centros")) return;
 
-  sendJson(response, 201, { data: createProgramCenter(payload) });
+  sendJson(response, 201, { data: createProgramCenter(payloadWithActor(request, payload)) });
 }
 
 export async function handleProgramCenterUpdate(request, response, centerId) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
   let payload;
   try {
     payload = await readJsonBody(request);
@@ -554,9 +557,9 @@ export async function handleProgramCenterUpdate(request, response, centerId) {
     sendJson(response, 400, { error: "El cuerpo del centro no es JSON valido." });
     return;
   }
-  if (!requireActorRole(response, payload, ["Supervision M&E", "Coordinador de programa"], "editar centros")) return;
+  if (!requireActorRole(response, actor, ["Supervision M&E", "Coordinador de programa"], "editar centros")) return;
 
-  const center = updateProgramCenter(centerId, payload);
+  const center = updateProgramCenter(centerId, payloadWithActor(request, payload));
   if (!center) {
     sendJson(response, 404, { error: "No encontre el centro solicitado." });
     return;
@@ -565,9 +568,11 @@ export async function handleProgramCenterUpdate(request, response, centerId) {
 }
 
 export async function handleProgramCenterDelete(request, response, centerId) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
   const payload = await readOptionalJsonBody(request);
-  if (!requireActorRole(response, payload, ["Supervision M&E", "Coordinador de programa"], "eliminar centros")) return;
-  const deleted = deleteProgramCenter(centerId, payload);
+  if (!requireActorRole(response, actor, ["Supervision M&E", "Coordinador de programa"], "eliminar centros")) return;
+  const deleted = deleteProgramCenter(centerId, payloadWithActor(request, payload));
   if (!deleted) {
     sendJson(response, 404, { error: "No encontre el centro solicitado." });
     return;
@@ -576,6 +581,8 @@ export async function handleProgramCenterDelete(request, response, centerId) {
 }
 
 export async function handleProgramCreate(request, response) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
   let payload;
   try {
     payload = await readJsonBody(request);
@@ -589,13 +596,15 @@ export async function handleProgramCreate(request, response) {
     sendJson(response, 400, required);
     return;
   }
-  if (!requireActorRole(response, payload, ["Supervision M&E", "Program Manager"], "crear programas")) return;
+  if (!requireActorRole(response, actor, ["Supervision M&E", "Program Manager"], "crear programas")) return;
 
-  const program = createProgram(payload);
+  const program = createProgram(payloadWithActor(request, payload));
   sendJson(response, 201, { data: program });
 }
 
 export async function handleProgramUpdate(request, response, programId) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
   let payload;
   try {
     payload = await readJsonBody(request);
@@ -603,9 +612,9 @@ export async function handleProgramUpdate(request, response, programId) {
     sendJson(response, 400, { error: "El cuerpo del programa no es JSON valido." });
     return;
   }
-  if (!requireActorRole(response, payload, ["Supervision M&E", "Program Manager"], "editar programas")) return;
+  if (!requireActorRole(response, actor, ["Supervision M&E", "Program Manager"], "editar programas")) return;
 
-  const program = updateProgram(programId, payload);
+  const program = updateProgram(programId, payloadWithActor(request, payload));
   if (!program) {
     sendJson(response, 404, { error: "No encontre el programa solicitado." });
     return;
@@ -615,8 +624,10 @@ export async function handleProgramUpdate(request, response, programId) {
 }
 
 export async function handleProgramDelete(request, response, programId) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
   const payload = await readOptionalJsonBody(request);
-  if (!requireActorRole(response, payload, ["Supervision M&E", "Program Manager"], "eliminar programas")) return;
+  if (!requireActorRole(response, actor, ["Supervision M&E", "Program Manager"], "eliminar programas")) return;
   const result = deleteProgram(programId);
   if (!result) {
     sendJson(response, 404, { error: "No encontre el programa solicitado." });
@@ -635,17 +646,18 @@ export async function handleProgramDelete(request, response, programId) {
 }
 
 export async function handleIndicators(_request, response, url) {
-  const programId = url.searchParams.get("programId");
-  const program = url.searchParams.get("program");
-  const data = listIndicators().filter((indicator) => {
-    if (programId && indicator.programId !== programId) return false;
-    if (program && indicator.program !== program) return false;
-    return true;
+  const actor = requireAuthenticatedUser(_request, response);
+  if (!actor) return;
+  const filters = actorScopeFilters(_request, {
+    programId: url.searchParams.get("programId") || undefined,
+    program: url.searchParams.get("program") || undefined,
   });
-  sendJson(response, 200, { data });
+  sendJson(response, 200, { data: listIndicators(filters), filters });
 }
 
 export async function handleIndicatorCreate(request, response) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
   let payload;
   try {
     payload = await readJsonBody(request);
@@ -659,13 +671,15 @@ export async function handleIndicatorCreate(request, response) {
     sendJson(response, 400, required);
     return;
   }
-  if (!requireActorRole(response, payload, ["Supervision M&E", "Program Manager", "Coordinador de programa"], "crear indicadores")) return;
+  if (!requireActorRole(response, actor, ["Supervision M&E", "Program Manager", "Coordinador de programa"], "crear indicadores")) return;
 
-  const indicator = createIndicator(payload);
+  const indicator = createIndicator(payloadWithActor(request, payload));
   sendJson(response, 201, { data: indicator });
 }
 
 export async function handleIndicatorUpdate(request, response, indicatorId) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
   let payload;
   try {
     payload = await readJsonBody(request);
@@ -673,9 +687,9 @@ export async function handleIndicatorUpdate(request, response, indicatorId) {
     sendJson(response, 400, { error: "El cuerpo del indicador no es JSON valido." });
     return;
   }
-  if (!requireActorRole(response, payload, ["Supervision M&E", "Program Manager", "Coordinador de programa"], "editar indicadores")) return;
+  if (!requireActorRole(response, actor, ["Supervision M&E", "Program Manager", "Coordinador de programa"], "editar indicadores")) return;
 
-  const indicator = updateIndicator(indicatorId, payload);
+  const indicator = updateIndicator(indicatorId, payloadWithActor(request, payload));
   if (!indicator) {
     sendJson(response, 404, { error: "No encontre el indicador solicitado." });
     return;
@@ -685,8 +699,10 @@ export async function handleIndicatorUpdate(request, response, indicatorId) {
 }
 
 export async function handleIndicatorDelete(request, response, indicatorId) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
   const payload = await readOptionalJsonBody(request);
-  if (!requireActorRole(response, payload, ["Supervision M&E", "Program Manager"], "eliminar indicadores")) return;
+  if (!requireActorRole(response, actor, ["Supervision M&E", "Program Manager"], "eliminar indicadores")) return;
   const result = deleteIndicator(indicatorId);
   if (!result) {
     sendJson(response, 404, { error: "No encontre el indicador solicitado." });
@@ -705,15 +721,19 @@ export async function handleIndicatorDelete(request, response, indicatorId) {
 }
 
 export async function handleConceptPapers(_request, response, url) {
-  const filters = {
+  const actor = requireAuthenticatedUser(_request, response);
+  if (!actor) return;
+  const filters = actorScopeFilters(_request, {
     program: url.searchParams.get("program") || undefined,
     year: url.searchParams.get("year") || undefined,
     status: url.searchParams.get("status") || undefined,
-  };
+  });
   sendJson(response, 200, { data: listConceptPapers(filters), filters });
 }
 
 export async function handleConceptPaperCreate(request, response) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
   let payload;
   try {
     payload = await readJsonBody(request);
@@ -734,7 +754,7 @@ export async function handleConceptPaperCreate(request, response) {
     });
     return;
   }
-  if (!requireActorRole(response, payload, ["Supervision M&E", "Program Manager", "Coordinador de programa"], "cargar Concept Papers")) return;
+  if (!requireActorRole(response, actor, ["Supervision M&E", "Program Manager", "Coordinador de programa"], "cargar Concept Papers")) return;
 
   const uploadError = validatePayloadUploads(payload, "Concept Paper");
   if (uploadError) {
@@ -742,11 +762,13 @@ export async function handleConceptPaperCreate(request, response) {
     return;
   }
 
-  const conceptPaper = createConceptPaper(payload);
+  const conceptPaper = createConceptPaper(payloadWithActor(request, payload));
   sendJson(response, 201, { data: conceptPaper });
 }
 
 export async function handleConceptPaperDelete(request, response, conceptPaperId) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
   let payload = {};
   try {
     payload = await readOptionalJsonBody(request);
@@ -756,8 +778,8 @@ export async function handleConceptPaperDelete(request, response, conceptPaperId
 
   try {
     const deleted = deleteConceptPaper(conceptPaperId, {
-      actorId: payload.actorId,
-      actorRole: payload.actorRole,
+      actorId: actor.id,
+      actorRole: actor.primaryRole,
       reason: payload.reason || "Eliminado desde biblioteca de Concept Papers.",
     });
     if (!deleted) {
@@ -818,16 +840,19 @@ export async function handleConceptPaperFile(_request, response, conceptPaperId)
 }
 
 export async function handleProgramManuals(_request, response, url) {
-  const filters = {
-    companyId: url.searchParams.get("companyId") || undefined,
+  const actor = requireAuthenticatedUser(_request, response);
+  if (!actor) return;
+  const filters = actorScopeFilters(_request, {
     program: url.searchParams.get("program") || undefined,
     year: url.searchParams.get("year") || undefined,
     status: url.searchParams.get("status") || undefined,
-  };
+  });
   sendJson(response, 200, { data: listProgramManuals(filters), filters });
 }
 
 export async function handleProgramManualCreate(request, response) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
   let payload;
   try {
     payload = await readJsonBody(request);
@@ -848,7 +873,7 @@ export async function handleProgramManualCreate(request, response) {
     });
     return;
   }
-  if (!requireActorRole(response, payload, ["Supervision M&E"], "cargar manuales")) return;
+  if (!requireActorRole(response, actor, ["Supervision M&E"], "cargar manuales")) return;
 
   const uploadError = validatePayloadUploads(payload, "manual");
   if (uploadError) {
@@ -867,11 +892,13 @@ export async function handleProgramManualCreate(request, response) {
     return;
   }
 
-  const manual = createProgramManual({ ...payload, mimeType: "application/pdf" });
+  const manual = createProgramManual({ ...payloadWithActor(request, payload), mimeType: "application/pdf" });
   sendJson(response, 201, { data: manual });
 }
 
 export async function handleProgramManualDelete(request, response, manualId) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
   let payload = {};
   try {
     payload = await readOptionalJsonBody(request);
@@ -881,8 +908,8 @@ export async function handleProgramManualDelete(request, response, manualId) {
 
   try {
     const deleted = deleteProgramManual(manualId, {
-      actorId: payload.actorId,
-      actorRole: payload.actorRole,
+      actorId: actor.id,
+      actorRole: actor.primaryRole,
       reason: payload.reason || "Eliminado desde biblioteca de manuales.",
     });
     if (!deleted) {
@@ -924,6 +951,8 @@ export async function handleProgramManualFile(_request, response, manualId) {
 }
 
 export async function handleUploadCreate(request, response, url) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
   const kind = url.searchParams.get("kind") || "general";
   const fileName = url.searchParams.get("fileName") || "archivo";
   try {
@@ -949,22 +978,28 @@ export async function handleUploadFile(_request, response, url) {
 }
 
 export async function handleAttendanceParticipants(_request, response, url) {
-  const filters = {
+  const actor = requireAuthenticatedUser(_request, response);
+  if (!actor) return;
+  const filters = actorScopeFilters(_request, {
     program: url.searchParams.get("program") || undefined,
     status: url.searchParams.get("status") || undefined,
-  };
+  });
   sendJson(response, 200, { data: listAttendanceParticipants(filters), filters });
 }
 
 export async function handleAttendanceArchive(_request, response, url) {
-  const filters = {
+  const actor = requireAuthenticatedUser(_request, response);
+  if (!actor) return;
+  const filters = actorScopeFilters(_request, {
     program: url.searchParams.get("program") || undefined,
     type: url.searchParams.get("type") || undefined,
-  };
+  });
   sendJson(response, 200, { data: listAttendanceArchive(filters), filters });
 }
 
 export async function handleAttendanceParticipantCreate(request, response) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
   let payload;
   try {
     payload = await readJsonBody(request);
@@ -979,11 +1014,13 @@ export async function handleAttendanceParticipantCreate(request, response) {
     return;
   }
 
-  const participant = createAttendanceParticipant(payload);
+  const participant = createAttendanceParticipant(payloadWithActor(request, payload));
   sendJson(response, 201, { data: participant });
 }
 
 export async function handleAttendanceParticipantDelete(request, response, url) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
   let payload = {};
   try {
     payload = await readJsonBody(request);
@@ -993,8 +1030,8 @@ export async function handleAttendanceParticipantDelete(request, response, url) 
   const participantId = decodeURIComponent(url.pathname.split("/").pop() || "");
   try {
     const deleted = deleteAttendanceParticipant(participantId, {
-      actorId: payload.actorId,
-      actorRole: payload.actorRole,
+      actorId: actor.id,
+      actorRole: actor.primaryRole,
       reason: payload.reason,
     });
     if (!deleted) {
@@ -1008,6 +1045,8 @@ export async function handleAttendanceParticipantDelete(request, response, url) 
 }
 
 export async function handleAttendanceParticipantsDelete(request, response, url) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
   let payload = {};
   try {
     payload = await readJsonBody(request);
@@ -1021,8 +1060,8 @@ export async function handleAttendanceParticipantsDelete(request, response, url)
   }
   try {
     const result = deleteAttendanceParticipantsForProgram(program, {
-      actorId: payload.actorId,
-      actorRole: payload.actorRole,
+      actorId: actor.id,
+      actorRole: actor.primaryRole,
       reason: payload.reason,
     });
     sendJson(response, 200, { data: result });
@@ -1032,6 +1071,8 @@ export async function handleAttendanceParticipantsDelete(request, response, url)
 }
 
 export async function handleAttendanceProgramReset(request, response, url) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
   let payload = {};
   try {
     payload = await readJsonBody(request);
@@ -1045,8 +1086,8 @@ export async function handleAttendanceProgramReset(request, response, url) {
   }
   try {
     const result = resetAttendanceProgram(program, {
-      actorId: payload.actorId,
-      actorRole: payload.actorRole,
+      actorId: actor.id,
+      actorRole: actor.primaryRole,
       reason: payload.reason,
     });
     sendJson(response, 200, { data: result });
@@ -1056,16 +1097,20 @@ export async function handleAttendanceProgramReset(request, response, url) {
 }
 
 export async function handleAttendanceSessions(_request, response, url) {
-  const filters = {
+  const actor = requireAuthenticatedUser(_request, response);
+  if (!actor) return;
+  const filters = actorScopeFilters(_request, {
     program: url.searchParams.get("program") || undefined,
     weekStart: url.searchParams.get("weekStart") || undefined,
     center: url.searchParams.get("center") || undefined,
     period: url.searchParams.get("period") || undefined,
-  };
+  });
   sendJson(response, 200, { data: listAttendanceSessions(filters), filters });
 }
 
 export async function handleAttendanceSessionSave(request, response) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
   let payload;
   try {
     payload = await readJsonBody(request);
@@ -1081,7 +1126,7 @@ export async function handleAttendanceSessionSave(request, response) {
   }
 
   try {
-    const session = saveAttendanceSession(payload);
+    const session = saveAttendanceSession(payloadWithActor(request, payload));
     sendJson(response, 200, { data: session });
   } catch (error) {
     sendApiError(response, error);
@@ -1089,18 +1134,20 @@ export async function handleAttendanceSessionSave(request, response) {
 }
 
 export async function handleAttendanceSessionDelete(request, response, url) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
   let payload = {};
   try {
     payload = await readJsonBody(request);
   } catch {
     payload = {};
   }
-  const filters = {
+  const filters = actorScopeFilters(request, {
     program: url.searchParams.get("program") || payload.program,
     weekStart: url.searchParams.get("weekStart") || payload.weekStart,
     center: url.searchParams.get("center") || payload.center,
     period: url.searchParams.get("period") || payload.period,
-  };
+  });
   const required = requireFields(filters, ["program", "weekStart"]);
   if (required) {
     sendJson(response, 400, required);
@@ -1108,8 +1155,8 @@ export async function handleAttendanceSessionDelete(request, response, url) {
   }
   try {
     const deleted = deleteAttendanceSession(filters, {
-      actorId: payload.actorId,
-      actorRole: payload.actorRole,
+      actorId: actor.id,
+      actorRole: actor.primaryRole,
       reason: payload.reason,
     });
     if (!deleted) {
@@ -1123,12 +1170,16 @@ export async function handleAttendanceSessionDelete(request, response, url) {
 }
 
 export async function handleReportsList(request, response, url) {
-  const filters = parseFilters(url);
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
+  const filters = actorScopeFilters(request, parseFilters(url));
   const reports = filterReportsByScope(queryReports(filters), filters.scope);
   sendJson(response, 200, { data: reports, filters });
 }
 
 export async function handleReportCreate(request, response) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
   let payload;
   try {
     payload = await readJsonBody(request);
@@ -1150,11 +1201,13 @@ export async function handleReportCreate(request, response) {
     return;
   }
 
-  const report = createReport(payload);
+  const report = createReport(payloadWithActor(request, payload));
   sendJson(response, 201, { data: report });
 }
 
 export async function handleReportBulkCreate(request, response) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
   let payload;
   try {
     payload = await readJsonBody(request);
@@ -1179,11 +1232,13 @@ export async function handleReportBulkCreate(request, response) {
     return;
   }
 
-  const reports = createReportsBulk(items);
+  const reports = createReportsBulk(items.map((item) => payloadWithActor(request, item)));
   sendJson(response, 201, { data: reports, count: reports.length });
 }
 
 export async function handleReportDelete(request, response, reportId) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
   let payload;
   try {
     payload = await readJsonBody(request);
@@ -1194,8 +1249,8 @@ export async function handleReportDelete(request, response, reportId) {
 
   try {
     const deletedReport = deleteCorrectableReport(reportId, {
-      actorId: payload.actorId || null,
-      actorRole: payload.actorRole || null,
+      actorId: actor.id,
+      actorRole: actor.primaryRole,
       note: payload.note || null,
     });
     if (!deletedReport) {
@@ -1209,22 +1264,27 @@ export async function handleReportDelete(request, response, reportId) {
 }
 
 export async function handleDeletedReportsList(_request, response, url) {
-  const filters = parseFilters(url);
+  const actor = requireAuthenticatedUser(_request, response);
+  if (!actor) return;
+  const filters = actorScopeFilters(_request, parseFilters(url));
   sendJson(response, 200, { data: listDeletedReports(filters), filters });
 }
 
 export async function handleNotificationsList(_request, response, url) {
-  const filters = {
-    companyId: url.searchParams.get("companyId") || undefined,
+  const actor = requireAuthenticatedUser(_request, response);
+  if (!actor) return;
+  const filters = actorScopeFilters(_request, {
     programId: url.searchParams.get("programId") || undefined,
     reportId: url.searchParams.get("reportId") || undefined,
     recipientRole: url.searchParams.get("recipientRole") || undefined,
     status: url.searchParams.get("status") || undefined,
-  };
+  });
   sendJson(response, 200, { data: listNotifications(filters), filters });
 }
 
 export async function handleNotificationRead(request, response, notificationId) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
   let payload;
   try {
     payload = await readJsonBody(request);
@@ -1233,7 +1293,7 @@ export async function handleNotificationRead(request, response, notificationId) 
     return;
   }
 
-  const notification = markNotificationRead(notificationId, payload.actorId || null);
+  const notification = markNotificationRead(notificationId, actor.id);
   if (!notification) {
     sendJson(response, 404, { error: "No encontre la alerta solicitada." });
     return;
@@ -1243,16 +1303,52 @@ export async function handleNotificationRead(request, response, notificationId) 
 }
 
 export async function handleEmailOutboxList(_request, response, url) {
-  const filters = {
-    companyId: url.searchParams.get("companyId") || undefined,
+  const actor = requireAuthenticatedUser(_request, response);
+  if (!actor) return;
+  const filters = actorScopeFilters(_request, {
     programId: url.searchParams.get("programId") || undefined,
     reportId: url.searchParams.get("reportId") || undefined,
     status: url.searchParams.get("status") || undefined,
-  };
+  });
   sendJson(response, 200, { data: listEmailOutbox(filters), filters });
 }
 
+export async function handleFormSubmissionsList(request, response, url) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
+  const filters = actorScopeFilters(request, {
+    program: url.searchParams.get("program") || undefined,
+    period: url.searchParams.get("period") || undefined,
+    formId: url.searchParams.get("formId") || undefined,
+    processing: url.searchParams.get("processing") || undefined,
+    sourceType: url.searchParams.get("sourceType") || undefined,
+  });
+  sendJson(response, 200, { data: listFormSubmissions(filters), filters });
+}
+
+export async function handleFormSubmissionCreate(request, response) {
+  try {
+    const actor = requireAuthenticatedUser(request, response);
+    if (!actor) return;
+    const payload = await readJsonBody(request);
+    sendJson(response, 201, {
+      data: createFormSubmission({
+        ...payload,
+        importedBy: payload.importedBy || actor.email || actor.fullName || actor.id,
+        importedByRole: payload.importedByRole || actor.primaryRole,
+        organizationId: actor.organizationId,
+        companyId: actor.organizationId,
+        organizationName: actor.organizationName,
+      }),
+    });
+  } catch (error) {
+    sendApiError(response, error);
+  }
+}
+
 export async function handleReportStatusUpdate(request, response, reportId) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
   const report = findReportById(reportId);
   if (!report) {
     sendJson(response, 404, { error: "No encontre el reporte solicitado." });
@@ -1267,18 +1363,10 @@ export async function handleReportStatusUpdate(request, response, reportId) {
     return;
   }
 
-  if (!String(payload.actorId || "").trim()) {
-    sendJson(response, 400, {
-      error: "Debes indicar actorId para registrar la trazabilidad de revision.",
-      details: { field: "actorId" },
-    });
-    return;
-  }
-
   const validation = validateReportStatusChange({
     currentStatus: report.status,
     nextStatus: payload.status,
-    actorRole: payload.actorRole,
+    actorRole: actor.primaryRole,
     note: payload.note,
   });
 
@@ -1292,8 +1380,8 @@ export async function handleReportStatusUpdate(request, response, reportId) {
 
   const result = saveReportStatusDecision(reportId, {
     status: payload.status,
-    actorId: payload.actorId,
-    actorRole: payload.actorRole,
+    actorId: actor.id,
+    actorRole: actor.primaryRole,
     note: payload.note,
   });
 
@@ -1305,6 +1393,8 @@ export async function handleReportStatusUpdate(request, response, reportId) {
 }
 
 export async function handleReportStatusHistory(_request, response, reportId) {
+  const actor = requireAuthenticatedUser(_request, response);
+  if (!actor) return;
   const report = findReportById(reportId);
   const history = listReportStatusHistory(reportId);
   if (!report && !history.length) {
@@ -1316,21 +1406,75 @@ export async function handleReportStatusHistory(_request, response, reportId) {
 }
 
 export async function handleAnalyticsConfig(_request, response) {
+  const actor = requireAuthenticatedUser(_request, response);
+  if (!actor) return;
   sendJson(response, 200, { data: buildAnalyticsConfig() });
 }
 
 export async function handleAnalyticsOverview(_request, response, url) {
-  const filters = parseFilters(url);
+  const actor = requireAuthenticatedUser(_request, response);
+  if (!actor) return;
+  const filters = actorScopeFilters(_request, parseFilters(url));
   const visibleReports = queryReports(filters);
   const overview = buildAnalyticsOverview({
-    programs: listPrograms(),
-    indicators: listIndicators(),
+    programs: listPrograms(filters),
+    indicators: listIndicators(filters),
     reports: visibleReports,
     filters,
     scope: filters.scope,
   });
 
   sendJson(response, 200, { data: overview, filters });
+}
+
+export async function handleAnalyticsPowerBi(request, response, url) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
+  if (!requireActorRole(response, actor, ["Supervision M&E"], "exportar datos analiticos")) return;
+
+  const filters = actorScopeFilters(request, parseFilters(url));
+  const users = listAuthUsers(actor);
+  const programs = listPrograms(filters);
+  const programCenters = listProgramCenters(filters);
+  const indicators = listIndicators(filters);
+  const reports = queryReports(filters);
+  const deletedReports = listDeletedReports(filters);
+  const reportStatusHistory = listAllReportStatusHistory(filters);
+  const attendanceParticipants = listAttendanceParticipants(filters);
+  const attendanceSessions = listAttendanceSessions(filters);
+  const attendanceArchive = listAttendanceArchive(filters);
+  const formSubmissions = listFormSubmissions(filters);
+  const conceptPapers = listConceptPapers(filters);
+  const programManuals = listProgramManuals(filters);
+
+  sendJson(response, 200, {
+    data: buildPowerBiDataset({
+      organization: {
+        id: actor.organizationId,
+        name: actor.organizationName,
+      },
+      users,
+      programs,
+      programCenters,
+      indicators,
+      reports,
+      deletedReports,
+      reportStatusHistory,
+      attendanceParticipants,
+      attendanceSessions,
+      attendanceArchive,
+      formSubmissions,
+      conceptPapers,
+      programManuals,
+      generatedBy: {
+        id: actor.id,
+        email: actor.email,
+        role: actor.primaryRole,
+      },
+      filters,
+    }),
+    filters,
+  });
 }
 
 function apiIndex() {
@@ -1352,12 +1496,14 @@ function apiIndex() {
       "attendance/participants",
       "attendance/sessions",
       "attendance/archive",
+      "form-submissions",
       "reports",
       "reports/deleted",
       "notifications",
       "email-outbox",
       "analytics/config",
       "analytics/overview",
+      "analytics/power-bi",
       "auth/sign-in",
       "auth/request-password-reset",
       "auth/reset-password",
@@ -1370,7 +1516,53 @@ function apiIndex() {
 }
 
 function actorIdFrom(request, payload = {}) {
-  return request.headers["x-mel-actor-id"] || payload.actorId || null;
+  return request.melActor?.id || request.headers["x-mel-actor-id"] || payload.actorId || null;
+}
+
+function actorRoleFrom(request, payload = {}) {
+  return request.melActor?.primaryRole || payload.actorRole || null;
+}
+
+function sessionTokenFrom(request) {
+  return String(request.headers["x-mel-session-token"] || "").trim();
+}
+
+function actorScopeFilters(request, filters = {}) {
+  const organizationId = request.melActor?.organizationId || filters.organizationId || filters.companyId || undefined;
+  return {
+    ...filters,
+    organizationId,
+    companyId: organizationId,
+  };
+}
+
+function payloadWithActor(request, payload = {}) {
+  const organizationId =
+    request.melActor?.organizationId || payload.organizationId || payload.companyId || undefined;
+  return {
+    ...payload,
+    actorId: actorIdFrom(request, payload),
+    actorRole: actorRoleFrom(request, payload),
+    organizationId,
+    companyId: organizationId,
+    organizationName: request.melActor?.organizationName || payload.organizationName || undefined,
+  };
+}
+
+function requireAuthenticatedUser(request, response) {
+  if (request.melActor?.id) return request.melActor;
+  sendJson(response, 401, { error: "Necesitas iniciar sesion para usar la API." });
+  return null;
+}
+
+function requireActorRole(response, actor, allowedRoles = [], action = "realizar esta accion") {
+  const actorRole = String(actor?.primaryRole || "").trim();
+  if (allowedRoles.includes(actorRole)) return true;
+  sendJson(response, 403, {
+    error: `No tienes permiso para ${action}.`,
+    details: { actorRole: actorRole || null, allowedRoles },
+  });
+  return false;
 }
 
 function publicBaseUrlFrom(request, payload = {}) {
@@ -1424,6 +1616,34 @@ export async function handleAuthSignIn(request, response) {
   }
 }
 
+export async function handleAuthSession(request, response) {
+  const sessionToken = sessionTokenFrom(request);
+  if (!sessionToken) {
+    sendJson(response, 401, { error: "No hay una sesion activa." });
+    return;
+  }
+  const session = restoreAuthSession(sessionToken);
+  if (!session) {
+    sendJson(response, 401, { error: "La sesion ya no es valida." });
+    return;
+  }
+  sendJson(response, 200, {
+    user: session.user,
+    session: {
+      ...session.session,
+      token: sessionToken,
+    },
+  });
+}
+
+export async function handleAuthSignOut(request, response) {
+  const sessionToken = sessionTokenFrom(request);
+  if (sessionToken) {
+    signOutAuthSession(sessionToken);
+  }
+  sendEmpty(response, 204);
+}
+
 export async function handleAuthPasswordResetRequest(request, response) {
   try {
     const payload = await readJsonBody(request);
@@ -1458,14 +1678,19 @@ export async function handleAuthPasswordChange(request, response) {
   }
 }
 
-export async function handleAuthUsersList(_request, response) {
-  sendJson(response, 200, { users: listAuthUsers() });
+export async function handleAuthUsersList(request, response) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
+  if (!requireActorRole(response, actor, ["Supervision M&E"], "ver usuarios")) return;
+  sendJson(response, 200, { users: listAuthUsers(actor) });
 }
 
 export async function handleAuthUserCreate(request, response) {
   try {
+    const actor = requireAuthenticatedUser(request, response);
+    if (!actor) return;
     const payload = await readJsonBody(request);
-    sendJson(response, 201, { user: createManagedAuthUser(payload, actorIdFrom(request, payload)) });
+    sendJson(response, 201, { user: createManagedAuthUser(payload, actor) });
   } catch (error) {
     sendApiError(response, error);
   }
@@ -1473,9 +1698,11 @@ export async function handleAuthUserCreate(request, response) {
 
 export async function handleAuthUserUpdate(request, response, userId) {
   try {
+    const actor = requireAuthenticatedUser(request, response);
+    if (!actor) return;
     const payload = await readJsonBody(request);
     sendJson(response, 200, {
-      user: updateManagedAuthUser(userId, payload, actorIdFrom(request, payload)),
+      user: updateManagedAuthUser(userId, payload, actor),
     });
   } catch (error) {
     sendApiError(response, error);
@@ -1484,8 +1711,10 @@ export async function handleAuthUserUpdate(request, response, userId) {
 
 export async function handleAuthUserDelete(request, response, userId) {
   try {
+    const actor = requireAuthenticatedUser(request, response);
+    if (!actor) return;
     const payload = await readJsonBody(request);
-    sendJson(response, 200, deleteManagedAuthUser(userId, actorIdFrom(request, payload)));
+    sendJson(response, 200, deleteManagedAuthUser(userId, actor));
   } catch (error) {
     sendApiError(response, error);
   }
@@ -1512,6 +1741,16 @@ async function router(request, response) {
 
   if (request.method === "POST" && pathname === "/api/v1/auth/sign-in") {
     await handleAuthSignIn(request, response);
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/v1/auth/session") {
+    await handleAuthSession(request, response);
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/v1/auth/sign-out") {
+    await handleAuthSignOut(request, response);
     return;
   }
 
@@ -1713,6 +1952,16 @@ async function router(request, response) {
     return;
   }
 
+  if (request.method === "GET" && pathname === "/api/v1/form-submissions") {
+    await handleFormSubmissionsList(request, response, url);
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/v1/form-submissions") {
+    await handleFormSubmissionCreate(request, response);
+    return;
+  }
+
   if (request.method === "GET" && pathname === "/api/v1/reports") {
     await handleReportsList(request, response, url);
     return;
@@ -1762,6 +2011,11 @@ async function router(request, response) {
 
   if (request.method === "GET" && pathname === "/api/v1/analytics/overview") {
     await handleAnalyticsOverview(request, response, url);
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/v1/analytics/power-bi") {
+    await handleAnalyticsPowerBi(request, response, url);
     return;
   }
 
