@@ -1,5 +1,5 @@
 ﻿import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260525a";
+import { $, $$, elements } from "../core/dom.js?v=20260525b";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260525a";
+} from "../services/auth-service.js?v=20260525b";
 import {
   apiFileUrl,
   createApiConceptPaper,
@@ -59,7 +59,7 @@ import {
   updateApiProgram,
   updateApiProgramCenter,
   uploadApiFile,
-} from "../services/mel-api.js?v=20260525a";
+} from "../services/mel-api.js?v=20260525b";
 import {
   currentMonth,
   escapeHtml,
@@ -5517,28 +5517,52 @@ function bindEvents() {
 }
 
 export function createMonitoringApp() {
+  async function syncStartupData() {
+    const tasks = [
+      refreshConceptPapersFromApi(),
+      refreshProgramCentersFromApi(),
+      refreshProgramManualsFromApi(),
+      refreshAttendanceFromApi(),
+    ];
+    const results = await Promise.allSettled(tasks);
+    const failures = results.filter((result) => result.status === "rejected");
+    failures.forEach((result) => {
+      console.error(result.reason);
+    });
+    return failures.length === 0;
+  }
+
   return {
     async start(authenticatedUser = null) {
       hydrateState();
-      await syncAuthenticatedAccess(authenticatedUser);
-      await refreshConceptPapersFromApi();
-      await refreshProgramCentersFromApi();
-      await refreshProgramManualsFromApi();
-      await refreshAttendanceFromApi();
+      try {
+        await syncAuthenticatedAccess(authenticatedUser);
+      } catch (error) {
+        console.error(error);
+      }
+      await syncStartupData();
       renderAll();
       bindEvents();
       window.addEventListener("mel:state-synced", () => {
         hydrateState();
-        void syncAuthenticatedAccess().then(renderAll);
+        void (async () => {
+          try {
+            await syncAuthenticatedAccess();
+          } catch (error) {
+            console.error(error);
+          }
+          renderAll();
+        })();
       });
     },
     async syncAccess(authenticatedUser = null) {
       hydrateState();
-      await syncAuthenticatedAccess(authenticatedUser);
-      await refreshConceptPapersFromApi();
-      await refreshProgramCentersFromApi();
-      await refreshProgramManualsFromApi();
-      await refreshAttendanceFromApi();
+      try {
+        await syncAuthenticatedAccess(authenticatedUser);
+      } catch (error) {
+        console.error(error);
+      }
+      await syncStartupData();
       renderAll();
     },
     lock() {
