@@ -7,6 +7,7 @@ import { REPORT_STATUSES, reviewRoleForStatus } from "../../../shared/contracts/
 const STORE_VERSION = 1;
 const DEFAULT_COMPANY_ID = "org-convoy-of-hope";
 const DEFAULT_COMPANY_NAME = "Convoy of Hope";
+const LEGACY_DEFAULT_COMPANY_IDS = new Set(["org-default"]);
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const defaultDataDir = path.resolve(dirname, "..", "..", "data");
 const dataDir = process.env.MEL_DATA_DIR || process.env.RAILWAY_VOLUME_MOUNT_PATH || defaultDataDir;
@@ -28,6 +29,32 @@ function asNumber(value, fallback = 0) {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function normalizeOrganizationId(value, fallback = DEFAULT_COMPANY_ID) {
+  const normalized = String(value || "").trim();
+  if (!normalized || LEGACY_DEFAULT_COMPANY_IDS.has(normalized)) {
+    return fallback;
+  }
+  return normalized;
+}
+
+function normalizeOrganizationName(organizationId, value, fallback = DEFAULT_COMPANY_NAME) {
+  const normalized = String(value || "").trim();
+  if (!normalized) return fallback;
+  return normalizeOrganizationId(organizationId) === DEFAULT_COMPANY_ID ? DEFAULT_COMPANY_NAME : normalized;
+}
+
+function hasLegacyDefaultOrganization(items = []) {
+  return Array.isArray(items)
+    ? items.some(
+        (item) =>
+          item &&
+          typeof item === "object" &&
+          (LEGACY_DEFAULT_COMPANY_IDS.has(String(item.companyId || "").trim()) ||
+            LEGACY_DEFAULT_COMPANY_IDS.has(String(item.organizationId || "").trim())),
+      )
+    : false;
 }
 
 const seededPrograms = seedState.programs.map((program) => ({
@@ -93,9 +120,9 @@ function normalizedConceptPaper(input = {}) {
   const expectedResults = Array.isArray(programInfo.expectedResults) ? programInfo.expectedResults.filter(Boolean) : [];
   return {
     id: String(input.id || `cp-${slugify(program || fileName)}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`),
-    companyId: String(input.companyId || input.organizationId || DEFAULT_COMPANY_ID),
-    organizationId: String(input.organizationId || input.companyId || DEFAULT_COMPANY_ID),
-    organizationName: String(input.organizationName || DEFAULT_COMPANY_NAME),
+    companyId: normalizeOrganizationId(input.companyId || input.organizationId),
+    organizationId: normalizeOrganizationId(input.organizationId || input.companyId),
+    organizationName: normalizeOrganizationName(input.organizationId || input.companyId, input.organizationName),
     program,
     title,
     presenter: String(input.presenter || input.uploadedBy || "Equipo M&E"),
@@ -125,9 +152,9 @@ function normalizedProgramManual(input = {}) {
   const fileName = String(input.fileName || input.name || "manual.pdf");
   return {
     id: String(input.id || `manual-${slugify(program || fileName)}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`),
-    companyId: String(input.companyId || input.organizationId || DEFAULT_COMPANY_ID),
-    organizationId: String(input.organizationId || input.companyId || DEFAULT_COMPANY_ID),
-    organizationName: String(input.organizationName || DEFAULT_COMPANY_NAME),
+    companyId: normalizeOrganizationId(input.companyId || input.organizationId),
+    organizationId: normalizeOrganizationId(input.organizationId || input.companyId),
+    organizationName: normalizeOrganizationName(input.organizationId || input.companyId, input.organizationName),
     program,
     title: String(input.title || fileName || "Manual de programa"),
     fileName,
@@ -286,6 +313,15 @@ function hydratePersistentStore() {
     persistStore();
     return;
   }
+  let shouldPersistAfterMigration = false;
+  if (
+    hasLegacyDefaultOrganization(stored.conceptPapers) ||
+    hasLegacyDefaultOrganization(stored.programManuals) ||
+    hasLegacyDefaultOrganization(stored.reports) ||
+    hasLegacyDefaultOrganization(stored.formSubmissions)
+  ) {
+    shouldPersistAfterMigration = true;
+  }
 
   if (Array.isArray(stored.programs) && stored.programs.length) replaceArray(programs, stored.programs);
   if (Array.isArray(stored.indicators) && stored.indicators.length) replaceArray(indicators, stored.indicators);
@@ -323,6 +359,9 @@ function hydratePersistentStore() {
   replaceArray(attendanceArchive, Array.isArray(stored.attendanceArchive) ? stored.attendanceArchive : []);
   replaceArray(notifications, Array.isArray(stored.notifications) ? stored.notifications : []);
   replaceArray(emailOutbox, Array.isArray(stored.emailOutbox) ? stored.emailOutbox : []);
+  if (shouldPersistAfterMigration) {
+    persistStore();
+  }
 }
 
 function normalizedReport(input = {}) {
@@ -335,9 +374,9 @@ function normalizedReport(input = {}) {
   };
   return {
     id: String(input.id || `rep-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`),
-    companyId: String(input.companyId || DEFAULT_COMPANY_ID),
-    organizationId: String(input.organizationId || input.companyId || DEFAULT_COMPANY_ID),
-    organizationName: String(input.organizationName || DEFAULT_COMPANY_NAME),
+    companyId: normalizeOrganizationId(input.companyId),
+    organizationId: normalizeOrganizationId(input.organizationId || input.companyId),
+    organizationName: normalizeOrganizationName(input.organizationId || input.companyId, input.organizationName),
     date: String(input.date || timestamp.slice(0, 10)),
     period: String(input.period || timestamp.slice(0, 7)),
     program: String(input.program || ""),
@@ -402,9 +441,9 @@ function normalizedFormSubmission(input = {}) {
 
   return {
     id: String(input.id || `sub-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`),
-    companyId: String(input.companyId || input.organizationId || DEFAULT_COMPANY_ID),
-    organizationId: String(input.organizationId || input.companyId || DEFAULT_COMPANY_ID),
-    organizationName: String(input.organizationName || DEFAULT_COMPANY_NAME),
+    companyId: normalizeOrganizationId(input.companyId || input.organizationId),
+    organizationId: normalizeOrganizationId(input.organizationId || input.companyId),
+    organizationName: normalizeOrganizationName(input.organizationId || input.companyId, input.organizationName),
     fileName: normalizeString(input.fileName, "formulario.csv"),
     formId: input.formId || null,
     formTitle: normalizeString(input.formTitle, input.fileName || "Formulario importado"),
