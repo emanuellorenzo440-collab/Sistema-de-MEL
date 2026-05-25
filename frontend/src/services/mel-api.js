@@ -383,6 +383,70 @@ export async function createApiFormSubmission(submission) {
   return response.data;
 }
 
+export async function fetchApiChatConversations(filters = {}) {
+  const response = await requestJson("chat/conversations", {}, filters);
+  return response.data || [];
+}
+
+export async function createApiChatConversation(conversation) {
+  const response = await requestJson("chat/conversations", {
+    method: "POST",
+    body: JSON.stringify(conversation),
+  });
+  return response.data;
+}
+
+export async function fetchApiChatConversation(conversationId) {
+  const response = await requestJson("chat/conversations/" + encodeURIComponent(conversationId));
+  return response.data;
+}
+
+export async function fetchApiChatMessages(conversationId, filters = {}) {
+  return requestJson("chat/conversations/" + encodeURIComponent(conversationId) + "/messages", {}, filters);
+}
+
+export async function createApiChatMessage(conversationId, message) {
+  const response = await requestJson("chat/conversations/" + encodeURIComponent(conversationId) + "/messages", {
+    method: "POST",
+    body: JSON.stringify(message),
+  });
+  return response.data;
+}
+
+export async function markApiChatConversationRead(conversationId, payload) {
+  const response = await requestJson("chat/conversations/" + encodeURIComponent(conversationId) + "/read", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function addApiChatParticipants(conversationId, payload) {
+  const response = await requestJson("chat/conversations/" + encodeURIComponent(conversationId) + "/participants", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function removeApiChatParticipant(conversationId, userId) {
+  const response = await requestJson(
+    "chat/conversations/" + encodeURIComponent(conversationId) + "/participants/" + encodeURIComponent(userId),
+    { method: "DELETE" },
+  );
+  return response.data;
+}
+
+export async function fetchApiChatUnreadCount() {
+  const response = await requestJson("chat/unread-count");
+  return response.data;
+}
+
+export async function searchApiChat(query) {
+  const response = await requestJson("chat/search", {}, { q: query });
+  return response.data || { conversations: [], messages: [] };
+}
+
 export async function createApiReport(report) {
   const response = await requestJson("reports", {
     method: "POST",

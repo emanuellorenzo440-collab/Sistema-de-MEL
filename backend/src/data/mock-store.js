@@ -186,6 +186,11 @@ const attendanceSessions = [];
 const attendanceArchive = [];
 const notifications = [];
 const emailOutbox = [];
+const chatConversations = [];
+const chatParticipants = [];
+const chatMessages = [];
+const chatReads = [];
+const chatNotifications = [];
 function attendanceProgramNames() {
   const names = programs.map((program) => normalizeString(program.name)).filter(Boolean);
   return names.length ? names : ["Programa general"];
@@ -298,6 +303,11 @@ function snapshotStore() {
     attendanceArchive,
     notifications,
     emailOutbox,
+    chatConversations,
+    chatParticipants,
+    chatMessages,
+    chatReads,
+    chatNotifications,
     updatedAt: nowIso(),
   };
 }
@@ -359,6 +369,11 @@ function hydratePersistentStore() {
   replaceArray(attendanceArchive, Array.isArray(stored.attendanceArchive) ? stored.attendanceArchive : []);
   replaceArray(notifications, Array.isArray(stored.notifications) ? stored.notifications : []);
   replaceArray(emailOutbox, Array.isArray(stored.emailOutbox) ? stored.emailOutbox : []);
+  replaceArray(chatConversations, Array.isArray(stored.chatConversations) ? stored.chatConversations.map(normalizedChatConversation) : []);
+  replaceArray(chatParticipants, Array.isArray(stored.chatParticipants) ? stored.chatParticipants.map(normalizedChatParticipant) : []);
+  replaceArray(chatMessages, Array.isArray(stored.chatMessages) ? stored.chatMessages.map(normalizedChatMessage) : []);
+  replaceArray(chatReads, Array.isArray(stored.chatReads) ? stored.chatReads.map(normalizedChatRead) : []);
+  replaceArray(chatNotifications, Array.isArray(stored.chatNotifications) ? stored.chatNotifications.map(normalizedChatNotification) : []);
   if (shouldPersistAfterMigration) {
     persistStore();
   }
@@ -715,6 +730,143 @@ function normalizeStringList(value) {
     .split(",")
     .map((item) => normalizeString(item))
     .filter(Boolean);
+}
+
+function normalizeBoolean(value, fallback = false) {
+  return value === undefined ? Boolean(fallback) : Boolean(value);
+}
+
+function normalizedChatConversation(input = {}, existing = {}) {
+  const timestamp = nowIso();
+  return {
+    id: normalizeString(input.id, existing.id || `chat-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`),
+    companyId: normalizeString(input.companyId, existing.companyId || DEFAULT_COMPANY_ID),
+    organizationId: normalizeString(
+      input.organizationId,
+      existing.organizationId || input.companyId || existing.companyId || DEFAULT_COMPANY_ID,
+    ),
+    organizationName: normalizeString(input.organizationName, existing.organizationName || DEFAULT_COMPANY_NAME),
+    type: normalizeString(input.type, existing.type || "direct"),
+    title: normalizeString(input.title, existing.title || ""),
+    description: normalizeString(input.description, existing.description || ""),
+    contextType: normalizeString(input.contextType, existing.contextType || ""),
+    contextId: normalizeString(input.contextId, existing.contextId || ""),
+    createdByUserId: normalizeString(input.createdByUserId, existing.createdByUserId || ""),
+    isArchived: normalizeBoolean(input.isArchived, existing.isArchived || false),
+    lastMessageAt: normalizeString(input.lastMessageAt, existing.lastMessageAt || input.createdAt || timestamp),
+    createdAt: existing.createdAt || input.createdAt || timestamp,
+    updatedAt: input.updatedAt || timestamp,
+  };
+}
+
+function normalizedChatParticipant(input = {}, existing = {}) {
+  const timestamp = nowIso();
+  return {
+    id: normalizeString(input.id, existing.id || `chatp-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`),
+    companyId: normalizeString(input.companyId, existing.companyId || DEFAULT_COMPANY_ID),
+    organizationId: normalizeString(
+      input.organizationId,
+      existing.organizationId || input.companyId || existing.companyId || DEFAULT_COMPANY_ID,
+    ),
+    organizationName: normalizeString(input.organizationName, existing.organizationName || DEFAULT_COMPANY_NAME),
+    conversationId: normalizeString(input.conversationId, existing.conversationId || ""),
+    userId: normalizeString(input.userId, existing.userId || ""),
+    participantRole: normalizeString(input.participantRole, existing.participantRole || "member"),
+    canSendMessages: normalizeBoolean(input.canSendMessages, existing.canSendMessages !== false),
+    canAddPeople: normalizeBoolean(input.canAddPeople, existing.canAddPeople || false),
+    canRemovePeople: normalizeBoolean(input.canRemovePeople, existing.canRemovePeople || false),
+    isMuted: normalizeBoolean(input.isMuted, existing.isMuted || false),
+    joinedAt: existing.joinedAt || input.joinedAt || timestamp,
+    leftAt: input.leftAt === null ? null : normalizeString(input.leftAt, existing.leftAt || ""),
+    createdAt: existing.createdAt || input.createdAt || timestamp,
+    updatedAt: input.updatedAt || timestamp,
+  };
+}
+
+function normalizedChatAttachment(input = {}) {
+  return {
+    id: normalizeString(input.id, `chata-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`),
+    organizationId: normalizeString(input.organizationId, input.companyId || DEFAULT_COMPANY_ID),
+    companyId: normalizeString(input.companyId, input.organizationId || DEFAULT_COMPANY_ID),
+    fileName: normalizeString(input.fileName || input.name, "archivo"),
+    originalFileName: normalizeString(input.originalFileName || input.fileName || input.name, "archivo"),
+    mimeType: normalizeString(input.mimeType || input.type, "application/octet-stream"),
+    fileSizeBytes: asNumber(input.fileSizeBytes ?? input.size, 0),
+    storagePath: normalizeString(input.storagePath || input.path, ""),
+    fileUrl: normalizeString(input.fileUrl, ""),
+    uploadedByUserId: normalizeString(input.uploadedByUserId || input.uploadedBy, ""),
+    createdAt: normalizeString(input.createdAt, nowIso()),
+  };
+}
+
+function normalizedChatMessage(input = {}, existing = {}) {
+  const timestamp = nowIso();
+  return {
+    id: normalizeString(input.id, existing.id || `msg-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`),
+    companyId: normalizeString(input.companyId, existing.companyId || DEFAULT_COMPANY_ID),
+    organizationId: normalizeString(
+      input.organizationId,
+      existing.organizationId || input.companyId || existing.companyId || DEFAULT_COMPANY_ID,
+    ),
+    organizationName: normalizeString(input.organizationName, existing.organizationName || DEFAULT_COMPANY_NAME),
+    conversationId: normalizeString(input.conversationId, existing.conversationId || ""),
+    senderUserId: normalizeString(input.senderUserId, existing.senderUserId || ""),
+    messageType: normalizeString(input.messageType, existing.messageType || "text"),
+    body: String(input.body ?? existing.body ?? "").trim(),
+    replyToMessageId: normalizeString(input.replyToMessageId, existing.replyToMessageId || ""),
+    attachments: Array.isArray(input.attachments)
+      ? input.attachments.map(normalizedChatAttachment)
+      : Array.isArray(existing.attachments)
+        ? existing.attachments.map(normalizedChatAttachment)
+        : [],
+    isEdited: normalizeBoolean(input.isEdited, existing.isEdited || false),
+    editedAt: input.editedAt === null ? null : normalizeString(input.editedAt, existing.editedAt || ""),
+    isDeleted: normalizeBoolean(input.isDeleted, existing.isDeleted || false),
+    deletedAt: input.deletedAt === null ? null : normalizeString(input.deletedAt, existing.deletedAt || ""),
+    createdAt: existing.createdAt || input.createdAt || timestamp,
+    updatedAt: input.updatedAt || timestamp,
+  };
+}
+
+function normalizedChatRead(input = {}, existing = {}) {
+  const timestamp = nowIso();
+  return {
+    id: normalizeString(input.id, existing.id || `read-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`),
+    companyId: normalizeString(input.companyId, existing.companyId || DEFAULT_COMPANY_ID),
+    organizationId: normalizeString(
+      input.organizationId,
+      existing.organizationId || input.companyId || existing.companyId || DEFAULT_COMPANY_ID,
+    ),
+    organizationName: normalizeString(input.organizationName, existing.organizationName || DEFAULT_COMPANY_NAME),
+    conversationId: normalizeString(input.conversationId, existing.conversationId || ""),
+    messageId: normalizeString(input.messageId, existing.messageId || ""),
+    userId: normalizeString(input.userId, existing.userId || ""),
+    deliveredAt: normalizeString(input.deliveredAt, existing.deliveredAt || timestamp),
+    readAt: normalizeString(input.readAt, existing.readAt || timestamp),
+    createdAt: existing.createdAt || input.createdAt || timestamp,
+    updatedAt: input.updatedAt || timestamp,
+  };
+}
+
+function normalizedChatNotification(input = {}, existing = {}) {
+  const timestamp = nowIso();
+  return {
+    id: normalizeString(input.id, existing.id || `chatn-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`),
+    companyId: normalizeString(input.companyId, existing.companyId || DEFAULT_COMPANY_ID),
+    organizationId: normalizeString(
+      input.organizationId,
+      existing.organizationId || input.companyId || existing.companyId || DEFAULT_COMPANY_ID,
+    ),
+    organizationName: normalizeString(input.organizationName, existing.organizationName || DEFAULT_COMPANY_NAME),
+    userId: normalizeString(input.userId, existing.userId || ""),
+    conversationId: normalizeString(input.conversationId, existing.conversationId || ""),
+    messageId: normalizeString(input.messageId, existing.messageId || ""),
+    notificationType: normalizeString(input.notificationType, existing.notificationType || "new_message"),
+    isSeen: normalizeBoolean(input.isSeen, existing.isSeen || false),
+    seenAt: input.seenAt === null ? null : normalizeString(input.seenAt, existing.seenAt || ""),
+    createdAt: existing.createdAt || input.createdAt || timestamp,
+    updatedAt: input.updatedAt || timestamp,
+  };
 }
 
 function normalizeExpectedResults(value) {
@@ -1612,4 +1764,372 @@ export function listEmailOutbox(filters = {}) {
       return true;
     })
     .map((email) => structuredClone(email));
+}
+
+function conversationParticipants(conversationId) {
+  return chatParticipants.filter((participant) => participant.conversationId === conversationId && !participant.leftAt);
+}
+
+function latestConversationMessage(conversationId) {
+  return chatMessages
+    .filter((message) => message.conversationId === conversationId && !message.isDeleted)
+    .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)))[0] || null;
+}
+
+function readKey(conversationId, messageId, userId) {
+  return `${conversationId}::${messageId}::${userId}`;
+}
+
+export function findChatConversationById(conversationId, filters = {}) {
+  const { companyId, organizationId, participantUserId } = filters;
+  const conversation = chatConversations.find((item) => item.id === conversationId);
+  if (!conversation) return null;
+  const scopedOrganizationId = organizationId || companyId;
+  if (scopedOrganizationId && (conversation.organizationId || conversation.companyId || DEFAULT_COMPANY_ID) !== scopedOrganizationId) {
+    return null;
+  }
+  if (participantUserId) {
+    const isParticipant = chatParticipants.some(
+      (participant) =>
+        participant.conversationId === conversation.id && participant.userId === participantUserId && !participant.leftAt,
+    );
+    if (!isParticipant) return null;
+  }
+  return structuredClone(conversation);
+}
+
+export function listChatParticipants(filters = {}) {
+  const { companyId, organizationId, conversationId, userId, activeOnly = true } = filters;
+  return chatParticipants
+    .filter((participant) => {
+      const scopedOrganizationId = organizationId || companyId;
+      if (scopedOrganizationId && (participant.organizationId || participant.companyId || DEFAULT_COMPANY_ID) !== scopedOrganizationId) return false;
+      if (conversationId && participant.conversationId !== conversationId) return false;
+      if (userId && participant.userId !== userId) return false;
+      if (activeOnly && participant.leftAt) return false;
+      return true;
+    })
+    .map((participant) => structuredClone(participant));
+}
+
+export function listChatConversations(filters = {}) {
+  const {
+    companyId,
+    organizationId,
+    participantUserId,
+    type,
+    contextType,
+    contextId,
+    unreadOnly = false,
+    includeArchived = false,
+  } = filters;
+  return chatConversations
+    .filter((conversation) => {
+      const scopedOrganizationId = organizationId || companyId;
+      if (scopedOrganizationId && (conversation.organizationId || conversation.companyId || DEFAULT_COMPANY_ID) !== scopedOrganizationId) return false;
+      if (!includeArchived && conversation.isArchived) return false;
+      if (type && conversation.type !== type) return false;
+      if (contextType && conversation.contextType !== contextType) return false;
+      if (contextId && conversation.contextId !== contextId) return false;
+      if (participantUserId) {
+        const isParticipant = chatParticipants.some(
+          (participant) =>
+            participant.conversationId === conversation.id && participant.userId === participantUserId && !participant.leftAt,
+        );
+        if (!isParticipant) return false;
+        if (unreadOnly) {
+          const hasUnread = chatMessages.some((message) => {
+            if (message.conversationId !== conversation.id || message.isDeleted) return false;
+            if (message.senderUserId === participantUserId) return false;
+            const seen = chatReads.some(
+              (entry) =>
+                entry.conversationId === conversation.id &&
+                entry.messageId === message.id &&
+                entry.userId === participantUserId,
+            );
+            return !seen;
+          });
+          if (!hasUnread) return false;
+        }
+      }
+      return true;
+    })
+    .map((conversation) => {
+      const participants = conversationParticipants(conversation.id).map((participant) => structuredClone(participant));
+      const lastMessage = latestConversationMessage(conversation.id);
+      const unreadCount = participantUserId
+        ? chatMessages.filter((message) => {
+            if (message.conversationId !== conversation.id || message.isDeleted) return false;
+            if (message.senderUserId === participantUserId) return false;
+            return !chatReads.some(
+              (entry) =>
+                entry.conversationId === conversation.id &&
+                entry.messageId === message.id &&
+                entry.userId === participantUserId,
+            );
+          }).length
+        : 0;
+      return {
+        ...structuredClone(conversation),
+        participants,
+        lastMessagePreview: lastMessage ? String(lastMessage.body || "").slice(0, 160) : "",
+        lastMessageAt: lastMessage?.createdAt || conversation.lastMessageAt || conversation.updatedAt,
+        unreadCount,
+      };
+    })
+    .sort((left, right) => String(right.lastMessageAt || "").localeCompare(String(left.lastMessageAt || "")));
+}
+
+export function createChatConversation(input = {}) {
+  const timestamp = nowIso();
+  const conversation = normalizedChatConversation({
+    ...input,
+    lastMessageAt: input.lastMessageAt || timestamp,
+    createdAt: input.createdAt || timestamp,
+    updatedAt: timestamp,
+  });
+  const requestedParticipants = [
+    conversation.createdByUserId,
+    ...(Array.isArray(input.participantUserIds) ? input.participantUserIds : []),
+  ]
+    .map((item) => normalizeString(item))
+    .filter(Boolean);
+  const uniqueParticipantIds = [...new Set(requestedParticipants)];
+  chatConversations.unshift(conversation);
+  uniqueParticipantIds.forEach((userId, index) => {
+    chatParticipants.push(
+      normalizedChatParticipant({
+        organizationId: conversation.organizationId,
+        companyId: conversation.companyId,
+        organizationName: conversation.organizationName,
+        conversationId: conversation.id,
+        userId,
+        participantRole: userId === conversation.createdByUserId ? "owner" : index === 0 ? "admin" : "member",
+        canSendMessages: true,
+        canAddPeople: userId === conversation.createdByUserId,
+        canRemovePeople: userId === conversation.createdByUserId,
+        joinedAt: timestamp,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }),
+    );
+  });
+  persistStore();
+  return findChatConversationById(conversation.id, { organizationId: conversation.organizationId });
+}
+
+export function addChatParticipants(conversationId, input = {}) {
+  const conversation = chatConversations.find((item) => item.id === conversationId);
+  if (!conversation) return null;
+  const timestamp = nowIso();
+  const requestedParticipantIds = (Array.isArray(input.participantUserIds) ? input.participantUserIds : [])
+    .map((item) => normalizeString(item))
+    .filter(Boolean);
+  const added = [];
+  requestedParticipantIds.forEach((userId) => {
+    const existing = chatParticipants.find(
+      (participant) => participant.conversationId === conversationId && participant.userId === userId,
+    );
+    if (existing) {
+      existing.leftAt = null;
+      existing.updatedAt = timestamp;
+      added.push(structuredClone(existing));
+      return;
+    }
+    const participant = normalizedChatParticipant({
+      organizationId: conversation.organizationId,
+      companyId: conversation.companyId,
+      organizationName: conversation.organizationName,
+      conversationId,
+      userId,
+      participantRole: "member",
+      canSendMessages: true,
+      canAddPeople: false,
+      canRemovePeople: false,
+      joinedAt: timestamp,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
+    chatParticipants.push(participant);
+    added.push(structuredClone(participant));
+  });
+  conversation.updatedAt = timestamp;
+  persistStore();
+  return added;
+}
+
+export function removeChatParticipant(conversationId, userId) {
+  const participant = chatParticipants.find(
+    (item) => item.conversationId === conversationId && item.userId === userId && !item.leftAt,
+  );
+  if (!participant) return null;
+  const timestamp = nowIso();
+  participant.leftAt = timestamp;
+  participant.updatedAt = timestamp;
+  const conversation = chatConversations.find((item) => item.id === conversationId);
+  if (conversation) {
+    conversation.updatedAt = timestamp;
+  }
+  persistStore();
+  return structuredClone(participant);
+}
+
+export function listChatMessages(filters = {}) {
+  const { companyId, organizationId, conversationId, before, limit = 50 } = filters;
+  const scopedLimit = Math.max(1, Math.min(200, Number(limit) || 50));
+  const sortedMessages = chatMessages
+    .filter((message) => {
+      const scopedOrganizationId = organizationId || companyId;
+      if (scopedOrganizationId && (message.organizationId || message.companyId || DEFAULT_COMPANY_ID) !== scopedOrganizationId) return false;
+      if (conversationId && message.conversationId !== conversationId) return false;
+      if (before && String(message.createdAt) >= String(before)) return false;
+      return true;
+    })
+    .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)))
+    .slice(0, scopedLimit)
+    .reverse();
+
+  return sortedMessages.map((message) => ({
+    ...structuredClone(message),
+    readBy: chatReads
+      .filter((entry) => entry.conversationId === message.conversationId && entry.messageId === message.id)
+      .map((entry) => ({
+        userId: entry.userId,
+        readAt: entry.readAt,
+      })),
+  }));
+}
+
+export function createChatMessage(conversationId, input = {}) {
+  const conversation = chatConversations.find((item) => item.id === conversationId);
+  if (!conversation) return null;
+  const timestamp = nowIso();
+  const message = normalizedChatMessage({
+    ...input,
+    conversationId,
+    organizationId: input.organizationId || conversation.organizationId,
+    companyId: input.companyId || conversation.companyId,
+    organizationName: input.organizationName || conversation.organizationName,
+    createdAt: input.createdAt || timestamp,
+    updatedAt: timestamp,
+  });
+  chatMessages.push(message);
+  conversation.lastMessageAt = message.createdAt;
+  conversation.updatedAt = timestamp;
+
+  const activeParticipants = conversationParticipants(conversationId);
+  activeParticipants
+    .filter((participant) => participant.userId !== message.senderUserId)
+    .forEach((participant) => {
+      chatNotifications.push(
+        normalizedChatNotification({
+          organizationId: conversation.organizationId,
+          companyId: conversation.companyId,
+          organizationName: conversation.organizationName,
+          userId: participant.userId,
+          conversationId,
+          messageId: message.id,
+          notificationType: "new_message",
+          isSeen: false,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        }),
+      );
+    });
+  persistStore();
+  return structuredClone(message);
+}
+
+export function markChatConversationRead(conversationId, input = {}) {
+  const timestamp = nowIso();
+  const userId = normalizeString(input.userId);
+  const lastReadMessageId = normalizeString(input.lastReadMessageId);
+  if (!userId || !lastReadMessageId) return null;
+  const targetMessage = chatMessages.find((message) => message.conversationId === conversationId && message.id === lastReadMessageId);
+  if (!targetMessage) return null;
+  const seenKeys = new Set(chatReads.map((entry) => readKey(entry.conversationId, entry.messageId, entry.userId)));
+  chatMessages
+    .filter((message) => message.conversationId === conversationId && String(message.createdAt) <= String(targetMessage.createdAt))
+    .forEach((message) => {
+      const key = readKey(conversationId, message.id, userId);
+      if (seenKeys.has(key)) return;
+      chatReads.push(
+        normalizedChatRead({
+          conversationId,
+          messageId: message.id,
+          userId,
+          organizationId: targetMessage.organizationId,
+          companyId: targetMessage.companyId,
+          organizationName: targetMessage.organizationName,
+          deliveredAt: timestamp,
+          readAt: timestamp,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        }),
+      );
+      seenKeys.add(key);
+    });
+  chatNotifications.forEach((notification) => {
+    if (notification.conversationId === conversationId && notification.userId === userId && !notification.isSeen) {
+      notification.isSeen = true;
+      notification.seenAt = timestamp;
+      notification.updatedAt = timestamp;
+    }
+  });
+  persistStore();
+  return {
+    conversationId,
+    lastReadMessageId,
+    readAt: timestamp,
+  };
+}
+
+export function getChatUnreadCount(filters = {}) {
+  const { companyId, organizationId, userId } = filters;
+  const conversations = listChatConversations({
+    companyId,
+    organizationId,
+    participantUserId: userId,
+    includeArchived: false,
+  });
+  return {
+    totalUnreadConversations: conversations.filter((conversation) => conversation.unreadCount > 0).length,
+    totalUnreadMessages: conversations.reduce((sum, conversation) => sum + Number(conversation.unreadCount || 0), 0),
+  };
+}
+
+export function searchChat(filters = {}) {
+  const { companyId, organizationId, participantUserId, q } = filters;
+  const query = normalizeString(q).toLowerCase();
+  if (!query) {
+    return { conversations: [], messages: [] };
+  }
+  const conversations = listChatConversations({
+    companyId,
+    organizationId,
+    participantUserId,
+    includeArchived: true,
+  }).filter(
+    (conversation) =>
+      String(conversation.title || "").toLowerCase().includes(query) ||
+      String(conversation.description || "").toLowerCase().includes(query),
+  );
+  const allowedConversationIds = new Set(conversations.map((conversation) => conversation.id));
+  listChatParticipants({ companyId, organizationId, userId: participantUserId }).forEach((participant) =>
+    allowedConversationIds.add(participant.conversationId),
+  );
+  const messages = chatMessages
+    .filter((message) => {
+      const scopedOrganizationId = organizationId || companyId;
+      if (scopedOrganizationId && (message.organizationId || message.companyId || DEFAULT_COMPANY_ID) !== scopedOrganizationId) return false;
+      if (!allowedConversationIds.has(message.conversationId)) return false;
+      return String(message.body || "").toLowerCase().includes(query);
+    })
+    .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)))
+    .slice(0, 50)
+    .map((message) => structuredClone(message));
+  return {
+    conversations,
+    messages,
+  };
 }

@@ -10,8 +10,11 @@ import {
   createProgramCenter,
   createProgramManual,
   createReport,
+  createChatConversation,
+  createChatMessage,
   createReportsBulk,
   createFormSubmission,
+  addChatParticipants,
   deleteAttendanceParticipant,
   deleteAttendanceParticipantsForProgram,
   deleteAttendanceSession,
@@ -21,13 +24,18 @@ import {
   deleteProgram,
   deleteProgramCenter,
   deleteProgramManual,
+  findChatConversationById,
   findConceptPaperById,
   findProgramManualById,
   findReportById,
+  getChatUnreadCount,
   isLibraryDocumentPathDeleted,
   listAttendanceArchive,
   listAttendanceParticipants,
   listAttendanceSessions,
+  listChatConversations,
+  listChatMessages,
+  listChatParticipants,
   listConceptPapers,
   listEmailOutbox,
   listFormSubmissions,
@@ -39,10 +47,13 @@ import {
   listAllReportStatusHistory,
   listDeletedReports,
   listReportStatusHistory,
+  markChatConversationRead,
   markNotificationRead,
   queryReports,
+  removeChatParticipant,
   resetAttendanceProgram,
   saveAttendanceSession,
+  searchChat,
   saveReportStatusDecision,
   updateIndicator,
   updateProgram,
@@ -1346,6 +1357,335 @@ export async function handleFormSubmissionCreate(request, response) {
   }
 }
 
+function chatUserDirectory(actor) {
+  return new Map(listAuthUsers(actor).map((user) => [user.id, user]));
+}
+
+function decorateChatParticipant(participant, usersById) {
+  const user = usersById.get(participant.userId) || null;
+  return {
+    ...participant,
+    displayName: user?.fullName || participant.userId,
+    email: user?.email || null,
+    primaryRole: user?.primaryRole || null,
+    status: user?.status || null,
+  };
+}
+
+function decorateChatConversation(conversation, usersById) {
+  return {
+    ...conversation,
+    participants: Array.isArray(conversation.participants)
+      ? conversation.participants.map((participant) => decorateChatParticipant(participant, usersById))
+      : [],
+  };
+}
+
+function decorateChatMessage(message, usersById) {
+  return {
+    ...message,
+    senderName: usersById.get(message.senderUserId)?.fullName || message.senderUserId,
+    readBy: Array.isArray(message.readBy)
+      ? message.readBy.map((entry) => ({
+          ...entry,
+          displayName: usersById.get(entry.userId)?.fullName || entry.userId,
+        }))
+      : [],
+  };
+}
+
+function participantIdsFromPayload(payload, actor) {
+  return [...new Set([actor.id, ...(Array.isArray(payload.participantUserIds) ? payload.participantUserIds : [])].map((item) => String(item || "").trim()).filter(Boolean))];
+}
+
+function actorChatParticipant(conversationId, actor) {
+  return listChatParticipants({
+    organizationId: actor.organizationId,
+    conversationId,
+    userId: actor.id,
+  })[0] || null;
+}
+
+function canManageConversationParticipants(participant, actor, conversation) {
+  if (!participant) return false;
+  if (participant.canAddPeople || participant.canRemovePeople) return true;
+  return conversation?.createdByUserId === actor.id;
+}
+
+export async function handleChatConversationsList(request, response, url) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
+  const usersById = chatUserDirectory(actor);
+  const filters = actorScopeFilters(request, {
+    participantUserId: actor.id,
+    type: url.searchParams.get("type") || undefined,
+    contextType: url.searchParams.get("contextType") || undefined,
+    contextId: url.searchParams.get("contextId") || undefined,
+    unreadOnly: url.searchParams.get("unreadOnly") === "true",
+    includeArchived: url.searchParams.get("includeArchived") === "true",
+  });
+  const conversations = listChatConversations(filters).map((conversation) => decorateChatConversation(conversation, usersById));
+  sendJson(response, 200, { data: conversations, filters });
+}
+
+export async function handleChatConversationCreate(request, response) {
+  try {
+    const actor = requireAuthenticatedUser(request, response);
+    if (!actor) return;
+    const payload = await readJsonBody(request);
+    const participantUserIds = participantIdsFromPayload(payload, actor);
+    const usersById = chatUserDirectory(actor);
+    const missingUserIds = participantUserIds.filter((userId) => !usersById.has(userId));
+    if (missingUserIds.length) {
+      sendJson(response, 400, { error: "Hay participantes no validos para esta organizacion.", details: { missingUserIds } });
+      return;
+    }
+    const conversation = createChatConversation({
+      type: payload.type || "direct",
+      title: payload.title || "",
+      description: payload.description || "",
+      contextType: payload.contextType || "",
+      contextId: payload.contextId || "",
+      participantUserIds,
+      createdByUserId: actor.id,
+      organizationId: actor.organizationId,
+      companyId: actor.organizationId,
+      organizationName: actor.organizationName,
+    });
+    sendJson(response, 201, {
+      data: decorateChatConversation(
+        {
+          ...conversation,
+          participants: listChatParticipants({ organizationId: actor.organizationId, conversationId: conversation.id }),
+        },
+        usersById,
+      ),
+    });
+  } catch (error) {
+    sendApiError(response, error);
+  }
+}
+
+export async function handleChatConversationDetail(request, response, conversationId) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
+  const conversation = findChatConversationById(conversationId, {
+    organizationId: actor.organizationId,
+    participantUserId: actor.id,
+  });
+  if (!conversation) {
+    sendJson(response, 404, { error: "No encontre la conversacion solicitada." });
+    return;
+  }
+  const usersById = chatUserDirectory(actor);
+  sendJson(response, 200, {
+    data: decorateChatConversation(
+      {
+        ...conversation,
+        participants: listChatParticipants({ organizationId: actor.organizationId, conversationId }),
+      },
+      usersById,
+    ),
+  });
+}
+
+export async function handleChatMessagesList(request, response, conversationId, url) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
+  const conversation = findChatConversationById(conversationId, {
+    organizationId: actor.organizationId,
+    participantUserId: actor.id,
+  });
+  if (!conversation) {
+    sendJson(response, 404, { error: "No encontre la conversacion solicitada." });
+    return;
+  }
+  const usersById = chatUserDirectory(actor);
+  const limit = Number(url.searchParams.get("limit") || 50);
+  const before = url.searchParams.get("before") || undefined;
+  const messages = listChatMessages({
+    organizationId: actor.organizationId,
+    conversationId,
+    before,
+    limit,
+  }).map((message) => decorateChatMessage(message, usersById));
+  sendJson(response, 200, {
+    data: messages,
+    meta: {
+      hasMore: messages.length >= Math.max(1, Math.min(200, limit || 50)),
+      nextCursor: messages.length ? messages[0]?.createdAt || null : null,
+    },
+  });
+}
+
+export async function handleChatMessageCreate(request, response, conversationId) {
+  try {
+    const actor = requireAuthenticatedUser(request, response);
+    if (!actor) return;
+    const conversation = findChatConversationById(conversationId, {
+      organizationId: actor.organizationId,
+      participantUserId: actor.id,
+    });
+    if (!conversation) {
+      sendJson(response, 404, { error: "No encontre la conversacion solicitada." });
+      return;
+    }
+    const participant = actorChatParticipant(conversationId, actor);
+    if (!participant || participant.canSendMessages === false) {
+      sendJson(response, 403, { error: "No tienes permiso para enviar mensajes en esta conversacion." });
+      return;
+    }
+    const payload = await readJsonBody(request);
+    const hasBody = String(payload.body || "").trim().length > 0;
+    const attachments = Array.isArray(payload.attachments) ? payload.attachments : [];
+    if (!hasBody && !attachments.length) {
+      sendJson(response, 400, { error: "El mensaje necesita texto o adjuntos." });
+      return;
+    }
+    const usersById = chatUserDirectory(actor);
+    const message = createChatMessage(conversationId, {
+      messageType: payload.messageType || (attachments.length ? "file" : "text"),
+      body: payload.body || "",
+      replyToMessageId: payload.replyToMessageId || "",
+      attachments,
+      senderUserId: actor.id,
+      organizationId: actor.organizationId,
+      companyId: actor.organizationId,
+      organizationName: actor.organizationName,
+    });
+    sendJson(response, 201, { data: decorateChatMessage(message, usersById) });
+  } catch (error) {
+    sendApiError(response, error);
+  }
+}
+
+export async function handleChatConversationRead(request, response, conversationId) {
+  try {
+    const actor = requireAuthenticatedUser(request, response);
+    if (!actor) return;
+    const conversation = findChatConversationById(conversationId, {
+      organizationId: actor.organizationId,
+      participantUserId: actor.id,
+    });
+    if (!conversation) {
+      sendJson(response, 404, { error: "No encontre la conversacion solicitada." });
+      return;
+    }
+    const payload = await readJsonBody(request);
+    const result = markChatConversationRead(conversationId, {
+      userId: actor.id,
+      lastReadMessageId: payload.lastReadMessageId,
+    });
+    if (!result) {
+      sendJson(response, 400, { error: "No pude registrar la lectura de la conversacion." });
+      return;
+    }
+    sendJson(response, 200, { data: result });
+  } catch (error) {
+    sendApiError(response, error);
+  }
+}
+
+export async function handleChatParticipantAdd(request, response, conversationId) {
+  try {
+    const actor = requireAuthenticatedUser(request, response);
+    if (!actor) return;
+    const conversation = findChatConversationById(conversationId, {
+      organizationId: actor.organizationId,
+      participantUserId: actor.id,
+    });
+    if (!conversation) {
+      sendJson(response, 404, { error: "No encontre la conversacion solicitada." });
+      return;
+    }
+    const participant = actorChatParticipant(conversationId, actor);
+    if (!canManageConversationParticipants(participant, actor, conversation)) {
+      sendJson(response, 403, { error: "No tienes permiso para agregar participantes a esta conversacion." });
+      return;
+    }
+    const payload = await readJsonBody(request);
+    const participantUserIds = [...new Set((Array.isArray(payload.participantUserIds) ? payload.participantUserIds : []).map((item) => String(item || "").trim()).filter(Boolean))];
+    const usersById = chatUserDirectory(actor);
+    const missingUserIds = participantUserIds.filter((userId) => !usersById.has(userId));
+    if (missingUserIds.length) {
+      sendJson(response, 400, { error: "Hay participantes no validos para esta organizacion.", details: { missingUserIds } });
+      return;
+    }
+    const added = addChatParticipants(conversationId, { participantUserIds });
+    sendJson(response, 200, {
+      data: {
+        conversationId,
+        participants: added.map((entry) => decorateChatParticipant(entry, usersById)),
+      },
+    });
+  } catch (error) {
+    sendApiError(response, error);
+  }
+}
+
+export async function handleChatParticipantDelete(request, response, conversationId, userId) {
+  try {
+    const actor = requireAuthenticatedUser(request, response);
+    if (!actor) return;
+    const conversation = findChatConversationById(conversationId, {
+      organizationId: actor.organizationId,
+      participantUserId: actor.id,
+    });
+    if (!conversation) {
+      sendJson(response, 404, { error: "No encontre la conversacion solicitada." });
+      return;
+    }
+    const participant = actorChatParticipant(conversationId, actor);
+    const canManage = canManageConversationParticipants(participant, actor, conversation);
+    if (!canManage && actor.id !== userId) {
+      sendJson(response, 403, { error: "No tienes permiso para quitar participantes de esta conversacion." });
+      return;
+    }
+    const removed = removeChatParticipant(conversationId, userId);
+    if (!removed) {
+      sendJson(response, 404, { error: "No encontre el participante solicitado." });
+      return;
+    }
+    sendJson(response, 200, {
+      data: {
+        conversationId,
+        removedUserId: userId,
+        removedAt: removed.leftAt || removed.updatedAt,
+      },
+    });
+  } catch (error) {
+    sendApiError(response, error);
+  }
+}
+
+export async function handleChatUnreadCount(request, response) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
+  sendJson(response, 200, {
+    data: getChatUnreadCount({
+      organizationId: actor.organizationId,
+      userId: actor.id,
+    }),
+  });
+}
+
+export async function handleChatSearch(request, response, url) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
+  const usersById = chatUserDirectory(actor);
+  const result = searchChat({
+    organizationId: actor.organizationId,
+    participantUserId: actor.id,
+    q: url.searchParams.get("q") || "",
+  });
+  sendJson(response, 200, {
+    data: {
+      conversations: result.conversations.map((conversation) => decorateChatConversation(conversation, usersById)),
+      messages: result.messages.map((message) => decorateChatMessage(message, usersById)),
+    },
+  });
+}
+
 export async function handleReportStatusUpdate(request, response, reportId) {
   const actor = requireAuthenticatedUser(request, response);
   if (!actor) return;
@@ -1499,6 +1839,13 @@ function apiIndex() {
       "form-submissions",
       "reports",
       "reports/deleted",
+      "chat/conversations",
+      "chat/conversations/:id",
+      "chat/conversations/:id/messages",
+      "chat/conversations/:id/read",
+      "chat/conversations/:id/participants",
+      "chat/unread-count",
+      "chat/search",
       "notifications",
       "email-outbox",
       "analytics/config",
@@ -1987,6 +2334,66 @@ async function router(request, response) {
 
   if (request.method === "POST" && pathname === "/api/v1/form-submissions") {
     await handleFormSubmissionCreate(request, response);
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/v1/chat/conversations") {
+    await handleChatConversationsList(request, response, url);
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/v1/chat/conversations") {
+    await handleChatConversationCreate(request, response);
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/v1/chat/unread-count") {
+    await handleChatUnreadCount(request, response);
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/v1/chat/search") {
+    await handleChatSearch(request, response, url);
+    return;
+  }
+
+  const chatConversationMatch = pathname.match(/^\/api\/v1\/chat\/conversations\/([^/]+)$/);
+  if (request.method === "GET" && chatConversationMatch) {
+    await handleChatConversationDetail(request, response, decodeURIComponent(chatConversationMatch[1]));
+    return;
+  }
+
+  const chatMessagesMatch = pathname.match(/^\/api\/v1\/chat\/conversations\/([^/]+)\/messages$/);
+  if (request.method === "GET" && chatMessagesMatch) {
+    await handleChatMessagesList(request, response, decodeURIComponent(chatMessagesMatch[1]), url);
+    return;
+  }
+
+  if (request.method === "POST" && chatMessagesMatch) {
+    await handleChatMessageCreate(request, response, decodeURIComponent(chatMessagesMatch[1]));
+    return;
+  }
+
+  const chatReadMatch = pathname.match(/^\/api\/v1\/chat\/conversations\/([^/]+)\/read$/);
+  if (request.method === "POST" && chatReadMatch) {
+    await handleChatConversationRead(request, response, decodeURIComponent(chatReadMatch[1]));
+    return;
+  }
+
+  const chatParticipantsMatch = pathname.match(/^\/api\/v1\/chat\/conversations\/([^/]+)\/participants$/);
+  if (request.method === "POST" && chatParticipantsMatch) {
+    await handleChatParticipantAdd(request, response, decodeURIComponent(chatParticipantsMatch[1]));
+    return;
+  }
+
+  const chatParticipantDeleteMatch = pathname.match(/^\/api\/v1\/chat\/conversations\/([^/]+)\/participants\/([^/]+)$/);
+  if (request.method === "DELETE" && chatParticipantDeleteMatch) {
+    await handleChatParticipantDelete(
+      request,
+      response,
+      decodeURIComponent(chatParticipantDeleteMatch[1]),
+      decodeURIComponent(chatParticipantDeleteMatch[2]),
+    );
     return;
   }
 
