@@ -202,10 +202,6 @@ button:disabled {
   margin-bottom: 8px;
 }
 
-#accessView .access-summary-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
 .access-group {
   display: grid;
   gap: 14px;
@@ -217,15 +213,11 @@ button:disabled {
   grid-template-columns: repeat(2, minmax(280px, 1fr));
 }
 
-#accessView .user-access-group-grid {
-  grid-template-columns: 1fr;
-}
-
 .delivery-item,
 .user-access-card {
-  background: linear-gradient(180deg, #fbfdfd 0%, #f4f8f8 100%);
+  background: #f8faf9;
   border: 1px solid var(--line);
-  border-radius: var(--radius-md);
+  border-radius: 8px;
   display: grid;
   gap: 12px;
   padding: 16px;
@@ -1436,10 +1428,6 @@ textarea {
   display: grid;
   gap: 14px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-#accessView .access-admin-grid {
-  grid-template-columns: 1fr;
 }
 
 .access-admin-grid .user-access-card {

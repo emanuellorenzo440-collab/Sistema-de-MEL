@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260525i";
+import { $, $$, elements } from "../core/dom.js?v=20260525j";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260525i";
+} from "../services/auth-service.js?v=20260525j";
 import {
   apiFileUrl,
   createApiConceptPaper,
@@ -59,7 +59,7 @@ import {
   updateApiProgram,
   updateApiProgramCenter,
   uploadApiFile,
-} from "../services/mel-api.js?v=20260525i";
+} from "../services/mel-api.js?v=20260525j";
 import {
   currentMonth,
   escapeHtml,
@@ -2357,33 +2357,7 @@ function renderAccessWorkspace(options = {}) {
     : "";
 
   const summaryMarkup = `
-      <section class="access-admin-shell">
-        <article class="access-hero-card">
-          <div class="access-hero-copy">
-            <p class="eyebrow">Administración institucional</p>
-            <h2>Usuarios, permisos y biblioteca central</h2>
-            <p class="item-meta">Desde esta vista controlas accesos, cargas documentales y la trazabilidad de quién puede entrar, revisar o administrar el sistema.</p>
-          </div>
-          <div class="access-hero-stats">
-            <article>
-              <strong>${totalUsers}</strong>
-              <span>usuarios registrados</span>
-            </article>
-            <article>
-              <strong>${activeUsers}</strong>
-              <span>cuentas activas</span>
-            </article>
-            <article>
-              <strong>${pendingCount}</strong>
-              <span>aprobaciones en cola</span>
-            </article>
-            <article>
-              <strong>${suspendedUsers}</strong>
-              <span>usuarios suspendidos</span>
-            </article>
-          </div>
-        </article>
-        <div class="access-admin-grid">
+
           <form class="user-access-card create-user-card" id="createManagedUserForm">
             <div class="user-access-top">
               <div>
@@ -2473,8 +2447,6 @@ function renderAccessWorkspace(options = {}) {
             </div>
           </form>
           ${manualUploadMarkup}
-        </div>
-      </section>
       <div class="access-summary-grid">
         ${groups
           .map((group) => {
@@ -5741,5 +5713,7 @@ export function createMonitoringApp() {
     },
   };
 }
+
+
 
 
