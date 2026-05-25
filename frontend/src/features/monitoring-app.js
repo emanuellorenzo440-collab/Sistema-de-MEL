@@ -749,6 +749,11 @@ function setProgramSourceContext(programName, targetView = "dashboard") {
   saveState();
   renderAll();
   switchView(targetView);
+  if (targetView === "dashboard") {
+    window.setTimeout(() => {
+      elements.recentReports?.closest(".panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 60);
+  }
 }
 
 function renderProgramChart() {
@@ -776,7 +781,7 @@ function renderProgramChart() {
               isSystemAdminRole()
                 ? `<div class="bar-source-actions">
                     <button class="ghost-action" type="button" data-open-program-indicators="${escapeHtml(program.name)}">Ajustar indicadores</button>
-                    <button class="ghost-action" type="button" data-open-program-reports="${escapeHtml(program.name)}">Revisar reportes</button>
+                    <button class="ghost-action" type="button" data-open-program-reports="${escapeHtml(program.name)}">Revisar o eliminar reportes</button>
                   </div>`
                 : ""
             }
@@ -3532,7 +3537,9 @@ async function deleteReportFromUi(reportId) {
   const supervisorDelete = isSystemAdminRole();
   const confirmed = window.confirm(
     supervisorDelete
-      ? "Este reporte se eliminara de la lista activa y quedara registrado en auditoria. Deseas continuar?"
+      ? report.status === REPORT_STATUSES.APPROVED
+        ? "Este reporte aprobado se eliminara de la lista activa, quedara registrado en auditoria y recalculara el cumplimiento del programa. Deseas continuar?"
+        : "Este reporte se eliminara de la lista activa y quedara registrado en auditoria. Deseas continuar?"
       : "Este reporte se eliminara para que puedas subirlo nuevamente corregido. Deseas continuar?",
   );
   if (!confirmed) return;
