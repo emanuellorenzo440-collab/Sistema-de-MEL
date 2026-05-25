@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260525d";
+import { $, $$, elements } from "../core/dom.js?v=20260525e";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260525d";
+} from "../services/auth-service.js?v=20260525e";
 import {
   apiFileUrl,
   createApiConceptPaper,
@@ -59,7 +59,7 @@ import {
   updateApiProgram,
   updateApiProgramCenter,
   uploadApiFile,
-} from "../services/mel-api.js?v=20260525d";
+} from "../services/mel-api.js?v=20260525e";
 import {
   currentMonth,
   escapeHtml,
@@ -80,6 +80,7 @@ const MAX_REPORT_ATTACHMENT_BYTES = MAX_UPLOAD_FILE_BYTES;
 const MAX_CONCEPT_PAPER_BYTES = MAX_UPLOAD_FILE_BYTES;
 const MAX_PROGRAM_MANUAL_BYTES = MAX_UPLOAD_FILE_BYTES;
 const NO_CENTER_OPTION = "Sin centros registrados";
+const ACCESS_SYNC_INTERVAL_MS = 15000;
 let currentUser = null;
 let currentUserRoles = SYSTEM_ROLES.slice();
 let currentUserViews = VIEW_DEFINITIONS.map((view) => view.id);
@@ -91,6 +92,8 @@ let appRefreshInFlight = false;
 let eventsBound = false;
 let stateSyncListenerBound = false;
 let startupSyncPromise = null;
+let accessSyncIntervalId = null;
+let accessSyncInFlight = false;
 
 function loadState() {
   return loadStoredState(STORAGE_KEY, seedState, normalizeState);
@@ -3118,6 +3121,17 @@ function activeViewName() {
   return $(".nav-item.active")?.dataset.view || "dashboard";
 }
 
+function currentAccessSignature(user = currentUser) {
+  return JSON.stringify({
+    id: user?.id || null,
+    status: user?.status || null,
+    role: user?.systemRole || null,
+    updatedAt: user?.updatedAt || null,
+    allowedRoles: [...(user?.allowedRoles || [])].sort(),
+    viewPermissions: [...(user?.viewPermissions || [])].sort(),
+  });
+}
+
 function updateQuickReportButtonVisibility(viewName = activeViewName()) {
   const quickReportButton = $("#quickReportButton");
   if (quickReportButton) {
@@ -3159,6 +3173,42 @@ function renderAll() {
   renderProgramCenters();
   renderAccessWorkspace();
   switchView(state.activeView || firstAllowedView(), { persist: false });
+}
+
+async function refreshAccessStateFromRemote(options = {}) {
+  const { showToastOnPermissionChange = false } = options;
+  if (accessSyncInFlight) return;
+  accessSyncInFlight = true;
+  try {
+    const previousSignature = currentAccessSignature(currentUser);
+    const accessViewActive = state?.activeView === "access";
+    await syncAuthenticatedAccess();
+    const nextSignature = currentAccessSignature(currentUser);
+    const permissionsChanged = previousSignature !== nextSignature;
+
+    if (permissionsChanged || accessViewActive) {
+      renderAll();
+      if (showToastOnPermissionChange && permissionsChanged) {
+        showToast("Accesos actualizados.");
+      }
+      return;
+    }
+
+    updateRoleUi();
+    applyAccessControl();
+  } catch (error) {
+    console.error("No pude sincronizar accesos remotos.", error);
+  } finally {
+    accessSyncInFlight = false;
+  }
+}
+
+function ensureAccessSyncMonitor() {
+  if (accessSyncIntervalId !== null) return;
+  accessSyncIntervalId = window.setInterval(() => {
+    if (document.hidden || accessSyncInFlight) return;
+    void refreshAccessStateFromRemote({ showToastOnPermissionChange: false });
+  }, ACCESS_SYNC_INTERVAL_MS);
 }
 
 function switchView(viewName, options = {}) {
@@ -4739,6 +4789,14 @@ async function saveProgramCenterFromForm(formData) {
 }
 
 function bindEvents() {
+  window.addEventListener("focus", () => {
+    void refreshAccessStateFromRemote({ showToastOnPermissionChange: false });
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) {
+      void refreshAccessStateFromRemote({ showToastOnPermissionChange: false });
+    }
+  });
   $$(".nav-item").forEach((button) => {
     button.addEventListener("click", () => switchView(button.dataset.view));
   });
@@ -5642,6 +5700,7 @@ export function createMonitoringApp() {
         eventsBound = true;
       }
       ensureStateSyncListener();
+      ensureAccessSyncMonitor();
       await syncStartupData({ showErrorToast: true });
       renderAll();
     },
@@ -5649,10 +5708,16 @@ export function createMonitoringApp() {
       hydrateState();
       await syncAuthenticatedAccess(authenticatedUser);
       renderAll();
+      ensureAccessSyncMonitor();
       await syncStartupData({ showErrorToast: true });
       renderAll();
     },
     lock() {
+      if (accessSyncIntervalId !== null) {
+        window.clearInterval(accessSyncIntervalId);
+        accessSyncIntervalId = null;
+      }
+      accessSyncInFlight = false;
       currentUser = null;
       currentUserRoles = SYSTEM_ROLES.slice();
       currentUserViews = VIEW_DEFINITIONS.map((view) => view.id);
