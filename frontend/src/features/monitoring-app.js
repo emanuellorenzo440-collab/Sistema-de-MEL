@@ -2570,7 +2570,8 @@ function renderAccessWorkspace(options = {}) {
     restoreAccessWorkspaceDraft(draftSnapshot);
   })().catch((error) => {
     console.error(error);
-    elements.accessUserGrid.innerHTML = `<p class="item-meta">No pude cargar los accesos.</p>`;
+    const message = escapeHtml(error?.message || "No pude cargar los accesos.");
+    elements.accessUserGrid.innerHTML = `<p class="item-meta">${message}</p>`;
   });
 }
 

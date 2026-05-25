@@ -1565,6 +1565,16 @@ function requireActorRole(response, actor, allowedRoles = [], action = "realizar
   return false;
 }
 
+function requireActorViewPermission(response, actor, requiredView, action = "realizar esta accion") {
+  const grantedViews = Array.isArray(actor?.viewPermissions) ? actor.viewPermissions.map((item) => String(item || "").trim()) : [];
+  if (grantedViews.includes(requiredView)) return true;
+  sendJson(response, 403, {
+    error: `No tienes permiso para ${action}.`,
+    details: { requiredView, grantedViews },
+  });
+  return false;
+}
+
 function publicBaseUrlFrom(request, payload = {}) {
   if (payload.resetBaseUrl) {
     return String(payload.resetBaseUrl);
@@ -1681,7 +1691,7 @@ export async function handleAuthPasswordChange(request, response) {
 export async function handleAuthUsersList(request, response) {
   const actor = requireAuthenticatedUser(request, response);
   if (!actor) return;
-  if (!requireActorRole(response, actor, ["Supervision M&E"], "ver usuarios")) return;
+  if (!requireActorViewPermission(response, actor, "access", "ver usuarios")) return;
   sendJson(response, 200, { users: listAuthUsers(actor) });
 }
 
@@ -1689,6 +1699,7 @@ export async function handleAuthUserCreate(request, response) {
   try {
     const actor = requireAuthenticatedUser(request, response);
     if (!actor) return;
+    if (!requireActorViewPermission(response, actor, "access", "crear usuarios")) return;
     const payload = await readJsonBody(request);
     sendJson(response, 201, { user: createManagedAuthUser(payload, actor) });
   } catch (error) {
@@ -1700,6 +1711,7 @@ export async function handleAuthUserUpdate(request, response, userId) {
   try {
     const actor = requireAuthenticatedUser(request, response);
     if (!actor) return;
+    if (!requireActorViewPermission(response, actor, "access", "editar accesos")) return;
     const payload = await readJsonBody(request);
     sendJson(response, 200, {
       user: updateManagedAuthUser(userId, payload, actor),
@@ -1713,7 +1725,8 @@ export async function handleAuthUserDelete(request, response, userId) {
   try {
     const actor = requireAuthenticatedUser(request, response);
     if (!actor) return;
-    const payload = await readJsonBody(request);
+    if (!requireActorViewPermission(response, actor, "access", "eliminar usuarios")) return;
+    await readJsonBody(request);
     sendJson(response, 200, deleteManagedAuthUser(userId, actor));
   } catch (error) {
     sendApiError(response, error);
