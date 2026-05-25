@@ -1555,6 +1555,20 @@ function requireAuthenticatedUser(request, response) {
   return null;
 }
 
+function attachAuthenticatedActor(request) {
+  const sessionToken = sessionTokenFrom(request);
+  if (!sessionToken) {
+    request.melActor = null;
+    request.melSession = null;
+    return null;
+  }
+
+  const restored = restoreAuthSession(sessionToken);
+  request.melActor = restored?.user || null;
+  request.melSession = restored?.session || null;
+  return restored;
+}
+
 function requireActorRole(response, actor, allowedRoles = [], action = "realizar esta accion") {
   const actorRole = String(actor?.primaryRole || "").trim();
   if (allowedRoles.includes(actorRole)) return true;
@@ -1632,7 +1646,7 @@ export async function handleAuthSession(request, response) {
     sendJson(response, 401, { error: "No hay una sesion activa." });
     return;
   }
-  const session = restoreAuthSession(sessionToken);
+  const session = request.melActor?.id ? { user: request.melActor, session: request.melSession } : restoreAuthSession(sessionToken);
   if (!session) {
     sendJson(response, 401, { error: "La sesion ya no es valida." });
     return;
@@ -1741,6 +1755,7 @@ async function router(request, response) {
 
   const url = new URL(request.url || "/", "http://localhost");
   const pathname = url.pathname;
+  attachAuthenticatedActor(request);
 
   if (request.method === "GET" && pathname === "/health") {
     sendJson(response, 200, { ok: true, service: "sistema-de-mel-api" });
