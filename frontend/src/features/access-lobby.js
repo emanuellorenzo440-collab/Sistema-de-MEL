@@ -10,11 +10,12 @@ import {
   signOutUser,
   signUpUser,
   verifyRegisteredUserByLink,
-} from "../services/auth-service.js?v=20260525c";
+} from "../services/auth-service.js?v=20260525d";
 
 const sections = ["signin", "signup", "forgot", "force-password", "reset-password"];
 const INACTIVITY_TIMEOUT_MS = 60 * 1000;
 const INACTIVITY_CHECK_INTERVAL_MS = 5000;
+const REMOTE_ACCESS_REFRESH_INTERVAL_MS = 20000;
 const AUTH_ACTIVITY_KEY = "pulso-me-last-activity-v1";
 const ACTIVITY_WRITE_THROTTLE_MS = 5000;
 let wired = false;
@@ -22,10 +23,12 @@ let onAuthenticatedCallback = () => {};
 let onSignedOutCallback = () => {};
 let lastSessionUserId = null;
 let sessionReadyPromise = null;
+let currentSessionRefreshPromise = null;
 let pendingPasswordChange = null;
 let pendingPasswordResetToken = null;
 let inactivityTimerId = null;
 let inactivityIntervalId = null;
+let remoteAccessRefreshIntervalId = null;
 let inactivityMonitoring = false;
 let lastActivityAt = 0;
 let lastActivityWriteAt = 0;
@@ -43,6 +46,13 @@ function clearInactivityInterval() {
   if (inactivityIntervalId !== null) {
     window.clearInterval(inactivityIntervalId);
     inactivityIntervalId = null;
+  }
+}
+
+function clearRemoteAccessRefreshInterval() {
+  if (remoteAccessRefreshIntervalId !== null) {
+    window.clearInterval(remoteAccessRefreshIntervalId);
+    remoteAccessRefreshIntervalId = null;
   }
 }
 
@@ -120,11 +130,20 @@ function deactivateInactivityMonitor() {
   clearInactivityInterval();
 }
 
+function ensureRemoteAccessRefreshMonitor() {
+  if (remoteAccessRefreshIntervalId !== null) return;
+  remoteAccessRefreshIntervalId = window.setInterval(() => {
+    if (document.hidden || inactivitySignOutInFlight || sessionReadyPromise || currentSessionRefreshPromise) return;
+    void updateLobbyVisibility({ refreshCurrentSession: true, showRefreshErrorToast: false });
+  }, REMOTE_ACCESS_REFRESH_INTERVAL_MS);
+}
+
 async function performSignOut(message = "SesiÃ³n cerrada.") {
   if (inactivitySignOutInFlight) return;
   inactivitySignOutInFlight = true;
   try {
     deactivateInactivityMonitor();
+    clearRemoteAccessRefreshInterval();
     await signOutUser();
     pendingPasswordChange = null;
     pendingPasswordResetToken = null;
@@ -294,7 +313,29 @@ function consumePasswordResetLink() {
   return "reset-password";
 }
 
-async function updateLobbyVisibility() {
+async function refreshAuthenticatedSession(currentUser, { showRefreshErrorToast = false } = {}) {
+  if (!currentUser?.id) return;
+  if (currentSessionRefreshPromise) {
+    await currentSessionRefreshPromise;
+    return;
+  }
+
+  currentSessionRefreshPromise = Promise.resolve(onAuthenticatedCallback(currentUser))
+    .catch((error) => {
+      console.error("No pude refrescar los permisos de la sesion activa.", error);
+      if (showRefreshErrorToast) {
+        showToastMessage(error?.message || "No pude refrescar tus accesos todavia.");
+      }
+    })
+    .finally(() => {
+      currentSessionRefreshPromise = null;
+    });
+
+  await currentSessionRefreshPromise;
+}
+
+async function updateLobbyVisibility(options = {}) {
+  const { refreshCurrentSession = false, showRefreshErrorToast = false } = options;
   const appShell = $(".app-shell");
   const authShell = $("#authShell");
   const currentUser = await getCurrentUser();
@@ -302,7 +343,14 @@ async function updateLobbyVisibility() {
 
   if (isLoggedIn) {
     paintSessionUser(currentUser);
-    if (!sessionReadyPromise && currentUser.id !== lastSessionUserId) {
+    const needsFullBoot = !sessionReadyPromise && currentUser.id !== lastSessionUserId;
+    const canRefreshCurrentSession =
+      refreshCurrentSession &&
+      !sessionReadyPromise &&
+      !currentSessionRefreshPromise &&
+      currentUser.id === lastSessionUserId;
+
+    if (needsFullBoot) {
       lastStartupError = "";
       setAppBootState("loading");
       const bootUserId = currentUser.id;
@@ -333,10 +381,15 @@ async function updateLobbyVisibility() {
         return;
       }
     }
+    if (canRefreshCurrentSession) {
+      await refreshAuthenticatedSession(currentUser, { showRefreshErrorToast });
+    }
     setAppBootState("ready");
     activateInactivityMonitor();
+    ensureRemoteAccessRefreshMonitor();
   } else {
     deactivateInactivityMonitor();
+    clearRemoteAccessRefreshInterval();
     setAppBootState("ready");
     if (appShell) appShell.hidden = true;
     if (authShell) authShell.hidden = false;
@@ -345,6 +398,7 @@ async function updateLobbyVisibility() {
   if (!isLoggedIn && lastSessionUserId !== null) {
     lastSessionUserId = null;
     sessionReadyPromise = null;
+    currentSessionRefreshPromise = null;
     clearSessionUser();
     await onSignedOutCallback();
   }
@@ -376,7 +430,12 @@ function bindLobbyEvents() {
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) {
       registerActivity(true);
+      void updateLobbyVisibility({ refreshCurrentSession: true, showRefreshErrorToast: false });
     }
+  });
+  window.addEventListener("focus", () => {
+    registerActivity(true);
+    void updateLobbyVisibility({ refreshCurrentSession: true, showRefreshErrorToast: false });
   });
   window.addEventListener("storage", (event) => {
     if (event.key !== AUTH_ACTIVITY_KEY) return;
@@ -617,7 +676,7 @@ export async function initializeAccessLobby({ onAuthenticated, onSignedOut } = {
   await updateLobbyVisibility();
 
   onAuthStateChange(async () => {
-    await updateLobbyVisibility();
+    await updateLobbyVisibility({ refreshCurrentSession: true, showRefreshErrorToast: false });
   });
 }
 
