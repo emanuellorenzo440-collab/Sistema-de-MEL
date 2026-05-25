@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260525f";
+import { $, $$, elements } from "../core/dom.js?v=20260525g";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260525f";
+} from "../services/auth-service.js?v=20260525g";
 import {
   apiFileUrl,
   createApiConceptPaper,
@@ -59,7 +59,7 @@ import {
   updateApiProgram,
   updateApiProgramCenter,
   uploadApiFile,
-} from "../services/mel-api.js?v=20260525f";
+} from "../services/mel-api.js?v=20260525g";
 import {
   currentMonth,
   escapeHtml,
@@ -3212,7 +3212,7 @@ function ensureAccessSyncMonitor() {
 }
 
 function switchView(viewName, options = {}) {
-  const { persist = true } = options;
+  const { persist = true, resetScroll = true } = options;
   const titles = {
     dashboard: "Resumen ejecutivo",
     report: "Nuevo reporte",
@@ -3239,6 +3239,11 @@ function switchView(viewName, options = {}) {
   }
   updateQuickReportButtonVisibility(viewName);
   elements.pageTitle.textContent = titles[viewName];
+  if (resetScroll) {
+    const workspace = document.querySelector(".workspace");
+    workspace?.scrollTo?.({ top: 0, left: 0, behavior: "auto" });
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }
   if (persist && state) {
     saveState();
   }
