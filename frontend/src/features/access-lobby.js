@@ -10,7 +10,7 @@ import {
   signOutUser,
   signUpUser,
   verifyRegisteredUserByLink,
-} from "../services/auth-service.js?v=20260525b";
+} from "../services/auth-service.js?v=20260525c";
 
 const sections = ["signin", "signup", "forgot", "force-password", "reset-password"];
 const INACTIVITY_TIMEOUT_MS = 60 * 1000;
@@ -30,6 +30,7 @@ let inactivityMonitoring = false;
 let lastActivityAt = 0;
 let lastActivityWriteAt = 0;
 let inactivitySignOutInFlight = false;
+let lastStartupError = "";
 
 function clearInactivityTimer() {
   if (inactivityTimerId !== null) {
@@ -79,7 +80,7 @@ function scheduleInactivityTimer() {
       scheduleInactivityTimer();
       return;
     }
-    void performSignOut("Sesión cerrada por inactividad.");
+    void performSignOut("SesiÃ³n cerrada por inactividad.");
   }, delay);
 }
 
@@ -94,7 +95,7 @@ function ensureInactivityInterval() {
   inactivityIntervalId = window.setInterval(() => {
     if (!inactivityMonitoring || inactivitySignOutInFlight) return;
     if (!isSessionInactive()) return;
-    void performSignOut("Sesión cerrada por inactividad.");
+    void performSignOut("SesiÃ³n cerrada por inactividad.");
   }, INACTIVITY_CHECK_INTERVAL_MS);
 }
 
@@ -119,7 +120,7 @@ function deactivateInactivityMonitor() {
   clearInactivityInterval();
 }
 
-async function performSignOut(message = "Sesión cerrada.") {
+async function performSignOut(message = "SesiÃ³n cerrada.") {
   if (inactivitySignOutInFlight) return;
   inactivitySignOutInFlight = true;
   try {
@@ -145,6 +146,71 @@ function showToastMessage(message) {
   toast.textContent = message;
   toast.classList.add("show");
   window.setTimeout(() => toast.classList.remove("show"), 2600);
+}
+
+function ensureAppBootOverlay() {
+  const appShell = $(".app-shell");
+  if (!appShell) return {};
+
+  let overlay = $("#appBootOverlay");
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.id = "appBootOverlay";
+    overlay.className = "app-boot-overlay";
+    overlay.hidden = true;
+    overlay.innerHTML = `
+      <div class="app-boot-card">
+        <p class="eyebrow" id="appBootEyebrow">Preparando sesion</p>
+        <h2 id="appBootTitle">Cargando sistema</h2>
+        <p id="appBootMessage">Estamos preparando tu espacio de trabajo.</p>
+        <div class="app-boot-actions">
+          <button class="ghost-action" id="appBootRetryButton" type="button" hidden>Reintentar</button>
+        </div>
+      </div>
+    `;
+    appShell.append(overlay);
+    overlay.querySelector("#appBootRetryButton")?.addEventListener("click", () => {
+      lastStartupError = "";
+      void updateLobbyVisibility();
+    });
+  }
+
+  return {
+    overlay,
+    eyebrow: overlay.querySelector("#appBootEyebrow"),
+    title: overlay.querySelector("#appBootTitle"),
+    message: overlay.querySelector("#appBootMessage"),
+    retryButton: overlay.querySelector("#appBootRetryButton"),
+  };
+}
+
+function setAppBootState(mode = "ready", message = "") {
+  const appShell = $(".app-shell");
+  const { overlay, eyebrow, title, message: messageNode, retryButton } = ensureAppBootOverlay();
+  if (!appShell || !overlay || !title || !messageNode || !retryButton) return;
+
+  if (mode === "ready") {
+    overlay.hidden = true;
+    overlay.classList.remove("is-error");
+    appShell.classList.remove("is-booting");
+    return;
+  }
+
+  appShell.classList.add("is-booting");
+  overlay.hidden = false;
+  overlay.classList.toggle("is-error", mode === "error");
+  if (mode === "loading") {
+    if (eyebrow) eyebrow.textContent = "Preparando sesion";
+    title.textContent = "Abriendo el sistema";
+    messageNode.textContent = message || "Estamos cargando tus permisos, vistas y datos institucionales.";
+    retryButton.hidden = true;
+    return;
+  }
+
+  if (eyebrow) eyebrow.textContent = "No pudimos completar el arranque";
+  title.textContent = "El sistema necesita reintentar";
+  messageNode.textContent = message || "No se pudo completar la carga inicial.";
+  retryButton.hidden = false;
 }
 
 function showSection(sectionId) {
@@ -236,25 +302,42 @@ async function updateLobbyVisibility() {
 
   if (isLoggedIn) {
     paintSessionUser(currentUser);
-    if (currentUser.id !== lastSessionUserId) {
-      lastSessionUserId = currentUser.id;
+    if (!sessionReadyPromise && currentUser.id !== lastSessionUserId) {
+      lastStartupError = "";
+      setAppBootState("loading");
+      const bootUserId = currentUser.id;
       sessionReadyPromise = Promise.resolve(onAuthenticatedCallback(currentUser))
+        .then(() => {
+          lastSessionUserId = bootUserId;
+        })
         .catch((error) => {
+          lastSessionUserId = null;
+          lastStartupError = error?.message || "No pude cargar el sistema completo.";
           console.error(error);
-          showToastMessage("No pude cargar todo el sistema a la primera. Reintentando sincronizar.");
+          throw error;
         })
         .finally(() => {
           sessionReadyPromise = null;
         });
     }
-    if (appShell) appShell.hidden = false;
     if (authShell) authShell.hidden = true;
-    if (sessionReadyPromise) {
-      await sessionReadyPromise;
+    if (appShell) appShell.hidden = false;
+    const pendingSessionReady = sessionReadyPromise;
+    if (pendingSessionReady) {
+      setAppBootState("loading");
+      try {
+        await pendingSessionReady;
+      } catch (error) {
+        setAppBootState("error", lastStartupError || error?.message || "No pude cargar el sistema completo.");
+        showToastMessage("No pude iniciar el sistema completo. Reintenta la carga.");
+        return;
+      }
     }
+    setAppBootState("ready");
     activateInactivityMonitor();
   } else {
     deactivateInactivityMonitor();
+    setAppBootState("ready");
     if (appShell) appShell.hidden = true;
     if (authShell) authShell.hidden = false;
   }
@@ -330,14 +413,14 @@ function bindLobbyEvents() {
           const emailInput = $("#forcePasswordEmail");
           if (emailInput) emailInput.value = result.user.email;
           showSection("force-password");
-          showToastMessage("Debes cambiar tu contraseña provisional para entrar.");
+          showToastMessage("Debes cambiar tu contraseÃ±a provisional para entrar.");
           return;
         }
         await updateLobbyVisibility();
         showToastMessage("Sesion iniciada.");
       } catch (error) {
         const message = error.message || "No pude iniciar sesion.";
-        const isPasswordError = /contraseña|contrasena|password/i.test(message);
+        const isPasswordError = /contraseÃ±a|contrasena|password/i.test(message);
         setSignInError(isPasswordError ? "Contrasena incorrecta." : message);
         showToastMessage(isPasswordError ? "Contrasena incorrecta." : message);
       } finally {
@@ -362,7 +445,7 @@ function bindLobbyEvents() {
     const password = String(formData.get("password") || "");
     const confirmPassword = String(formData.get("confirmPassword") || "");
     if (password !== confirmPassword) {
-      showToastMessage("Las contraseñas no coinciden.");
+      showToastMessage("Las contraseÃ±as no coinciden.");
       return;
     }
 
@@ -382,7 +465,7 @@ function bindLobbyEvents() {
         await updateLobbyVisibility();
         showToastMessage("Contrasena actualizada. Ya estas dentro.");
       } catch (error) {
-        showToastMessage(error.message || "No pude cambiar la contraseña.");
+        showToastMessage(error.message || "No pude cambiar la contraseÃ±a.");
       } finally {
         if (submitButton) {
           submitButton.disabled = false;
@@ -398,7 +481,7 @@ function bindLobbyEvents() {
     const password = String(formData.get("password") || "");
     const confirmPassword = String(formData.get("confirmPassword") || "");
     if (password !== confirmPassword) {
-      showToastMessage("Las contraseñas no coinciden.");
+      showToastMessage("Las contraseÃ±as no coinciden.");
       return;
     }
 
@@ -428,7 +511,7 @@ function bindLobbyEvents() {
         });
         const message = $("#resetRequestMessage");
         if (message) {
-          message.textContent = `Te enviamos un enlace de recuperación a ${result.email}. Abre ese enlace para crear tu nueva contraseña.`;
+          message.textContent = `Te enviamos un enlace de recuperaciÃ³n a ${result.email}. Abre ese enlace para crear tu nueva contraseÃ±a.`;
           if (result.delivery !== "email" && result.previewLink) {
             message.textContent = "El enlace fue generado. El correo real necesita estar configurado en Railway; mientras tanto puedes abrirlo aqui: ";
             const link = document.createElement("a");
@@ -452,7 +535,7 @@ function bindLobbyEvents() {
     const password = String(formData.get("password") || "");
     const confirmPassword = String(formData.get("confirmPassword") || "");
     if (password !== confirmPassword) {
-      showToastMessage("Las contraseñas no coinciden.");
+      showToastMessage("Las contraseÃ±as no coinciden.");
       return;
     }
 
@@ -466,7 +549,7 @@ function bindLobbyEvents() {
         showSection("signin");
         showToastMessage("Contrasena actualizada.");
       } catch (error) {
-        showToastMessage(error.message || "No pude cambiar la contraseña.");
+        showToastMessage(error.message || "No pude cambiar la contraseÃ±a.");
       }
     })();
   });
@@ -482,7 +565,7 @@ function bindLobbyEvents() {
       return;
     }
     if (password !== confirmPassword) {
-      showToastMessage("Las contraseñas no coinciden.");
+      showToastMessage("Las contraseÃ±as no coinciden.");
       return;
     }
 
@@ -495,15 +578,15 @@ function bindLobbyEvents() {
         pendingPasswordResetToken = null;
         event.currentTarget.reset();
         showSection("signin");
-        showToastMessage("Contraseña actualizada. Ya puedes entrar con tu nueva contraseña.");
+        showToastMessage("ContraseÃ±a actualizada. Ya puedes entrar con tu nueva contraseÃ±a.");
       } catch (error) {
-        showToastMessage(error.message || "No pude cambiar la contraseña.");
+        showToastMessage(error.message || "No pude cambiar la contraseÃ±a.");
       }
     })();
   });
 
   $("#signOutButton")?.addEventListener("click", () => {
-    void performSignOut("Sesión cerrada.");
+    void performSignOut("SesiÃ³n cerrada.");
   });
 
 }
@@ -537,3 +620,4 @@ export async function initializeAccessLobby({ onAuthenticated, onSignedOut } = {
     await updateLobbyVisibility();
   });
 }
+

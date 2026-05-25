@@ -1,5 +1,5 @@
-﻿import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260525b";
+import { STORAGE_KEY } from "../core/config.js?v=20260514a";
+import { $, $$, elements } from "../core/dom.js?v=20260525c";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260525b";
+} from "../services/auth-service.js?v=20260525c";
 import {
   apiFileUrl,
   createApiConceptPaper,
@@ -59,7 +59,7 @@ import {
   updateApiProgram,
   updateApiProgramCenter,
   uploadApiFile,
-} from "../services/mel-api.js?v=20260525b";
+} from "../services/mel-api.js?v=20260525c";
 import {
   currentMonth,
   escapeHtml,
@@ -88,6 +88,9 @@ const deletedAccessUserIds = new Set();
 let activeStatusReportId = null;
 let accessLibraryUploadInFlight = false;
 let appRefreshInFlight = false;
+let eventsBound = false;
+let stateSyncListenerBound = false;
+let startupSyncPromise = null;
 
 function loadState() {
   return loadStoredState(STORAGE_KEY, seedState, normalizeState);
@@ -1853,15 +1856,15 @@ function renderFormTemplate(form) {
       <p class="item-meta">Al subirlo, alimenta automaticamente: ${mappedIndicators.length ? mappedIndicators.join(" · ") : "indicadores configurados manualmente"}</p>
       <div class="form-template-actions">
         <button class="ghost-action" data-download-form="${form.id}" type="button">
-          <span aria-hidden="true">⇩</span>
+          <span aria-hidden="true">?</span>
           CSV
         </button>
         <button class="ghost-action" data-download-word="${form.id}" type="button">
-          <span aria-hidden="true">⇩</span>
+          <span aria-hidden="true">?</span>
           Word
         </button>
         <button class="ghost-action" data-download-pdf="${form.id}" type="button">
-          <span aria-hidden="true">⇩</span>
+          <span aria-hidden="true">?</span>
           PDF
         </button>
       </div>
@@ -1895,8 +1898,8 @@ function renderReviewQueue() {
               </div>
               ${report.notes ? `<p class="item-meta">${report.notes}</p>` : ""}
               <div class="review-actions">
-                <button class="approve-button" data-approve="${report.id}" type="button" ${validationEnabled ? "" : "disabled"}>✓ Aprobar</button>
-                <button class="return-button" data-return="${report.id}" type="button" ${validationEnabled ? "" : "disabled"}>↵ Solicitar correccion</button>
+                <button class="approve-button" data-approve="${report.id}" type="button" ${validationEnabled ? "" : "disabled"}>? Aprobar</button>
+                <button class="return-button" data-return="${report.id}" type="button" ${validationEnabled ? "" : "disabled"}>? Solicitar correccion</button>
               </div>
             </article>
           `;
@@ -4707,6 +4710,10 @@ function bindEvents() {
   $("#seedButton").addEventListener("click", () => {
     if (appRefreshInFlight) return;
     const button = $("#seedButton");
+    const idleLabel = button?.dataset.idleLabel || button?.textContent || "Sync";
+    if (button && !button.dataset.idleLabel) {
+      button.dataset.idleLabel = idleLabel;
+    }
     const syncStatus = elements.syncStatus;
     let settled = false;
     const finishRefresh = () => {
@@ -4722,6 +4729,7 @@ function bindEvents() {
       }
       if (button) {
         button.disabled = false;
+        button.textContent = button.dataset.idleLabel || idleLabel;
         button.setAttribute("aria-label", "Actualizar vista");
         button.title = "Actualizar vista";
       }
@@ -4733,7 +4741,7 @@ function bindEvents() {
     appRefreshInFlight = true;
     if (button) {
       button.disabled = true;
-      button.textContent = "↻";
+      button.textContent = "...";
       button.setAttribute("aria-label", "Actualizando sistema");
       button.title = "Actualizando sistema";
     }
@@ -5517,52 +5525,78 @@ function bindEvents() {
 }
 
 export function createMonitoringApp() {
-  async function syncStartupData() {
-    const tasks = [
-      refreshConceptPapersFromApi(),
-      refreshProgramCentersFromApi(),
-      refreshProgramManualsFromApi(),
-      refreshAttendanceFromApi(),
+  async function syncStartupData(options = {}) {
+    const { showErrorToast = false } = options;
+    if (startupSyncPromise) {
+      return startupSyncPromise;
+    }
+
+    const loaders = [
+      { label: "reportes y notificaciones", run: refreshReportsAndNotificationsFromApi },
+      { label: "concept papers", run: refreshConceptPapersFromApi },
+      { label: "manuales", run: refreshProgramManualsFromApi },
+      { label: "centros de programa", run: refreshProgramCentersFromApi },
+      { label: "asistencia", run: refreshAttendanceFromApi },
     ];
-    const results = await Promise.allSettled(tasks);
-    const failures = results.filter((result) => result.status === "rejected");
-    failures.forEach((result) => {
-      console.error(result.reason);
+
+    startupSyncPromise = (async () => {
+      const failures = [];
+      for (const loader of loaders) {
+        try {
+          await loader.run();
+        } catch (error) {
+          failures.push(loader.label);
+          console.error(`No pude sincronizar ${loader.label}.`, error);
+        }
+      }
+      if (failures.length && showErrorToast) {
+        showToast(`Algunos datos no se actualizaron todavia: ${failures.join(", ")}.`);
+      }
+      return failures;
+    })();
+
+    try {
+      return await startupSyncPromise;
+    } finally {
+      startupSyncPromise = null;
+    }
+  }
+
+  function ensureStateSyncListener() {
+    if (stateSyncListenerBound) return;
+    stateSyncListenerBound = true;
+    window.addEventListener("mel:state-synced", () => {
+      hydrateState();
+      void (async () => {
+        try {
+          await syncAuthenticatedAccess();
+          renderAll();
+        } catch (error) {
+          console.error("No pude rehidratar el acceso despues de sincronizar estado.", error);
+          showToast("No pude refrescar todos los permisos. Vuelve a intentar.");
+        }
+      })();
     });
-    return failures.length === 0;
   }
 
   return {
     async start(authenticatedUser = null) {
       hydrateState();
-      try {
-        await syncAuthenticatedAccess(authenticatedUser);
-      } catch (error) {
-        console.error(error);
-      }
-      await syncStartupData();
+      await syncAuthenticatedAccess(authenticatedUser);
       renderAll();
-      bindEvents();
-      window.addEventListener("mel:state-synced", () => {
-        hydrateState();
-        void (async () => {
-          try {
-            await syncAuthenticatedAccess();
-          } catch (error) {
-            console.error(error);
-          }
-          renderAll();
-        })();
-      });
+      if (!eventsBound) {
+        bindEvents();
+        eventsBound = true;
+      }
+      ensureStateSyncListener();
+      await syncStartupData({ showErrorToast: true });
+      renderAll();
     },
     async syncAccess(authenticatedUser = null) {
       hydrateState();
-      try {
-        await syncAuthenticatedAccess(authenticatedUser);
-      } catch (error) {
-        console.error(error);
-      }
-      await syncStartupData();
+      await syncAuthenticatedAccess(authenticatedUser);
+      renderAll();
+      await syncStartupData({ showErrorToast: true });
       renderAll();
     },
     lock() {
@@ -5574,4 +5608,5 @@ export function createMonitoringApp() {
     },
   };
 }
+
 

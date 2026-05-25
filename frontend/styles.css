@@ -67,6 +67,55 @@ button:disabled {
   grid-template-columns: 296px minmax(0, 1fr);
   gap: 0;
   min-height: 100vh;
+  position: relative;
+}
+
+.app-shell.is-booting {
+  overflow: hidden;
+}
+
+.app-boot-overlay {
+  align-items: center;
+  background: rgba(237, 243, 245, 0.9);
+  backdrop-filter: blur(10px);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 32px;
+  position: absolute;
+  z-index: 30;
+}
+
+.app-boot-card {
+  background: var(--surface-elevated);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-strong);
+  display: grid;
+  gap: 12px;
+  max-width: 520px;
+  padding: 28px;
+  text-align: center;
+  width: min(100%, 520px);
+}
+
+.app-boot-card h2 {
+  margin: 0;
+}
+
+.app-boot-card p {
+  color: var(--muted);
+  margin: 0;
+}
+
+.app-boot-overlay.is-error .app-boot-card {
+  border-color: rgba(194, 85, 76, 0.28);
+}
+
+.app-boot-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 4px;
 }
 
 .auth-shell {
@@ -635,7 +684,7 @@ h3 {
 .risk-list:empty::before,
 .program-grid:empty::before {
   color: var(--muted-soft);
-  content: "Sin datos disponibles todavía.";
+  content: "Sin datos disponibles todavÃ­a.";
   font-size: 0.9rem;
 }
 

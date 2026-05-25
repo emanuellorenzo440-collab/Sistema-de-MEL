@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from "./mel-api.js?v=20260525b";
+import { getApiBaseUrl } from "./mel-api.js?v=20260525c";
 
 const AUTH_STORAGE_KEY = "pulso-me-auth-v1";
 const AUTH_SESSION_KEY = "pulso-me-session-v1";
@@ -1596,3 +1596,4 @@ export function getDemoSupervisorCredentials() {
 export function getSeededAccessManagerCredentials() {
   return clone(SEEDED_ACCESS_MANAGER);
 }
+
