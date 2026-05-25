@@ -1,8 +1,12 @@
-import { initializeAccessLobby } from "./features/access-lobby.js?v=20260525g";
+import { initializeAccessLobby } from "./features/access-lobby.js?v=20260525h";
 
 let monitoringApp = null;
 let monitoringAppPromise = null;
 let runtimeBridgeStarted = false;
+
+if ("scrollRestoration" in window.history) {
+  window.history.scrollRestoration = "manual";
+}
 
 async function loadMonitoringApp(authenticatedUser = null) {
   if (monitoringApp) return monitoringApp;
@@ -10,8 +14,8 @@ async function loadMonitoringApp(authenticatedUser = null) {
 
   monitoringAppPromise = (async () => {
     const [{ createMonitoringApp }, { bootstrapApiBridge, startRuntimeBridge }] = await Promise.all([
-      import("./features/monitoring-app.js?v=20260525g"),
-      import("./services/mel-runtime-bridge.js?v=20260525g"),
+      import("./features/monitoring-app.js?v=20260525h"),
+      import("./services/mel-runtime-bridge.js?v=20260525h"),
     ]);
 
     const app = createMonitoringApp();
