@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260525j";
+import { $, $$, elements } from "../core/dom.js?v=20260525k";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260525j";
+} from "../services/auth-service.js?v=20260525k";
 import {
   apiFileUrl,
   createApiConceptPaper,
@@ -59,7 +59,7 @@ import {
   updateApiProgram,
   updateApiProgramCenter,
   uploadApiFile,
-} from "../services/mel-api.js?v=20260525j";
+} from "../services/mel-api.js?v=20260525k";
 import {
   currentMonth,
   escapeHtml,
@@ -2578,12 +2578,6 @@ function renderAccessWorkspace(options = {}) {
     const draftSnapshot = captureAccessWorkspaceDraft();
     elements.accessUserGrid.innerHTML = `${summaryMarkup}${cardsMarkup}`;
     restoreAccessWorkspaceDraft(draftSnapshot);
-    if (state?.activeView === "access") {
-      window.requestAnimationFrame(() => {
-        resetViewportPosition();
-        window.requestAnimationFrame(() => resetViewportPosition());
-      });
-    }
   })().catch((error) => {
     console.error(error);
     const message = escapeHtml(error?.message || "No pude cargar los accesos.");
@@ -3156,7 +3150,7 @@ function renderAll() {
   renderPrograms();
   renderProgramCenters();
   renderAccessWorkspace();
-  switchView(state.activeView || firstAllowedView(), { persist: false });
+  switchView(state.activeView || firstAllowedView(), { persist: false, resetScroll: false });
 }
 
 async function refreshAccessStateFromRemote(options = {}) {
