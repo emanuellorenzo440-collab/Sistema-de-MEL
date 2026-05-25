@@ -1686,6 +1686,22 @@ export async function handleChatSearch(request, response, url) {
   });
 }
 
+export async function handleChatDirectory(request, response) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
+  const users = listAuthUsers(actor)
+    .filter((user) => user.status === "active" && user.id !== actor.id)
+    .map((user) => ({
+      id: user.id,
+      fullName: user.fullName,
+      email: user.email,
+      primaryRole: user.primaryRole,
+      organizationId: user.organizationId,
+      organizationName: user.organizationName,
+    }));
+  sendJson(response, 200, { data: users });
+}
+
 export async function handleReportStatusUpdate(request, response, reportId) {
   const actor = requireAuthenticatedUser(request, response);
   if (!actor) return;
@@ -1844,6 +1860,7 @@ function apiIndex() {
       "chat/conversations/:id/messages",
       "chat/conversations/:id/read",
       "chat/conversations/:id/participants",
+      "chat/directory",
       "chat/unread-count",
       "chat/search",
       "notifications",
@@ -2349,6 +2366,11 @@ async function router(request, response) {
 
   if (request.method === "GET" && pathname === "/api/v1/chat/unread-count") {
     await handleChatUnreadCount(request, response);
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/v1/chat/directory") {
+    await handleChatDirectory(request, response);
     return;
   }
 

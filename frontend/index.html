@@ -9,7 +9,7 @@
         display: none !important;
       }
     </style>
-    <link rel="stylesheet" href="styles.css?v=20260525k" />
+    <link rel="stylesheet" href="styles.css?v=20260525m" />
   </head>
   <body>
     <section class="auth-shell" id="authShell">
@@ -188,6 +188,10 @@
           <button class="nav-item" data-view="charts" type="button">
             <span aria-hidden="true">▥</span>
             Graficas
+          </button>
+          <button class="nav-item" data-view="chat" type="button">
+            <span aria-hidden="true">âœ‰</span>
+            Chat
           </button>
           <button class="nav-item" data-view="attendance" type="button">
             <span aria-hidden="true">A</span>
@@ -728,6 +732,52 @@
           </section>
         </section>
 
+        <section class="view" id="chatView" data-view-panel="chat">
+          <div class="chat-layout">
+            <aside class="panel chat-conversation-panel">
+              <div class="panel-header">
+                <div>
+                  <p class="eyebrow">Mensajeria interna</p>
+                  <h2>Conversaciones</h2>
+                </div>
+                <span class="status-pill info" id="chatUnreadCount">0 sin leer</span>
+              </div>
+              <form class="chat-create-form" id="chatCreateForm">
+                <label>
+                  Nuevo chat directo
+                  <select id="chatUserSelect" required></select>
+                </label>
+                <button class="primary-action" type="submit">Crear chat</button>
+              </form>
+              <label class="chat-search-field">
+                Buscar
+                <input id="chatSearchInput" type="search" placeholder="Buscar conversaciones o mensajes" />
+              </label>
+              <div class="chat-conversation-list" id="chatConversationList"></div>
+            </aside>
+
+            <section class="panel chat-thread-panel">
+              <div class="panel-header">
+                <div>
+                  <p class="eyebrow">Conversacion activa</p>
+                  <h2 id="chatConversationTitle">Selecciona una conversacion</h2>
+                  <p class="item-meta" id="chatConversationMeta">Elige un chat o crea uno nuevo para empezar.</p>
+                </div>
+              </div>
+              <div class="chat-message-list" id="chatMessageList"></div>
+              <form class="chat-composer" id="chatComposerForm">
+                <label>
+                  Mensaje
+                  <textarea id="chatComposerInput" rows="3" placeholder="Escribe tu mensaje"></textarea>
+                </label>
+                <div class="item-actions">
+                  <button class="primary-action" type="submit">Enviar</button>
+                </div>
+              </form>
+            </section>
+          </div>
+        </section>
+
         <section class="view" id="attendanceView" data-view-panel="attendance">
           <div class="attendance-layout">
             <section class="panel">
@@ -939,7 +989,7 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="src/main.js?v=20260525k"></script>
+    <script type="module" src="src/main.js?v=20260525m"></script>
   </body>
 </html>
 

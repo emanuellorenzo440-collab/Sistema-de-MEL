@@ -388,6 +388,11 @@ export async function fetchApiChatConversations(filters = {}) {
   return response.data || [];
 }
 
+export async function fetchApiChatDirectory() {
+  const response = await requestJson("chat/directory");
+  return response.data || [];
+}
+
 export async function createApiChatConversation(conversation) {
   const response = await requestJson("chat/conversations", {
     method: "POST",

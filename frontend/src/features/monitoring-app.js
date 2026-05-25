@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260525k";
+import { $, $$, elements } from "../core/dom.js?v=20260525m";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -20,9 +20,12 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260525k";
+} from "../services/auth-service.js?v=20260525m";
 import {
   apiFileUrl,
+  addApiChatParticipants,
+  createApiChatConversation,
+  createApiChatMessage,
   createApiConceptPaper,
   createApiAttendanceParticipant,
   createApiFormSubmission,
@@ -41,6 +44,11 @@ import {
   deleteApiProgram,
   deleteApiProgramCenter,
   deleteApiProgramManual,
+  fetchApiChatConversation,
+  fetchApiChatConversations,
+  fetchApiChatDirectory,
+  fetchApiChatMessages,
+  fetchApiChatUnreadCount,
   fetchApiConceptPapers,
   fetchApiAttendanceParticipants,
   fetchApiAttendanceSessions,
@@ -51,15 +59,17 @@ import {
   fetchApiReports,
   getApiBaseUrl,
   isApiConfigured,
+  markApiChatConversationRead,
   markApiNotificationRead,
   resetApiAttendanceProgram,
+  searchApiChat,
   saveApiAttendanceSession,
   updateApiReportStatus,
   updateApiIndicator,
   updateApiProgram,
   updateApiProgramCenter,
   uploadApiFile,
-} from "../services/mel-api.js?v=20260525k";
+} from "../services/mel-api.js?v=20260525m";
 import {
   currentMonth,
   escapeHtml,
@@ -81,6 +91,7 @@ const MAX_CONCEPT_PAPER_BYTES = MAX_UPLOAD_FILE_BYTES;
 const MAX_PROGRAM_MANUAL_BYTES = MAX_UPLOAD_FILE_BYTES;
 const NO_CENTER_OPTION = "Sin centros registrados";
 const ACCESS_SYNC_INTERVAL_MS = 15000;
+const CHAT_SYNC_INTERVAL_MS = 12000;
 let currentUser = null;
 let currentUserRoles = SYSTEM_ROLES.slice();
 let currentUserViews = VIEW_DEFINITIONS.map((view) => view.id);
@@ -94,6 +105,8 @@ let stateSyncListenerBound = false;
 let startupSyncPromise = null;
 let accessSyncIntervalId = null;
 let accessSyncInFlight = false;
+let chatSyncIntervalId = null;
+let chatSyncInFlight = false;
 
 function loadState() {
   return loadStoredState(STORAGE_KEY, seedState, normalizeState);
@@ -326,6 +339,21 @@ function normalizeState(savedState) {
   nextState.reportDrafts = Array.isArray(savedState.reportDrafts) ? savedState.reportDrafts.slice() : [];
   nextState.actions = Array.isArray(savedState.actions) ? savedState.actions.slice() : [];
   nextState.formSubmissions = Array.isArray(savedState.formSubmissions) ? savedState.formSubmissions.slice() : [];
+  nextState.chatConversations = Array.isArray(savedState.chatConversations) ? savedState.chatConversations.slice() : [];
+  nextState.chatDirectory = Array.isArray(savedState.chatDirectory) ? savedState.chatDirectory.slice() : [];
+  nextState.chatMessagesByConversation =
+    savedState.chatMessagesByConversation && typeof savedState.chatMessagesByConversation === "object"
+      ? { ...savedState.chatMessagesByConversation }
+      : {};
+  nextState.chatUnreadCount =
+    savedState.chatUnreadCount && typeof savedState.chatUnreadCount === "object"
+      ? {
+          totalUnreadConversations: Number(savedState.chatUnreadCount.totalUnreadConversations || 0),
+          totalUnreadMessages: Number(savedState.chatUnreadCount.totalUnreadMessages || 0),
+        }
+      : { totalUnreadConversations: 0, totalUnreadMessages: 0 };
+  nextState.chatSearch = typeof savedState.chatSearch === "string" ? savedState.chatSearch : "";
+  nextState.chatActiveConversationId = typeof savedState.chatActiveConversationId === "string" ? savedState.chatActiveConversationId : "";
   nextState.attendanceParticipants = Array.isArray(savedState.attendanceParticipants) ? savedState.attendanceParticipants.slice() : [];
   nextState.attendanceSessions = Array.isArray(savedState.attendanceSessions) ? savedState.attendanceSessions.slice() : [];
   const attendancePrograms = unique(nextState.programs.map((program) => String(program.name || "").trim()).filter(Boolean));
@@ -350,6 +378,12 @@ function normalizeState(savedState) {
     savedState.selectedConceptPaper && nextState.conceptPapers.some((paper) => paper.id === savedState.selectedConceptPaper)
       ? savedState.selectedConceptPaper
       : nextState.conceptPapers[0]?.id || null;
+  if (
+    nextState.chatActiveConversationId &&
+    !nextState.chatConversations.some((conversation) => conversation.id === nextState.chatActiveConversationId)
+  ) {
+    nextState.chatActiveConversationId = nextState.chatConversations[0]?.id || "";
+  }
   return nextState;
 }
 
@@ -3142,6 +3176,7 @@ function renderAll() {
   renderDesignStudio();
   renderForms();
   renderCharts();
+  renderChatWorkspace();
   renderAttendance();
   renderConceptPapers();
   renderNotifications();
@@ -3189,6 +3224,20 @@ function ensureAccessSyncMonitor() {
   }, ACCESS_SYNC_INTERVAL_MS);
 }
 
+function ensureChatSyncMonitor() {
+  if (chatSyncIntervalId !== null) return;
+  chatSyncIntervalId = window.setInterval(() => {
+    if (document.hidden || chatSyncInFlight || state?.activeView !== "chat" || !isApiConfigured()) return;
+    chatSyncInFlight = true;
+    void refreshChatFromApi({ includeMessages: true })
+      .then(() => renderChatWorkspace())
+      .catch((error) => console.error("No pude sincronizar el chat.", error))
+      .finally(() => {
+        chatSyncInFlight = false;
+      });
+  }, CHAT_SYNC_INTERVAL_MS);
+}
+
 function switchView(viewName, options = {}) {
   const { persist = true, resetScroll = true } = options;
   const titles = {
@@ -3198,6 +3247,7 @@ function switchView(viewName, options = {}) {
     design: "Diseño de monitoreo y evaluación",
     forms: "Formularios descargables",
     charts: "Graficas automaticas",
+    chat: "Mensajeria interna",
     attendance: "Asistencia semanal",
     concepts: "Concept papers",
     supervision: "Supervision y validacion",
@@ -3219,6 +3269,11 @@ function switchView(viewName, options = {}) {
   elements.pageTitle.textContent = titles[viewName];
   if (resetScroll) {
     resetViewportPosition();
+  }
+  if (viewName === "chat" && isApiConfigured()) {
+    void refreshChatFromApi({ includeMessages: true })
+      .then(() => renderChatWorkspace())
+      .catch((error) => console.error("No pude abrir el chat.", error));
   }
   if (persist && state) {
     saveState();
@@ -3305,6 +3360,219 @@ async function refreshAttendanceFromApi() {
   state.attendanceParticipants = participants;
   state.attendanceSessions = sessions;
   saveState({ preserveAttendanceSnapshot: true });
+}
+
+function activeChatConversation() {
+  return (
+    (state.chatConversations || []).find((conversation) => conversation.id === state.chatActiveConversationId) ||
+    state.chatConversations?.[0] ||
+    null
+  );
+}
+
+function chatConversationTitle(conversation = {}) {
+  if (String(conversation.title || "").trim()) return String(conversation.title).trim();
+  const otherParticipants = (conversation.participants || []).filter((participant) => participant.userId !== currentUser?.id);
+  if (otherParticipants.length) {
+    return otherParticipants.map((participant) => participant.displayName || participant.email || participant.userId).join(", ");
+  }
+  return "Conversacion";
+}
+
+function chatConversationMeta(conversation = {}) {
+  const participants = conversation.participants || [];
+  if (conversation.contextType && conversation.contextId) {
+    return `${participants.length} participante${participants.length === 1 ? "" : "s"} · ${conversation.contextType}`;
+  }
+  return `${participants.length} participante${participants.length === 1 ? "" : "s"}`;
+}
+
+function filteredChatConversations() {
+  const query = String(state.chatSearch || "").trim().toLowerCase();
+  if (!query) return state.chatConversations || [];
+  return (state.chatConversations || []).filter((conversation) => {
+    const haystack = [
+      chatConversationTitle(conversation),
+      conversation.description || "",
+      conversation.lastMessagePreview || "",
+      ...(conversation.participants || []).flatMap((participant) => [participant.displayName || "", participant.email || ""]),
+    ]
+      .join(" ")
+      .toLowerCase();
+    return haystack.includes(query);
+  });
+}
+
+function populateChatDirectoryChoices() {
+  if (!elements.chatUserSelect) return;
+  const users = state.chatDirectory || [];
+  elements.chatUserSelect.innerHTML = users
+    .map(
+      (user, index) =>
+        `<option value="${escapeHtml(user.id)}" ${index === 0 ? "selected" : ""}>${escapeHtml(`${user.fullName} · ${user.primaryRole || "Usuario"}`)}</option>`,
+    )
+    .join("");
+}
+
+async function loadChatConversation(conversationId, options = {}) {
+  if (!isApiConfigured() || !conversationId) return;
+  const { markRead = true } = options;
+  const detail = await fetchApiChatConversation(conversationId);
+  const response = await fetchApiChatMessages(conversationId, { limit: 80 });
+  upsertById(state.chatConversations, detail);
+  state.chatMessagesByConversation = {
+    ...(state.chatMessagesByConversation || {}),
+    [conversationId]: Array.isArray(response.data) ? response.data : [],
+  };
+  state.chatActiveConversationId = conversationId;
+
+  const messages = state.chatMessagesByConversation[conversationId] || [];
+  const lastUnread = [...messages].reverse().find((message) => message.senderUserId !== currentUser?.id);
+  if (markRead && lastUnread) {
+    try {
+      await markApiChatConversationRead(conversationId, { lastReadMessageId: lastUnread.id });
+      state.chatUnreadCount = await fetchApiChatUnreadCount();
+      state.chatConversations = await fetchApiChatConversations();
+    } catch (error) {
+      console.error("No pude marcar el chat como leido.", error);
+    }
+  }
+
+  saveState();
+}
+
+async function refreshChatFromApi(options = {}) {
+  if (!isApiConfigured()) return;
+  const { includeMessages = true } = options;
+  const [conversations, directory, unreadCount] = await Promise.all([
+    fetchApiChatConversations(),
+    fetchApiChatDirectory(),
+    fetchApiChatUnreadCount(),
+  ]);
+  state.chatConversations = conversations;
+  state.chatDirectory = directory;
+  state.chatUnreadCount = unreadCount;
+  if (!state.chatActiveConversationId || !conversations.some((conversation) => conversation.id === state.chatActiveConversationId)) {
+    state.chatActiveConversationId = conversations[0]?.id || "";
+  }
+  if (includeMessages && state.chatActiveConversationId) {
+    await loadChatConversation(state.chatActiveConversationId, { markRead: true });
+  }
+  saveState();
+}
+
+function renderChatWorkspace() {
+  if (
+    !elements.chatConversationList ||
+    !elements.chatMessageList ||
+    !elements.chatConversationTitle ||
+    !elements.chatConversationMeta ||
+    !elements.chatUnreadCount
+  ) {
+    return;
+  }
+
+  populateChatDirectoryChoices();
+  const conversations = filteredChatConversations();
+  const activeConversation = activeChatConversation();
+  const messages = activeConversation ? state.chatMessagesByConversation?.[activeConversation.id] || [] : [];
+
+  elements.chatUnreadCount.textContent = `${Number(state.chatUnreadCount?.totalUnreadMessages || 0)} sin leer`;
+  elements.chatConversationList.innerHTML = conversations.length
+    ? conversations
+        .map(
+          (conversation) => `
+            <article class="chat-conversation-item ${conversation.id === activeConversation?.id ? "active" : ""}" data-open-chat-conversation="${conversation.id}">
+              <div class="chat-conversation-item-head">
+                <h3>${escapeHtml(chatConversationTitle(conversation))}</h3>
+                <span class="status-pill ${conversation.unreadCount ? "warning" : "neutral"}">${conversation.unreadCount || 0}</span>
+              </div>
+              <p class="item-meta">${escapeHtml(chatConversationMeta(conversation))}</p>
+              <p>${escapeHtml(conversation.lastMessagePreview || "Sin mensajes todavia.")}</p>
+            </article>
+          `,
+        )
+        .join("")
+    : `<div class="chat-empty-state">No hay conversaciones todavia.</div>`;
+
+  elements.chatConversationTitle.textContent = activeConversation ? chatConversationTitle(activeConversation) : "Selecciona una conversacion";
+  elements.chatConversationMeta.textContent = activeConversation
+    ? chatConversationMeta(activeConversation)
+    : "Elige un chat o crea uno nuevo para empezar.";
+  elements.chatMessageList.innerHTML = activeConversation
+    ? messages.length
+      ? messages
+          .map(
+            (message) => `
+              <article class="chat-message-item ${message.senderUserId === currentUser?.id ? "mine" : ""}">
+                <div class="chat-message-item-head">
+                  <strong>${escapeHtml(message.senderName || "Usuario")}</strong>
+                  <span class="item-meta">${escapeHtml(String(message.createdAt || "").slice(0, 16).replace("T", " "))}</span>
+                </div>
+                <p>${escapeHtml(message.body || "(Sin texto)")}</p>
+              </article>
+            `,
+          )
+          .join("")
+      : `<div class="chat-empty-state">Todavia no hay mensajes en esta conversacion.</div>`
+    : `<div class="chat-empty-state">Selecciona una conversacion para ver mensajes.</div>`;
+
+  if (elements.chatComposerInput) {
+    elements.chatComposerInput.disabled = !activeConversation;
+    if (!activeConversation) {
+      elements.chatComposerInput.value = "";
+    }
+  }
+}
+
+async function createDirectChat(userId) {
+  const selectedUser = (state.chatDirectory || []).find((user) => user.id === userId);
+  if (!selectedUser) {
+    showToast("Selecciona un usuario valido.");
+    return;
+  }
+  const existing = (state.chatConversations || []).find(
+    (conversation) =>
+      conversation.type === "direct" &&
+      (conversation.participants || []).some((participant) => participant.userId === userId) &&
+      (conversation.participants || []).some((participant) => participant.userId === currentUser?.id),
+  );
+  if (existing) {
+    state.chatActiveConversationId = existing.id;
+    await loadChatConversation(existing.id, { markRead: true });
+    renderChatWorkspace();
+    return;
+  }
+  const created = await createApiChatConversation({
+    type: "direct",
+    title: selectedUser.fullName,
+    participantUserIds: [userId],
+  });
+  state.chatActiveConversationId = created.id;
+  await refreshChatFromApi({ includeMessages: true });
+  renderChatWorkspace();
+  showToast("Chat creado.");
+}
+
+async function sendCurrentChatMessage() {
+  const activeConversation = activeChatConversation();
+  const body = String(elements.chatComposerInput?.value || "").trim();
+  if (!activeConversation) {
+    showToast("Selecciona una conversacion.");
+    return;
+  }
+  if (!body) {
+    showToast("Escribe un mensaje.");
+    return;
+  }
+  await createApiChatMessage(activeConversation.id, {
+    messageType: "text",
+    body,
+    attachments: [],
+  });
+  elements.chatComposerInput.value = "";
+  await refreshChatFromApi({ includeMessages: true });
+  renderChatWorkspace();
 }
 
 async function addAttendanceParticipant(name) {
@@ -4772,10 +5040,20 @@ async function saveProgramCenterFromForm(formData) {
 function bindEvents() {
   window.addEventListener("focus", () => {
     void refreshAccessStateFromRemote({ showToastOnPermissionChange: false });
+    if (state?.activeView === "chat" && isApiConfigured()) {
+      void refreshChatFromApi({ includeMessages: true }).then(() => renderChatWorkspace()).catch((error) => {
+        console.error("No pude refrescar el chat al volver a la ventana.", error);
+      });
+    }
   });
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) {
       void refreshAccessStateFromRemote({ showToastOnPermissionChange: false });
+      if (state?.activeView === "chat" && isApiConfigured()) {
+        void refreshChatFromApi({ includeMessages: true }).then(() => renderChatWorkspace()).catch((error) => {
+          console.error("No pude refrescar el chat al volver a la pestana.", error);
+        });
+      }
     }
   });
   $$(".nav-item").forEach((button) => {
@@ -4783,6 +5061,50 @@ function bindEvents() {
   });
 
   $("#quickReportButton").addEventListener("click", () => switchView("report"));
+
+  elements.chatCreateForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void (async () => {
+      try {
+        await createDirectChat(elements.chatUserSelect?.value || "");
+      } catch (error) {
+        console.error(error);
+        showToast(error.message || "No pude crear el chat.");
+      }
+    })();
+  });
+
+  elements.chatSearchInput?.addEventListener("input", () => {
+    state.chatSearch = elements.chatSearchInput.value || "";
+    saveState();
+    renderChatWorkspace();
+  });
+
+  elements.chatConversationList?.addEventListener("click", (event) => {
+    const conversationId = event.target.closest("[data-open-chat-conversation]")?.dataset.openChatConversation;
+    if (!conversationId) return;
+    void (async () => {
+      try {
+        await loadChatConversation(conversationId, { markRead: true });
+        renderChatWorkspace();
+      } catch (error) {
+        console.error(error);
+        showToast(error.message || "No pude abrir la conversacion.");
+      }
+    })();
+  });
+
+  elements.chatComposerForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void (async () => {
+      try {
+        await sendCurrentChatMessage();
+      } catch (error) {
+        console.error(error);
+        showToast(error.message || "No pude enviar el mensaje.");
+      }
+    })();
+  });
 
   $("#seedButton").addEventListener("click", () => {
     if (appRefreshInFlight) return;
@@ -5628,6 +5950,7 @@ export function createMonitoringApp() {
       { label: "concept papers", run: refreshConceptPapersFromApi },
       { label: "manuales", run: refreshProgramManualsFromApi },
       { label: "centros de programa", run: refreshProgramCentersFromApi },
+      { label: "chat", run: () => refreshChatFromApi({ includeMessages: false }) },
       { label: "asistencia", run: refreshAttendanceFromApi },
     ];
 
@@ -5682,6 +6005,7 @@ export function createMonitoringApp() {
       }
       ensureStateSyncListener();
       ensureAccessSyncMonitor();
+      ensureChatSyncMonitor();
       await syncStartupData({ showErrorToast: true });
       renderAll();
     },
@@ -5690,6 +6014,7 @@ export function createMonitoringApp() {
       await syncAuthenticatedAccess(authenticatedUser);
       renderAll();
       ensureAccessSyncMonitor();
+      ensureChatSyncMonitor();
       await syncStartupData({ showErrorToast: true });
       renderAll();
     },
@@ -5698,7 +6023,12 @@ export function createMonitoringApp() {
         window.clearInterval(accessSyncIntervalId);
         accessSyncIntervalId = null;
       }
+      if (chatSyncIntervalId !== null) {
+        window.clearInterval(chatSyncIntervalId);
+        chatSyncIntervalId = null;
+      }
       accessSyncInFlight = false;
+      chatSyncInFlight = false;
       currentUser = null;
       currentUserRoles = SYSTEM_ROLES.slice();
       currentUserViews = VIEW_DEFINITIONS.map((view) => view.id);

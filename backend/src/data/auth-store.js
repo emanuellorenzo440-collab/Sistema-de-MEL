@@ -33,6 +33,7 @@ const VIEW_KEYS = [
   "design",
   "forms",
   "charts",
+  "chat",
   "attendance",
   "concepts",
   "supervision",
@@ -41,12 +42,13 @@ const VIEW_KEYS = [
 ];
 
 const DEFAULT_ROLE_PERMISSIONS = {
-  [SYSTEM_ROLES.facilitator]: ["dashboard", "report", "forms", "attendance", "charts"],
+  [SYSTEM_ROLES.facilitator]: ["dashboard", "report", "forms", "charts", "chat", "attendance"],
   [SYSTEM_ROLES.programCoordinator]: [
     "dashboard",
     "report",
     "indicators",
     "forms",
+    "chat",
     "attendance",
     "charts",
     "concepts",
@@ -58,6 +60,7 @@ const DEFAULT_ROLE_PERMISSIONS = {
     "indicators",
     "design",
     "forms",
+    "chat",
     "attendance",
     "charts",
     "concepts",
@@ -70,6 +73,7 @@ const DEFAULT_ROLE_PERMISSIONS = {
     "indicators",
     "design",
     "forms",
+    "chat",
     "attendance",
     "charts",
     "concepts",
@@ -333,6 +337,17 @@ function migrateState(state) {
   }
 
   next.presetAccountVersion = PRESET_ACCOUNT_VERSION;
+  next.users = next.users.map((user) => {
+    const defaultViews = rolePermissions(user.primaryRole);
+    if (!defaultViews.includes("chat")) return user;
+    if (Array.isArray(user.viewPermissions) && user.viewPermissions.includes("chat")) return user;
+    return {
+      ...user,
+      viewPermissions: normalizeList([...(user.viewPermissions || []), "chat"], defaultViews),
+      updatedAt: nowIso(),
+      updatedBy: user.updatedBy || "migration",
+    };
+  });
   next.activeSessions = next.activeSessions.filter((session) => {
     if (!session.userId || !session.tokenHash) return false;
     if (session.expiresAt && Date.parse(session.expiresAt) < Date.now()) return false;
