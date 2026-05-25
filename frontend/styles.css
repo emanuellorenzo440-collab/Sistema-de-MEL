@@ -823,11 +823,16 @@ h3 {
   display: grid;
   gap: 10px;
   grid-template-columns: 160px 1fr 54px;
-  align-items: center;
+  align-items: start;
 }
 
 .bar-name {
   font-weight: 800;
+}
+
+.bar-content {
+  display: grid;
+  gap: 8px;
 }
 
 .bar-track {
@@ -860,6 +865,21 @@ h3 {
   color: var(--muted);
   font-weight: 800;
   text-align: right;
+}
+
+.bar-meta {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.bar-source-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.bar-source-actions .ghost-action {
+  padding: 8px 12px;
 }
 
 .risk-list,

@@ -737,10 +737,27 @@ function renderMetrics() {
     .join("");
 }
 
+function setProgramSourceContext(programName, targetView = "dashboard") {
+  state.filters.program = programName;
+  state.filters.province = "Todas";
+  state.filters.period = "Todos";
+  state.activeView = targetView;
+  if (targetView === "indicators") {
+    state.designProgram = programName;
+    state.formsProgram = programName;
+  }
+  saveState();
+  renderAll();
+  switchView(targetView);
+}
+
 function renderProgramChart() {
   elements.programChart.innerHTML = state.programs
     .map((program) => {
       const indicators = state.indicators.filter((indicator) => indicator.program === program.name);
+      const approvedReportCount = state.reports.filter(
+        (report) => report.program === program.name && isApprovedReportStatus(report.status),
+      ).length;
       const value = indicators.reduce((sum, indicator) => sum + indicator.value, 0);
       const target = indicators.reduce((sum, indicator) => sum + indicator.target, 0);
       const progress = percent(value, target);
@@ -748,8 +765,21 @@ function renderProgramChart() {
       return `
         <div class="bar-row">
           <div class="bar-name">${program.name}</div>
-          <div class="bar-track" aria-label="${progress}% de avance">
-            <div class="bar-fill ${risk}" style="width: ${progress}%"></div>
+          <div class="bar-content">
+            <div class="bar-track" aria-label="${progress}% de avance">
+              <div class="bar-fill ${risk}" style="width: ${progress}%"></div>
+            </div>
+            <div class="bar-meta">
+              Fuente: ${value.toLocaleString("es-DO")} de ${target.toLocaleString("es-DO")} · ${indicators.length} indicador${indicators.length === 1 ? "" : "es"} · ${approvedReportCount} reporte${approvedReportCount === 1 ? "" : "s"} aprobado${approvedReportCount === 1 ? "" : "s"}
+            </div>
+            ${
+              isSystemAdminRole()
+                ? `<div class="bar-source-actions">
+                    <button class="ghost-action" type="button" data-open-program-indicators="${escapeHtml(program.name)}">Ajustar indicadores</button>
+                    <button class="ghost-action" type="button" data-open-program-reports="${escapeHtml(program.name)}">Revisar reportes</button>
+                  </div>`
+                : ""
+            }
           </div>
           <div class="bar-value">${progress}%</div>
         </div>
@@ -4993,6 +5023,21 @@ function bindEvents() {
       saveState();
       renderAll();
     });
+  });
+
+  elements.programChart?.addEventListener("click", (event) => {
+    const indicatorProgram = event.target.closest("[data-open-program-indicators]")?.dataset.openProgramIndicators;
+    if (indicatorProgram) {
+      setProgramSourceContext(indicatorProgram, "indicators");
+      showToast(`Mostrando indicadores fuente de ${indicatorProgram}.`);
+      return;
+    }
+
+    const reportProgram = event.target.closest("[data-open-program-reports]")?.dataset.openProgramReports;
+    if (reportProgram) {
+      setProgramSourceContext(reportProgram, "dashboard");
+      showToast(`Mostrando reportes fuente de ${reportProgram}.`);
+    }
   });
 
   [elements.notificationList, elements.supervisionNotificationList].forEach((list) => {
