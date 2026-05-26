@@ -2058,6 +2058,36 @@ export function removeChatParticipant(conversationId, userId) {
   return structuredClone(participant);
 }
 
+export function updateChatParticipant(conversationId, userId, input = {}) {
+  const participant = chatParticipants.find(
+    (item) => item.conversationId === conversationId && item.userId === userId && !item.leftAt,
+  );
+  if (!participant) return null;
+  const timestamp = nowIso();
+  if (Object.prototype.hasOwnProperty.call(input, "participantRole")) {
+    participant.participantRole = normalizeString(input.participantRole, participant.participantRole || "member");
+  }
+  if (Object.prototype.hasOwnProperty.call(input, "canSendMessages")) {
+    participant.canSendMessages = normalizeBoolean(input.canSendMessages, participant.canSendMessages !== false);
+  }
+  if (Object.prototype.hasOwnProperty.call(input, "canAddPeople")) {
+    participant.canAddPeople = normalizeBoolean(input.canAddPeople, participant.canAddPeople || false);
+  }
+  if (Object.prototype.hasOwnProperty.call(input, "canRemovePeople")) {
+    participant.canRemovePeople = normalizeBoolean(input.canRemovePeople, participant.canRemovePeople || false);
+  }
+  if (Object.prototype.hasOwnProperty.call(input, "isMuted")) {
+    participant.isMuted = normalizeBoolean(input.isMuted, participant.isMuted || false);
+  }
+  participant.updatedAt = timestamp;
+  const conversation = chatConversations.find((item) => item.id === conversationId);
+  if (conversation) {
+    conversation.updatedAt = timestamp;
+  }
+  persistStore();
+  return structuredClone(participant);
+}
+
 export function archiveChatConversation(conversationId, options = {}) {
   const conversation = chatConversations.find((item) => item.id === conversationId);
   if (!conversation) return null;
@@ -2252,7 +2282,7 @@ export function createChatMessage(conversationId, input = {}) {
 
   const activeParticipants = conversationParticipants(conversationId);
   activeParticipants
-    .filter((participant) => participant.userId !== message.senderUserId)
+    .filter((participant) => participant.userId !== message.senderUserId && !participant.isMuted)
     .forEach((participant) => {
       chatNotifications.push(
         normalizedChatNotification({

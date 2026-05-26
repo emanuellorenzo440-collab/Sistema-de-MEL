@@ -718,6 +718,43 @@ h3 {
   margin-top: 14px;
 }
 
+.chat-participant-moderation {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 12px;
+}
+
+.chat-participant-admin-list {
+  display: grid;
+  gap: 10px;
+}
+
+.chat-participant-admin-row {
+  align-items: end;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(180px, 1.4fr) repeat(2, minmax(120px, 0.8fr)) auto;
+  padding: 10px 12px;
+}
+
+.toggle-field {
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+  min-height: 44px;
+}
+
+.toggle-field input {
+  margin: 0;
+}
+
 .chat-details-grid {
   display: grid;
   gap: 12px;
@@ -1883,6 +1920,10 @@ textarea {
   .form-actions button,
   .form-template-actions button {
     flex: 1;
+  }
+
+  .chat-participant-admin-row {
+    grid-template-columns: 1fr;
   }
 
   .filters,

@@ -101,6 +101,7 @@ export const elements = {
   chatSharedFiles: $("#chatSharedFiles"),
   chatAddParticipantForm: $("#chatAddParticipantForm"),
   chatAddParticipantSelect: $("#chatAddParticipantSelect"),
+  chatParticipantModeration: $("#chatParticipantModeration"),
   chatMessageList: $("#chatMessageList"),
   chatComposerForm: $("#chatComposerForm"),
   chatReplyPreview: $("#chatReplyPreview"),

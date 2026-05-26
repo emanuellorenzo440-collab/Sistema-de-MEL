@@ -478,6 +478,17 @@ export async function removeApiChatParticipant(conversationId, userId) {
   return response.data;
 }
 
+export async function updateApiChatParticipant(conversationId, userId, payload = {}) {
+  const response = await requestJson(
+    "chat/conversations/" + encodeURIComponent(conversationId) + "/participants/" + encodeURIComponent(userId),
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    },
+  );
+  return response.data;
+}
+
 export async function fetchApiChatUnreadCount() {
   const response = await requestJson("chat/unread-count");
   return response.data;

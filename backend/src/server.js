@@ -59,6 +59,7 @@ import {
   searchChat,
   setChatConversationTyping,
   saveReportStatusDecision,
+  updateChatParticipant,
   updateChatConversation,
   updateIndicator,
   updateProgram,
@@ -1426,8 +1427,16 @@ function actorChatParticipant(conversationId, actor) {
 
 function canManageConversationParticipants(participant, actor, conversation) {
   if (!participant) return false;
+  if (actor.role === "Supervision M&E") return true;
   if (participant.canAddPeople || participant.canRemovePeople) return true;
   return conversation?.createdByUserId === actor.id;
+}
+
+function canModerateConversationParticipants(participant, actor, conversation) {
+  if (!participant) return false;
+  if (actor.role === "Supervision M&E") return true;
+  if (conversation?.createdByUserId === actor.id) return true;
+  return participant.participantRole === "owner" || Boolean(participant.canRemovePeople);
 }
 
 function canArchiveConversation(participant, actor, conversation) {
@@ -1758,6 +1767,79 @@ export async function handleChatParticipantDelete(request, response, conversatio
   }
 }
 
+export async function handleChatParticipantUpdate(request, response, conversationId, userId) {
+  try {
+    const actor = requireAuthenticatedUser(request, response);
+    if (!actor) return;
+    const conversation = findChatConversationById(conversationId, {
+      organizationId: actor.organizationId,
+      participantUserId: actor.id,
+    });
+    if (!conversation) {
+      sendJson(response, 404, { error: "No encontre la conversacion solicitada." });
+      return;
+    }
+    const actorParticipant = actorChatParticipant(conversationId, actor);
+    if (!canModerateConversationParticipants(actorParticipant, actor, conversation)) {
+      sendJson(response, 403, { error: "No tienes permiso para moderar este chat." });
+      return;
+    }
+    const targetParticipant = listChatParticipants({
+      organizationId: actor.organizationId,
+      conversationId,
+      userId,
+    })[0];
+    if (!targetParticipant) {
+      sendJson(response, 404, { error: "No encontre el participante solicitado." });
+      return;
+    }
+    if (targetParticipant.participantRole === "owner" && actor.role !== "Supervision M&E" && actor.id !== userId) {
+      sendJson(response, 403, { error: "No puedes modificar al propietario del grupo." });
+      return;
+    }
+    const payload = await readJsonBody(request);
+    const roleInput = String(payload.participantRole || targetParticipant.participantRole || "member").trim().toLowerCase();
+    if (!["member", "admin", "owner"].includes(roleInput)) {
+      sendJson(response, 400, { error: "Rol de participante no valido." });
+      return;
+    }
+    if (roleInput === "owner" && actor.role !== "Supervision M&E") {
+      sendJson(response, 403, { error: "Solo Supervision M&E puede reasignar el rol de propietario." });
+      return;
+    }
+    const roleTemplates = {
+      owner: { participantRole: "owner", canAddPeople: true, canRemovePeople: true },
+      admin: { participantRole: "admin", canAddPeople: true, canRemovePeople: true },
+      member: { participantRole: "member", canAddPeople: false, canRemovePeople: false },
+    };
+    const updated = updateChatParticipant(conversationId, userId, {
+      ...roleTemplates[roleInput],
+      canSendMessages: payload.canSendMessages !== undefined ? payload.canSendMessages : targetParticipant.canSendMessages,
+      isMuted: payload.isMuted !== undefined ? payload.isMuted : targetParticipant.isMuted,
+    });
+    const usersById = chatUserDirectory(actor);
+    const targetName = usersById.get(userId)?.fullName || userId;
+    const changes = [];
+    if (updated.participantRole !== targetParticipant.participantRole) {
+      changes.push(`rol ${targetParticipant.participantRole || "miembro"} -> ${updated.participantRole}`);
+    }
+    if (Boolean(updated.canSendMessages) !== Boolean(targetParticipant.canSendMessages)) {
+      changes.push(updated.canSendMessages ? "habilito envio de mensajes" : "restringio envio de mensajes");
+    }
+    if (Boolean(updated.isMuted) !== Boolean(targetParticipant.isMuted)) {
+      changes.push(updated.isMuted ? "silencio notificaciones" : "reactivo notificaciones");
+    }
+    if (changes.length) {
+      postSystemChatMessage(conversation, actor, `${actor.fullName || actor.id} actualizo a ${targetName}: ${changes.join(", ")}.`);
+    }
+    sendJson(response, 200, {
+      data: decorateChatParticipant(updated, usersById),
+    });
+  } catch (error) {
+    sendApiError(response, error);
+  }
+}
+
 export async function handleChatConversationArchive(request, response, conversationId) {
   try {
     const actor = requireAuthenticatedUser(request, response);
@@ -2074,6 +2156,7 @@ function apiIndex() {
       "chat/conversations/:id/read",
       "chat/conversations/:id/presence",
       "chat/conversations/:id/participants",
+      "chat/conversations/:id/participants/:userId",
       "chat/conversations/:id/typing",
       "chat/directory",
       "chat/presence",
@@ -2650,6 +2733,15 @@ async function router(request, response) {
   }
 
   const chatParticipantDeleteMatch = pathname.match(/^\/api\/v1\/chat\/conversations\/([^/]+)\/participants\/([^/]+)$/);
+  if (request.method === "PATCH" && chatParticipantDeleteMatch) {
+    await handleChatParticipantUpdate(
+      request,
+      response,
+      decodeURIComponent(chatParticipantDeleteMatch[1]),
+      decodeURIComponent(chatParticipantDeleteMatch[2]),
+    );
+    return;
+  }
   if (request.method === "DELETE" && chatParticipantDeleteMatch) {
     await handleChatParticipantDelete(
       request,

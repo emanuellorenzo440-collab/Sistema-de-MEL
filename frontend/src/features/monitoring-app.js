@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260526l";
+import { $, $$, elements } from "../core/dom.js?v=20260526m";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260526l";
+} from "../services/auth-service.js?v=20260526m";
 import {
   apiFileUrl,
   addApiChatParticipants,
@@ -69,13 +69,14 @@ import {
   resetApiAttendanceProgram,
   searchApiChat,
   saveApiAttendanceSession,
+  updateApiChatParticipant,
   updateApiChatConversation,
   updateApiReportStatus,
   updateApiIndicator,
   updateApiProgram,
   updateApiProgramCenter,
   uploadApiFile,
-} from "../services/mel-api.js?v=20260526l";
+} from "../services/mel-api.js?v=20260526m";
 import {
   currentMonth,
   escapeHtml,
@@ -3867,8 +3868,25 @@ function availableParticipantsForActiveConversation(conversation = activeChatCon
   return (state.chatDirectory || []).filter((user) => !participantIds.has(user.id));
 }
 
+function currentChatParticipant(conversation = activeChatConversation()) {
+  return (conversation?.participants || []).find((participant) => participant.userId === currentUser?.id) || null;
+}
+
+function canModerateActiveChatConversation(conversation = activeChatConversation()) {
+  if (!conversation || conversation.type !== "group") return false;
+  if (isSystemAdminRole()) return true;
+  if (conversation.createdByUserId === currentUser?.id) return true;
+  const participant = currentChatParticipant(conversation);
+  return Boolean(participant?.participantRole === "owner" || participant?.canRemovePeople);
+}
+
 function populateChatParticipantManager(conversation = activeChatConversation()) {
-  if (!elements.chatParticipantStrip || !elements.chatAddParticipantForm || !elements.chatAddParticipantSelect) return;
+  if (
+    !elements.chatParticipantStrip ||
+    !elements.chatAddParticipantForm ||
+    !elements.chatAddParticipantSelect ||
+    !elements.chatParticipantModeration
+  ) return;
   const participants = conversation?.participants || [];
   elements.chatParticipantStrip.innerHTML = participants.length
     ? participants
@@ -3883,10 +3901,12 @@ function populateChatParticipantManager(conversation = activeChatConversation())
         .join("")
     : `<p class="item-meta">Sin participantes.</p>`;
 
-  const canManageParticipants = Boolean(conversation && conversation.type === "group");
+  const canManageParticipants = canModerateActiveChatConversation(conversation);
   elements.chatAddParticipantForm.hidden = !canManageParticipants;
   if (!canManageParticipants) {
     elements.chatAddParticipantSelect.innerHTML = "";
+    elements.chatParticipantModeration.hidden = true;
+    elements.chatParticipantModeration.innerHTML = "";
     return;
   }
   const availableUsers = availableParticipantsForActiveConversation(conversation);
@@ -3901,6 +3921,57 @@ function populateChatParticipantManager(conversation = activeChatConversation())
   elements.chatAddParticipantSelect.disabled = !availableUsers.length;
   const submitButton = elements.chatAddParticipantForm.querySelector("button[type='submit']");
   if (submitButton) submitButton.disabled = !availableUsers.length;
+  elements.chatParticipantModeration.hidden = false;
+  elements.chatParticipantModeration.innerHTML = `
+    <div class="panel-header compact">
+      <div>
+        <p class="eyebrow">Moderacion</p>
+        <h3>Permisos del grupo</h3>
+      </div>
+    </div>
+    <div class="chat-participant-admin-list">
+      ${participants
+        .map((participant) => {
+          const canModifyOwner =
+            participant.participantRole !== "owner" || isSystemAdminRole() || participant.userId === currentUser?.id;
+          const disableControls = !canModifyOwner;
+          const isSelf = participant.userId === currentUser?.id;
+          return `
+            <form class="chat-participant-admin-row" data-chat-participant-manage="${escapeHtml(participant.userId)}">
+              <div>
+                <strong>${escapeHtml(participant.displayName || participant.email || participant.userId)}</strong>
+                <p class="item-meta">${escapeHtml(participant.primaryRole || participant.email || participant.userId)}</p>
+              </div>
+                <label>
+                  Rol
+                  <select name="participantRole" ${disableControls ? "disabled" : ""}>
+                    <option value="member" ${participant.participantRole === "member" ? "selected" : ""}>Miembro</option>
+                    <option value="admin" ${participant.participantRole === "admin" ? "selected" : ""}>Admin</option>
+                    ${isSystemAdminRole() ? `<option value="owner" ${participant.participantRole === "owner" ? "selected" : ""}>Propietario</option>` : ""}
+                  </select>
+                </label>
+              <label class="toggle-field">
+                <input type="checkbox" name="canSendMessages" ${participant.canSendMessages !== false ? "checked" : ""} ${disableControls ? "disabled" : ""} />
+                <span>Puede escribir</span>
+              </label>
+              <label class="toggle-field">
+                <input type="checkbox" name="isMuted" ${participant.isMuted ? "checked" : ""} ${disableControls ? "disabled" : ""} />
+                <span>Silenciado</span>
+              </label>
+              <div class="item-actions">
+                <button class="ghost-action" type="submit" ${disableControls ? "disabled" : ""}>Guardar</button>
+                ${
+                  !isSelf && canModifyOwner
+                    ? `<button class="ghost-action danger-action" type="button" data-remove-chat-participant="${escapeHtml(participant.userId)}">Quitar</button>`
+                    : ""
+                }
+              </div>
+            </form>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
 }
 
 async function loadChatConversation(conversationId, options = {}) {
@@ -4546,6 +4617,33 @@ async function addParticipantsToCurrentGroup(userIds = []) {
   elements.chatAddParticipantForm?.reset();
   renderChatWorkspace();
   showToast("Participante agregado al grupo.");
+}
+
+async function updateParticipantInCurrentGroup(userId, payload = {}) {
+  const activeConversation = activeChatConversation();
+  if (!activeConversation || activeConversation.type !== "group") {
+    showToast("Selecciona un grupo.");
+    return;
+  }
+  await updateApiChatParticipant(activeConversation.id, userId, payload);
+  await refreshChatFromApi({ includeMessages: true });
+  renderChatWorkspace();
+  showToast("Permisos del participante actualizados.");
+}
+
+async function removeParticipantFromCurrentGroup(userId) {
+  const activeConversation = activeChatConversation();
+  if (!activeConversation || activeConversation.type !== "group") {
+    showToast("Selecciona un grupo.");
+    return;
+  }
+  const target = (activeConversation.participants || []).find((participant) => participant.userId === userId);
+  const confirmed = window.confirm(`Quitar a ${target?.displayName || target?.email || "este participante"} del grupo?`);
+  if (!confirmed) return;
+  await removeApiChatParticipant(activeConversation.id, userId);
+  await refreshChatFromApi({ includeMessages: true });
+  renderChatWorkspace();
+  showToast("Participante quitado del grupo.");
 }
 
 function findReportOwnerUser(report, directory = state.chatDirectory || []) {
@@ -6419,6 +6517,39 @@ function bindEvents() {
       } catch (error) {
         console.error(error);
         showToast(error.message || "No pude agregar el participante.");
+      }
+    })();
+  });
+
+  elements.chatParticipantModeration?.addEventListener("submit", (event) => {
+    const form = event.target.closest("[data-chat-participant-manage]");
+    if (!form) return;
+    event.preventDefault();
+    const userId = form.dataset.chatParticipantManage;
+    const formData = new FormData(form);
+    void (async () => {
+      try {
+        await updateParticipantInCurrentGroup(userId, {
+          participantRole: formData.get("participantRole"),
+          canSendMessages: formData.get("canSendMessages") === "on",
+          isMuted: formData.get("isMuted") === "on",
+        });
+      } catch (error) {
+        console.error(error);
+        showToast(error.message || "No pude actualizar al participante.");
+      }
+    })();
+  });
+
+  elements.chatParticipantModeration?.addEventListener("click", (event) => {
+    const userId = event.target.closest("[data-remove-chat-participant]")?.dataset.removeChatParticipant;
+    if (!userId) return;
+    void (async () => {
+      try {
+        await removeParticipantFromCurrentGroup(userId);
+      } catch (error) {
+        console.error(error);
+        showToast(error.message || "No pude quitar al participante.");
       }
     })();
   });
