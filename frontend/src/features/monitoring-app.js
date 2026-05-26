@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260526g";
+import { $, $$, elements } from "../core/dom.js?v=20260526h";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260526g";
+} from "../services/auth-service.js?v=20260526h";
 import {
   apiFileUrl,
   addApiChatParticipants,
@@ -72,7 +72,7 @@ import {
   updateApiProgram,
   updateApiProgramCenter,
   uploadApiFile,
-} from "../services/mel-api.js?v=20260526g";
+} from "../services/mel-api.js?v=20260526h";
 import {
   currentMonth,
   escapeHtml,
@@ -114,6 +114,7 @@ let chatAttachmentFiles = [];
 let chatSearchResults = null;
 let chatReplyMessageId = "";
 let chatSearchRequestId = 0;
+let chatSyncPrimed = false;
 
 function loadState() {
   return loadStoredState(STORAGE_KEY, seedState, normalizeState);
@@ -3242,14 +3243,11 @@ function ensureAccessSyncMonitor() {
 function ensureChatSyncMonitor() {
   if (chatSyncIntervalId !== null) return;
   chatSyncIntervalId = window.setInterval(() => {
-    if (document.hidden || chatSyncInFlight || state?.activeView !== "chat" || !isApiConfigured()) return;
-    chatSyncInFlight = true;
-    void refreshChatFromApi({ includeMessages: true })
-      .then(() => renderChatWorkspace())
-      .catch((error) => console.error("No pude sincronizar el chat.", error))
-      .finally(() => {
-        chatSyncInFlight = false;
-      });
+    if (document.hidden || chatSyncInFlight || !isApiConfigured()) return;
+    void syncChatInbox({
+      includeMessages: state?.activeView === "chat",
+      showToastOnNewMessages: true,
+    }).catch((error) => console.error("No pude sincronizar el chat.", error));
   }, CHAT_SYNC_INTERVAL_MS);
 }
 
@@ -3286,8 +3284,7 @@ function switchView(viewName, options = {}) {
     resetViewportPosition();
   }
   if (viewName === "chat" && isApiConfigured()) {
-    void refreshChatFromApi({ includeMessages: true })
-      .then(() => renderChatWorkspace())
+    void syncChatInbox({ includeMessages: true, showToastOnNewMessages: false })
       .catch((error) => console.error("No pude abrir el chat.", error));
   }
   if (persist && state) {
@@ -3767,14 +3764,16 @@ async function loadChatConversation(conversationId, options = {}) {
 
 async function refreshChatFromApi(options = {}) {
   if (!isApiConfigured()) return;
-  const { includeMessages = true } = options;
-  const [conversations, directory, unreadCount] = await Promise.all([
-    fetchApiChatConversations(),
-    fetchApiChatDirectory(),
-    fetchApiChatUnreadCount(),
-  ]);
+  const { includeMessages = true, includeDirectory = true } = options;
+  const requests = [fetchApiChatConversations(), fetchApiChatUnreadCount()];
+  if (includeDirectory) {
+    requests.push(fetchApiChatDirectory());
+  }
+  const [conversations, unreadCount, directory] = await Promise.all(requests);
   state.chatConversations = conversations;
-  state.chatDirectory = directory;
+  if (includeDirectory) {
+    state.chatDirectory = directory;
+  }
   state.chatUnreadCount = unreadCount;
   if (!state.chatActiveConversationId || !conversations.some((conversation) => conversation.id === state.chatActiveConversationId)) {
     state.chatActiveConversationId = conversations[0]?.id || "";
@@ -3783,6 +3782,48 @@ async function refreshChatFromApi(options = {}) {
     await loadChatConversation(state.chatActiveConversationId, { markRead: true });
   }
   saveState();
+}
+
+function selectNewestUnreadConversation(nextConversations = [], previousConversations = []) {
+  const previousUnreadById = new Map(
+    (previousConversations || []).map((conversation) => [conversation.id, Number(conversation.unreadCount || 0)]),
+  );
+  return (nextConversations || [])
+    .filter((conversation) => Number(conversation.unreadCount || 0) > Number(previousUnreadById.get(conversation.id) || 0))
+    .sort((left, right) => String(right.lastMessageAt || "").localeCompare(String(left.lastMessageAt || "")))[0] || null;
+}
+
+function notifyNewChatMessage(conversation) {
+  if (!conversation) return;
+  const title = chatConversationTitle(conversation);
+  const preview = String(conversation.lastMessagePreview || "").trim();
+  showToast(preview ? `Nuevo mensaje en ${title}: ${preview.slice(0, 90)}` : `Nuevo mensaje en ${title}.`);
+}
+
+async function syncChatInbox(options = {}) {
+  if (!isApiConfigured() || chatSyncInFlight) return;
+  const {
+    includeMessages = false,
+    includeDirectory = false,
+    showToastOnNewMessages = false,
+  } = options;
+  chatSyncInFlight = true;
+  try {
+    const previousConversations = Array.isArray(state?.chatConversations) ? state.chatConversations.map((item) => ({ ...item })) : [];
+    const previousUnreadTotal = Number(state?.chatUnreadCount?.totalUnreadMessages || 0);
+    await refreshChatFromApi({
+      includeMessages,
+      includeDirectory: includeDirectory || !Array.isArray(state?.chatDirectory) || !state.chatDirectory.length,
+    });
+    renderChatWorkspace();
+    const nextUnreadTotal = Number(state?.chatUnreadCount?.totalUnreadMessages || 0);
+    if (chatSyncPrimed && showToastOnNewMessages && nextUnreadTotal > previousUnreadTotal) {
+      notifyNewChatMessage(selectNewestUnreadConversation(state.chatConversations || [], previousConversations));
+    }
+    chatSyncPrimed = true;
+  } finally {
+    chatSyncInFlight = false;
+  }
 }
 
 function renderChatWorkspace() {
@@ -5726,8 +5767,8 @@ async function saveProgramCenterFromForm(formData) {
 function bindEvents() {
   window.addEventListener("focus", () => {
     void refreshAccessStateFromRemote({ showToastOnPermissionChange: false });
-    if (state?.activeView === "chat" && isApiConfigured()) {
-      void refreshChatFromApi({ includeMessages: true }).then(() => renderChatWorkspace()).catch((error) => {
+    if (isApiConfigured()) {
+      void syncChatInbox({ includeMessages: state?.activeView === "chat", showToastOnNewMessages: true }).catch((error) => {
         console.error("No pude refrescar el chat al volver a la ventana.", error);
       });
     }
@@ -5735,8 +5776,8 @@ function bindEvents() {
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) {
       void refreshAccessStateFromRemote({ showToastOnPermissionChange: false });
-      if (state?.activeView === "chat" && isApiConfigured()) {
-        void refreshChatFromApi({ includeMessages: true }).then(() => renderChatWorkspace()).catch((error) => {
+      if (isApiConfigured()) {
+        void syncChatInbox({ includeMessages: state?.activeView === "chat", showToastOnNewMessages: true }).catch((error) => {
           console.error("No pude refrescar el chat al volver a la pestana.", error);
         });
       }
