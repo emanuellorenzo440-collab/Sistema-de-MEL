@@ -441,6 +441,27 @@ export async function markApiChatConversationRead(conversationId, payload) {
   return response.data;
 }
 
+export async function fetchApiChatConversationPresence(conversationId) {
+  const response = await requestJson("chat/conversations/" + encodeURIComponent(conversationId) + "/presence");
+  return response.data;
+}
+
+export async function postApiChatPresence(payload = {}) {
+  const response = await requestJson("chat/presence", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function postApiChatTyping(conversationId, payload = {}) {
+  const response = await requestJson("chat/conversations/" + encodeURIComponent(conversationId) + "/typing", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
 export async function addApiChatParticipants(conversationId, payload) {
   const response = await requestJson("chat/conversations/" + encodeURIComponent(conversationId) + "/participants", {
     method: "POST",

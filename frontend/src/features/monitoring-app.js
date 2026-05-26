@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260526k";
+import { $, $$, elements } from "../core/dom.js?v=20260526l";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260526k";
+} from "../services/auth-service.js?v=20260526l";
 import {
   apiFileUrl,
   addApiChatParticipants,
@@ -46,6 +46,7 @@ import {
   deleteApiProgramCenter,
   deleteApiProgramManual,
   fetchApiChatConversation,
+  fetchApiChatConversationPresence,
   fetchApiChatConversations,
   fetchApiChatDirectory,
   fetchApiChatMessages,
@@ -62,6 +63,8 @@ import {
   isApiConfigured,
   markApiChatConversationRead,
   markApiNotificationRead,
+  postApiChatPresence,
+  postApiChatTyping,
   removeApiChatParticipant,
   resetApiAttendanceProgram,
   searchApiChat,
@@ -72,7 +75,7 @@ import {
   updateApiProgram,
   updateApiProgramCenter,
   uploadApiFile,
-} from "../services/mel-api.js?v=20260526k";
+} from "../services/mel-api.js?v=20260526l";
 import {
   currentMonth,
   escapeHtml,
@@ -95,6 +98,9 @@ const MAX_PROGRAM_MANUAL_BYTES = MAX_UPLOAD_FILE_BYTES;
 const NO_CENTER_OPTION = "Sin centros registrados";
 const ACCESS_SYNC_INTERVAL_MS = 15000;
 const CHAT_SYNC_INTERVAL_MS = 12000;
+const CHAT_PRESENCE_INTERVAL_MS = 12000;
+const CHAT_TYPING_IDLE_MS = 4500;
+const CHAT_TYPING_REFRESH_MS = 2500;
 let currentUser = null;
 let currentUserRoles = SYSTEM_ROLES.slice();
 let currentUserViews = VIEW_DEFINITIONS.map((view) => view.id);
@@ -110,11 +116,17 @@ let accessSyncIntervalId = null;
 let accessSyncInFlight = false;
 let chatSyncIntervalId = null;
 let chatSyncInFlight = false;
+let chatPresenceIntervalId = null;
+let chatPresenceInFlight = false;
 let chatAttachmentFiles = [];
 let chatSearchResults = null;
 let chatReplyMessageId = "";
 let chatSearchRequestId = 0;
 let chatSyncPrimed = false;
+let chatTypingStopTimerId = null;
+let chatTypingConversationId = "";
+let chatTypingActive = false;
+let chatTypingLastSentAt = 0;
 const BASE_DOCUMENT_TITLE = document.title || "Pulso M&E";
 const INSTITUTIONAL_CHAT_AREAS = [
   { id: "mel", title: "M&E", description: "Coordinacion institucional de monitoreo, evaluacion y aprendizaje." },
@@ -358,6 +370,10 @@ function normalizeState(savedState) {
   nextState.chatMessagesByConversation =
     savedState.chatMessagesByConversation && typeof savedState.chatMessagesByConversation === "object"
       ? { ...savedState.chatMessagesByConversation }
+      : {};
+  nextState.chatPresenceByConversation =
+    savedState.chatPresenceByConversation && typeof savedState.chatPresenceByConversation === "object"
+      ? { ...savedState.chatPresenceByConversation }
       : {};
   nextState.chatUnreadCount =
     savedState.chatUnreadCount && typeof savedState.chatUnreadCount === "object"
@@ -3270,6 +3286,26 @@ function ensureChatSyncMonitor() {
   }, CHAT_SYNC_INTERVAL_MS);
 }
 
+function ensureChatPresenceMonitor() {
+  if (chatPresenceIntervalId !== null) return;
+  chatPresenceIntervalId = window.setInterval(() => {
+    if (document.hidden || chatPresenceInFlight || !isApiConfigured() || !currentUser) return;
+    chatPresenceInFlight = true;
+    void (async () => {
+      try {
+        await sendChatPresenceHeartbeat();
+        if (state?.activeView === "chat" && state.chatActiveConversationId) {
+          await refreshActiveChatPresence({ render: true });
+        }
+      } catch (error) {
+        console.error("No pude sincronizar la presencia del chat.", error);
+      } finally {
+        chatPresenceInFlight = false;
+      }
+    })();
+  }, CHAT_PRESENCE_INTERVAL_MS);
+}
+
 function switchView(viewName, options = {}) {
   const { persist = true, resetScroll = true } = options;
   const titles = {
@@ -3302,9 +3338,15 @@ function switchView(viewName, options = {}) {
   if (resetScroll) {
     resetViewportPosition();
   }
+  if (viewName !== "chat") {
+    stopChatTyping();
+  }
   if (viewName === "chat" && isApiConfigured()) {
     void syncChatInbox({ includeMessages: true, showToastOnNewMessages: false })
       .catch((error) => console.error("No pude abrir el chat.", error));
+    void sendChatPresenceHeartbeat({ activeConversationId: state?.chatActiveConversationId || "", activeView: "chat" }).catch((error) =>
+      console.error("No pude actualizar la presencia al abrir el chat.", error),
+    );
   }
   if (persist && state) {
     saveState();
@@ -3401,6 +3443,46 @@ function activeChatConversation() {
   );
 }
 
+function activeChatPresenceSnapshot(conversation = activeChatConversation()) {
+  if (!conversation?.id) return null;
+  return state.chatPresenceByConversation?.[conversation.id] || null;
+}
+
+function chatPresenceParticipants(conversation = activeChatConversation()) {
+  return activeChatPresenceSnapshot(conversation)?.participants || [];
+}
+
+function formatRelativeTimestamp(value) {
+  if (!value) return "sin actividad reciente";
+  const timestamp = new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) return "sin actividad reciente";
+  const diffMs = Date.now() - timestamp;
+  const diffSeconds = Math.max(0, Math.round(diffMs / 1000));
+  if (diffSeconds < 45) return "hace unos segundos";
+  if (diffSeconds < 90) return "hace 1 minuto";
+  const diffMinutes = Math.round(diffSeconds / 60);
+  if (diffMinutes < 60) return `hace ${diffMinutes} min`;
+  const diffHours = Math.round(diffMinutes / 60);
+  if (diffHours < 24) return `hace ${diffHours} h`;
+  const diffDays = Math.round(diffHours / 24);
+  return `hace ${diffDays} dia${diffDays === 1 ? "" : "s"}`;
+}
+
+function chatPresenceSummary(conversation = activeChatConversation()) {
+  const others = chatPresenceParticipants(conversation).filter((participant) => participant.userId !== currentUser?.id);
+  const typingUsers = others.filter((participant) => participant.isTyping);
+  const onlineUsers = others.filter((participant) => participant.isOnline);
+  const latestSeenAt = others
+    .map((participant) => participant.lastSeenAt)
+    .filter(Boolean)
+    .sort((left, right) => String(right).localeCompare(String(left)))[0] || "";
+  return {
+    typingUsers,
+    onlineUsers,
+    latestSeenAt,
+  };
+}
+
 function chatConversationTitle(conversation = {}) {
   if (String(conversation.title || "").trim()) return String(conversation.title).trim();
   const otherParticipants = (conversation.participants || []).filter((participant) => participant.userId !== currentUser?.id);
@@ -3412,10 +3494,26 @@ function chatConversationTitle(conversation = {}) {
 
 function chatConversationMeta(conversation = {}) {
   const participants = conversation.participants || [];
-  if (conversation.contextType && conversation.contextId) {
-    return `${participants.length} participante${participants.length === 1 ? "" : "s"} · ${conversation.contextType}`;
+  const base = conversation.contextType && conversation.contextId
+    ? `${participants.length} participante${participants.length === 1 ? "" : "s"} · ${conversation.contextType}`
+    : `${participants.length} participante${participants.length === 1 ? "" : "s"}`;
+  const presence = chatPresenceSummary(conversation);
+  if (presence.typingUsers.length === 1) {
+    return `${base} · ${presence.typingUsers[0].displayName || "Alguien"} esta escribiendo...`;
   }
-  return `${participants.length} participante${participants.length === 1 ? "" : "s"}`;
+  if (presence.typingUsers.length > 1) {
+    return `${base} · ${presence.typingUsers.length} personas estan escribiendo...`;
+  }
+  if (presence.onlineUsers.length === 1) {
+    return `${base} · 1 en linea`;
+  }
+  if (presence.onlineUsers.length > 1) {
+    return `${base} · ${presence.onlineUsers.length} en linea`;
+  }
+  if (presence.latestSeenAt) {
+    return `${base} · Activo ${formatRelativeTimestamp(presence.latestSeenAt)}`;
+  }
+  return base;
 }
 
 function formatChatContextLabel(contextType = "") {
@@ -3517,6 +3615,37 @@ function renderChatAreaChannels() {
   ).join("");
 }
 
+function renderChatLiveStatus(conversation = activeChatConversation()) {
+  if (!elements.chatLiveStatus) return;
+  if (!conversation) {
+    elements.chatLiveStatus.innerHTML = "";
+    elements.chatLiveStatus.hidden = true;
+    return;
+  }
+  const { typingUsers, onlineUsers, latestSeenAt } = chatPresenceSummary(conversation);
+  const typingLabel =
+    typingUsers.length === 1
+      ? `${typingUsers[0].displayName || "Alguien"} esta escribiendo...`
+      : typingUsers.length > 1
+        ? `${typingUsers.length} participantes estan escribiendo...`
+        : "";
+  const statusChips = [];
+  if (typingLabel) {
+    statusChips.push(`<span class="status-pill info">${escapeHtml(typingLabel)}</span>`);
+  }
+  if (onlineUsers.length) {
+    statusChips.push(
+      `<span class="status-pill success">${escapeHtml(String(onlineUsers.length))} en linea</span>`,
+    );
+  } else if (latestSeenAt) {
+    statusChips.push(`<span class="status-pill neutral">Activo ${escapeHtml(formatRelativeTimestamp(latestSeenAt))}</span>`);
+  } else {
+    statusChips.push(`<span class="status-pill neutral">Sin actividad reciente</span>`);
+  }
+  elements.chatLiveStatus.hidden = false;
+  elements.chatLiveStatus.innerHTML = statusChips.join("");
+}
+
 function renderChatDetails(conversation, messages = []) {
   if (!elements.chatDetailsGrid) return;
   if (!conversation) {
@@ -3526,6 +3655,9 @@ function renderChatDetails(conversation, messages = []) {
   const participants = Array.isArray(conversation.participants) ? conversation.participants : [];
   const lastActivity = conversation.lastMessageAt || conversation.updatedAt || conversation.createdAt || "";
   const sharedFilesCount = sharedChatAttachments(messages).length;
+  const liveParticipants = chatPresenceParticipants(conversation);
+  const onlineCount = liveParticipants.filter((participant) => participant.userId !== currentUser?.id && participant.isOnline).length;
+  const typingCount = liveParticipants.filter((participant) => participant.userId !== currentUser?.id && participant.isTyping).length;
   elements.chatDetailsGrid.innerHTML = `
     <article class="chat-detail-card">
       <p class="eyebrow">Tipo</p>
@@ -3539,13 +3671,18 @@ function renderChatDetails(conversation, messages = []) {
     </article>
     <article class="chat-detail-card">
       <p class="eyebrow">Actividad</p>
-      <h3>${escapeHtml(formatShortDateTime(lastActivity))}</h3>
-      <p class="item-meta">Archivos compartidos: ${escapeHtml(String(sharedFilesCount))}</p>
+      <h3>${escapeHtml(String(onlineCount))} en linea</h3>
+      <p class="item-meta">${typingCount ? `${escapeHtml(String(typingCount))} escribiendo · ` : ""}Ultimo mensaje ${escapeHtml(formatShortDateTime(lastActivity))}</p>
     </article>
     <article class="chat-detail-card">
       <p class="eyebrow">Creado por</p>
       <h3>${escapeHtml(resolveChatCreatorName(conversation))}</h3>
       <p class="item-meta">${escapeHtml(formatShortDateTime(conversation.createdAt || ""))}</p>
+    </article>
+    <article class="chat-detail-card">
+      <p class="eyebrow">Archivos</p>
+      <h3>${escapeHtml(String(sharedFilesCount))}</h3>
+      <p class="item-meta">Adjuntos compartidos en este chat</p>
     </article>
   `;
 }
@@ -3769,6 +3906,9 @@ function populateChatParticipantManager(conversation = activeChatConversation())
 async function loadChatConversation(conversationId, options = {}) {
   if (!isApiConfigured() || !conversationId) return;
   const { markRead = true } = options;
+  if (chatTypingConversationId && chatTypingConversationId !== conversationId) {
+    stopChatTyping({ conversationId: chatTypingConversationId });
+  }
   const detail = await fetchApiChatConversation(conversationId);
   const response = await fetchApiChatMessages(conversationId, { limit: 80 });
   upsertById(state.chatConversations, detail);
@@ -3791,6 +3931,12 @@ async function loadChatConversation(conversationId, options = {}) {
   }
 
   saveState();
+  try {
+    await sendChatPresenceHeartbeat({ activeConversationId: conversationId, activeView: state?.activeView || "chat" });
+    await refreshActiveChatPresence({ conversationId, render: false });
+  } catch (error) {
+    console.error("No pude refrescar la presencia de la conversacion.", error);
+  }
 }
 
 async function openChatConversationById(conversationId, options = {}) {
@@ -3824,6 +3970,89 @@ async function refreshChatFromApi(options = {}) {
     await loadChatConversation(state.chatActiveConversationId, { markRead: true });
   }
   saveState();
+}
+
+async function refreshActiveChatPresence(options = {}) {
+  if (!isApiConfigured()) return null;
+  const { conversationId = state.chatActiveConversationId, render = false } = options;
+  if (!conversationId) return null;
+  const snapshot = await fetchApiChatConversationPresence(conversationId);
+  state.chatPresenceByConversation = {
+    ...(state.chatPresenceByConversation || {}),
+    [conversationId]: snapshot,
+  };
+  saveState();
+  if (render) {
+    renderChatWorkspace();
+  }
+  return snapshot;
+}
+
+async function sendChatPresenceHeartbeat(options = {}) {
+  if (!isApiConfigured() || !currentUser) return null;
+  const activeConversationId =
+    options.activeConversationId !== undefined
+      ? options.activeConversationId
+      : state?.activeView === "chat"
+        ? state.chatActiveConversationId
+        : "";
+  return postApiChatPresence({
+    activeConversationId: activeConversationId || "",
+    activeView: options.activeView || state?.activeView || "",
+  });
+}
+
+async function setChatTypingState(conversationId, isTyping) {
+  if (!isApiConfigured() || !currentUser || !conversationId) return;
+  await postApiChatTyping(conversationId, { isTyping: Boolean(isTyping) });
+  chatTypingConversationId = conversationId;
+  chatTypingActive = Boolean(isTyping);
+  chatTypingLastSentAt = Date.now();
+}
+
+function clearChatTypingTimer() {
+  if (chatTypingStopTimerId !== null) {
+    window.clearTimeout(chatTypingStopTimerId);
+    chatTypingStopTimerId = null;
+  }
+}
+
+function stopChatTyping(options = {}) {
+  const conversationId = options.conversationId || chatTypingConversationId || state?.chatActiveConversationId || "";
+  clearChatTypingTimer();
+  if (!conversationId || !chatTypingActive) {
+    chatTypingConversationId = conversationId || "";
+    chatTypingActive = false;
+    return;
+  }
+  chatTypingActive = false;
+  chatTypingConversationId = conversationId;
+  void setChatTypingState(conversationId, false).catch((error) => console.error("No pude detener el indicador de escritura.", error));
+}
+
+function scheduleChatTypingStop(conversationId) {
+  clearChatTypingTimer();
+  chatTypingStopTimerId = window.setTimeout(() => {
+    stopChatTyping({ conversationId });
+  }, CHAT_TYPING_IDLE_MS);
+}
+
+function handleChatComposerInputChange() {
+  const conversation = activeChatConversation();
+  const conversationId = conversation?.id || "";
+  const value = String(elements.chatComposerInput?.value || "").trim();
+  if (!conversationId || !value) {
+    stopChatTyping({ conversationId: conversationId || chatTypingConversationId });
+    return;
+  }
+  const shouldRefreshTypingHeartbeat =
+    !chatTypingActive ||
+    chatTypingConversationId !== conversationId ||
+    Date.now() - chatTypingLastSentAt > CHAT_TYPING_REFRESH_MS;
+  if (shouldRefreshTypingHeartbeat) {
+    void setChatTypingState(conversationId, true).catch((error) => console.error("No pude actualizar el estado de escritura.", error));
+  }
+  scheduleChatTypingStop(conversationId);
 }
 
 function selectNewestUnreadConversation(nextConversations = [], previousConversations = []) {
@@ -3969,6 +4198,7 @@ function renderChatWorkspace() {
   elements.chatConversationMeta.textContent = activeConversation
     ? chatConversationMeta(activeConversation)
     : "Elige un chat o crea uno nuevo para empezar.";
+  renderChatLiveStatus(activeConversation);
   renderChatDetails(activeConversation, messages);
   if (elements.chatDeleteButton) {
     elements.chatDeleteButton.hidden = !activeConversation || !canDeleteActiveChatConversation(activeConversation);
@@ -4418,8 +4648,12 @@ async function deleteActiveChatConversation() {
   }
   const confirmed = window.confirm("Este chat se eliminara de la lista activa para todos los participantes. Deseas continuar?");
   if (!confirmed) return;
+  stopChatTyping({ conversationId: conversation.id });
   await deleteApiChatConversation(conversation.id);
   chatReplyMessageId = "";
+  if (state.chatPresenceByConversation?.[conversation.id]) {
+    delete state.chatPresenceByConversation[conversation.id];
+  }
   await refreshChatFromApi({ includeMessages: false });
   if (state.chatActiveConversationId === conversation.id) {
     state.chatActiveConversationId = state.chatConversations[0]?.id || "";
@@ -4474,8 +4708,12 @@ async function leaveActiveChatConversation() {
   }
   const confirmed = window.confirm("Saldras de este chat y dejara de aparecer en tu lista activa. Deseas continuar?");
   if (!confirmed) return;
+  stopChatTyping({ conversationId: conversation.id });
   await removeApiChatParticipant(conversation.id, currentUser?.id);
   clearChatReplyTarget();
+  if (state.chatPresenceByConversation?.[conversation.id]) {
+    delete state.chatPresenceByConversation[conversation.id];
+  }
   await refreshChatFromApi({ includeMessages: false });
   state.chatActiveConversationId = state.chatConversations[0]?.id || "";
   if (state.chatActiveConversationId) {
@@ -4500,6 +4738,7 @@ async function sendCurrentChatMessage() {
   const attachments = await attachmentsFromFiles(selectedFiles, currentUser?.email || activeRole(), "chat-attachments");
   const inferredType =
     attachments.length && attachments.every((attachment) => String(attachment.type || "").startsWith("image/")) ? "image" : attachments.length ? "file" : "text";
+  stopChatTyping({ conversationId: activeConversation.id });
   await createApiChatMessage(activeConversation.id, {
     messageType: inferredType,
     body,
@@ -6032,6 +6271,14 @@ function bindEvents() {
       void syncChatInbox({ includeMessages: state?.activeView === "chat", showToastOnNewMessages: true }).catch((error) => {
         console.error("No pude refrescar el chat al volver a la ventana.", error);
       });
+      void sendChatPresenceHeartbeat().catch((error) => {
+        console.error("No pude restaurar la presencia del chat al volver a la ventana.", error);
+      });
+      if (state?.activeView === "chat" && state.chatActiveConversationId) {
+        void refreshActiveChatPresence({ render: true }).catch((error) => {
+          console.error("No pude refrescar la presencia del chat al volver a la ventana.", error);
+        });
+      }
     }
   });
   document.addEventListener("visibilitychange", () => {
@@ -6041,7 +6288,17 @@ function bindEvents() {
         void syncChatInbox({ includeMessages: state?.activeView === "chat", showToastOnNewMessages: true }).catch((error) => {
           console.error("No pude refrescar el chat al volver a la pestana.", error);
         });
+        void sendChatPresenceHeartbeat().catch((error) => {
+          console.error("No pude restaurar la presencia del chat al volver a la pestana.", error);
+        });
+        if (state?.activeView === "chat" && state.chatActiveConversationId) {
+          void refreshActiveChatPresence({ render: true }).catch((error) => {
+            console.error("No pude refrescar la presencia del chat al volver a la pestana.", error);
+          });
+        }
       }
+    } else {
+      stopChatTyping();
     }
   });
   $$(".nav-item").forEach((button) => {
@@ -6076,6 +6333,10 @@ function bindEvents() {
 
   elements.chatSearchInput?.addEventListener("input", () => {
     void handleChatSearchQuery(elements.chatSearchInput.value || "");
+  });
+
+  elements.chatComposerInput?.addEventListener("input", () => {
+    handleChatComposerInputChange();
   });
 
   elements.chatAttachmentInput?.addEventListener("change", () => {
@@ -7125,7 +7386,11 @@ export function createMonitoringApp() {
       ensureStateSyncListener();
       ensureAccessSyncMonitor();
       ensureChatSyncMonitor();
+      ensureChatPresenceMonitor();
       await syncStartupData({ showErrorToast: true });
+      if (isApiConfigured()) {
+        void sendChatPresenceHeartbeat().catch((error) => console.error("No pude iniciar la presencia del chat.", error));
+      }
       renderAll();
     },
     async syncAccess(authenticatedUser = null) {
@@ -7134,7 +7399,11 @@ export function createMonitoringApp() {
       renderAll();
       ensureAccessSyncMonitor();
       ensureChatSyncMonitor();
+      ensureChatPresenceMonitor();
       await syncStartupData({ showErrorToast: true });
+      if (isApiConfigured()) {
+        void sendChatPresenceHeartbeat().catch((error) => console.error("No pude sincronizar la presencia del chat.", error));
+      }
       renderAll();
     },
     lock() {
@@ -7146,8 +7415,17 @@ export function createMonitoringApp() {
         window.clearInterval(chatSyncIntervalId);
         chatSyncIntervalId = null;
       }
+      if (chatPresenceIntervalId !== null) {
+        window.clearInterval(chatPresenceIntervalId);
+        chatPresenceIntervalId = null;
+      }
       accessSyncInFlight = false;
       chatSyncInFlight = false;
+      chatPresenceInFlight = false;
+      stopChatTyping();
+      if (state) {
+        state.chatPresenceByConversation = {};
+      }
       currentUser = null;
       currentUserRoles = SYSTEM_ROLES.slice();
       currentUserViews = VIEW_DEFINITIONS.map((view) => view.id);

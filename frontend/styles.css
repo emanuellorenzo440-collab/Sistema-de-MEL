@@ -627,6 +627,13 @@ h3 {
   margin-top: 12px;
 }
 
+.chat-live-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
 .chat-search-summary-card {
   align-items: center;
   background: var(--surface-2);

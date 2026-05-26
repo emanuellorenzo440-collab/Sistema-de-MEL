@@ -16,6 +16,7 @@ import {
   createFormSubmission,
   addChatParticipants,
   archiveChatConversation,
+  getChatConversationPresence,
   deleteAttendanceParticipant,
   deleteAttendanceParticipantsForProgram,
   deleteAttendanceSession,
@@ -48,6 +49,7 @@ import {
   listAllReportStatusHistory,
   listDeletedReports,
   listReportStatusHistory,
+  heartbeatChatPresence,
   markChatConversationRead,
   markNotificationRead,
   queryReports,
@@ -55,6 +57,7 @@ import {
   resetAttendanceProgram,
   saveAttendanceSession,
   searchChat,
+  setChatConversationTyping,
   saveReportStatusDecision,
   updateChatConversation,
   updateIndicator,
@@ -1374,6 +1377,19 @@ function decorateChatParticipant(participant, usersById) {
   };
 }
 
+function decorateChatPresenceParticipant(participant, usersById) {
+  return {
+    ...decorateChatParticipant(participant, usersById),
+    isOnline: Boolean(participant.isOnline),
+    isTyping: Boolean(participant.isTyping),
+    lastSeenAt: participant.lastSeenAt || "",
+    typingUpdatedAt: participant.typingUpdatedAt || "",
+    activeConversationId: participant.activeConversationId || "",
+    activeView: participant.activeView || "",
+    deviceLabel: participant.deviceLabel || "",
+  };
+}
+
 function decorateChatConversation(conversation, usersById) {
   return {
     ...conversation,
@@ -1777,6 +1793,95 @@ export async function handleChatUnreadCount(request, response) {
   });
 }
 
+export async function handleChatPresenceHeartbeat(request, response) {
+  try {
+    const actor = requireAuthenticatedUser(request, response);
+    if (!actor) return;
+    const payload = await readOptionalJsonBody(request);
+    const activeConversationId = String(payload.activeConversationId || "").trim();
+    if (activeConversationId) {
+      const conversation = findChatConversationById(activeConversationId, {
+        organizationId: actor.organizationId,
+        participantUserId: actor.id,
+      });
+      if (!conversation) {
+        sendJson(response, 404, { error: "No encontre la conversacion activa para actualizar presencia." });
+        return;
+      }
+    }
+    const result = heartbeatChatPresence({
+      userId: actor.id,
+      organizationId: actor.organizationId,
+      companyId: actor.organizationId,
+      organizationName: actor.organizationName,
+      activeConversationId,
+      activeView: String(payload.activeView || "").trim(),
+      deviceLabel: String(payload.deviceLabel || request.headers["user-agent"] || "").slice(0, 140),
+    });
+    sendJson(response, 200, { data: result });
+  } catch (error) {
+    sendApiError(response, error);
+  }
+}
+
+export async function handleChatConversationPresence(request, response, conversationId) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
+  const conversation = findChatConversationById(conversationId, {
+    organizationId: actor.organizationId,
+    participantUserId: actor.id,
+  });
+  if (!conversation) {
+    sendJson(response, 404, { error: "No encontre la conversacion solicitada." });
+    return;
+  }
+  const usersById = chatUserDirectory(actor);
+  const snapshot = getChatConversationPresence(conversationId, {
+    organizationId: actor.organizationId,
+  });
+  if (!snapshot) {
+    sendJson(response, 404, { error: "No pude cargar la presencia del chat." });
+    return;
+  }
+  sendJson(response, 200, {
+    data: {
+      ...snapshot,
+      participants: (snapshot.participants || []).map((participant) => decorateChatPresenceParticipant(participant, usersById)),
+    },
+  });
+}
+
+export async function handleChatTypingUpdate(request, response, conversationId) {
+  try {
+    const actor = requireAuthenticatedUser(request, response);
+    if (!actor) return;
+    const conversation = findChatConversationById(conversationId, {
+      organizationId: actor.organizationId,
+      participantUserId: actor.id,
+    });
+    if (!conversation) {
+      sendJson(response, 404, { error: "No encontre la conversacion solicitada." });
+      return;
+    }
+    const participant = actorChatParticipant(conversationId, actor);
+    if (!participant || participant.canSendMessages === false) {
+      sendJson(response, 403, { error: "No tienes permiso para escribir en esta conversacion." });
+      return;
+    }
+    const payload = await readOptionalJsonBody(request);
+    const result = setChatConversationTyping(conversationId, {
+      userId: actor.id,
+      organizationId: actor.organizationId,
+      companyId: actor.organizationId,
+      organizationName: actor.organizationName,
+      isTyping: payload.isTyping === true,
+    });
+    sendJson(response, 200, { data: result });
+  } catch (error) {
+    sendApiError(response, error);
+  }
+}
+
 export async function handleChatSearch(request, response, url) {
   const actor = requireAuthenticatedUser(request, response);
   if (!actor) return;
@@ -1967,8 +2072,11 @@ function apiIndex() {
       "chat/conversations/:id",
       "chat/conversations/:id/messages",
       "chat/conversations/:id/read",
+      "chat/conversations/:id/presence",
       "chat/conversations/:id/participants",
+      "chat/conversations/:id/typing",
       "chat/directory",
+      "chat/presence",
       "chat/unread-count",
       "chat/search",
       "notifications",
@@ -2477,6 +2585,11 @@ async function router(request, response) {
     return;
   }
 
+  if (request.method === "POST" && pathname === "/api/v1/chat/presence") {
+    await handleChatPresenceHeartbeat(request, response);
+    return;
+  }
+
   if (request.method === "GET" && pathname === "/api/v1/chat/directory") {
     await handleChatDirectory(request, response);
     return;
@@ -2515,6 +2628,18 @@ async function router(request, response) {
   const chatReadMatch = pathname.match(/^\/api\/v1\/chat\/conversations\/([^/]+)\/read$/);
   if (request.method === "POST" && chatReadMatch) {
     await handleChatConversationRead(request, response, decodeURIComponent(chatReadMatch[1]));
+    return;
+  }
+
+  const chatPresenceMatch = pathname.match(/^\/api\/v1\/chat\/conversations\/([^/]+)\/presence$/);
+  if (request.method === "GET" && chatPresenceMatch) {
+    await handleChatConversationPresence(request, response, decodeURIComponent(chatPresenceMatch[1]));
+    return;
+  }
+
+  const chatTypingMatch = pathname.match(/^\/api\/v1\/chat\/conversations\/([^/]+)\/typing$/);
+  if (request.method === "POST" && chatTypingMatch) {
+    await handleChatTypingUpdate(request, response, decodeURIComponent(chatTypingMatch[1]));
     return;
   }
 

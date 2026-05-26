@@ -92,6 +92,7 @@ export const elements = {
   chatConversationList: $("#chatConversationList"),
   chatConversationTitle: $("#chatConversationTitle"),
   chatConversationMeta: $("#chatConversationMeta"),
+  chatLiveStatus: $("#chatLiveStatus"),
   chatRenameButton: $("#chatRenameButton"),
   chatLeaveButton: $("#chatLeaveButton"),
   chatDeleteButton: $("#chatDeleteButton"),

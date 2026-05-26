@@ -191,6 +191,8 @@ const chatParticipants = [];
 const chatMessages = [];
 const chatReads = [];
 const chatNotifications = [];
+const chatPresence = [];
+const chatTyping = [];
 function attendanceProgramNames() {
   const names = programs.map((program) => normalizeString(program.name)).filter(Boolean);
   return names.length ? names : ["Programa general"];
@@ -308,6 +310,8 @@ function snapshotStore() {
     chatMessages,
     chatReads,
     chatNotifications,
+    chatPresence,
+    chatTyping,
     updatedAt: nowIso(),
   };
 }
@@ -374,6 +378,8 @@ function hydratePersistentStore() {
   replaceArray(chatMessages, Array.isArray(stored.chatMessages) ? stored.chatMessages.map(normalizedChatMessage) : []);
   replaceArray(chatReads, Array.isArray(stored.chatReads) ? stored.chatReads.map(normalizedChatRead) : []);
   replaceArray(chatNotifications, Array.isArray(stored.chatNotifications) ? stored.chatNotifications.map(normalizedChatNotification) : []);
+  replaceArray(chatPresence, Array.isArray(stored.chatPresence) ? stored.chatPresence.map(normalizedChatPresence) : []);
+  replaceArray(chatTyping, Array.isArray(stored.chatTyping) ? stored.chatTyping.map(normalizedChatTyping) : []);
   if (shouldPersistAfterMigration) {
     persistStore();
   }
@@ -871,6 +877,49 @@ function normalizedChatNotification(input = {}, existing = {}) {
     updatedAt: input.updatedAt || timestamp,
   };
 }
+
+function normalizedChatPresence(input = {}, existing = {}) {
+  const timestamp = nowIso();
+  return {
+    id: normalizeString(input.id, existing.id || `chatpr-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`),
+    companyId: normalizeString(input.companyId, existing.companyId || DEFAULT_COMPANY_ID),
+    organizationId: normalizeString(
+      input.organizationId,
+      existing.organizationId || input.companyId || existing.companyId || DEFAULT_COMPANY_ID,
+    ),
+    organizationName: normalizeString(input.organizationName, existing.organizationName || DEFAULT_COMPANY_NAME),
+    userId: normalizeString(input.userId, existing.userId || ""),
+    activeConversationId: normalizeString(input.activeConversationId, existing.activeConversationId || ""),
+    activeView: normalizeString(input.activeView, existing.activeView || ""),
+    deviceLabel: normalizeString(input.deviceLabel, existing.deviceLabel || ""),
+    lastSeenAt: normalizeString(input.lastSeenAt, existing.lastSeenAt || timestamp),
+    createdAt: existing.createdAt || input.createdAt || timestamp,
+    updatedAt: input.updatedAt || timestamp,
+  };
+}
+
+function normalizedChatTyping(input = {}, existing = {}) {
+  const timestamp = nowIso();
+  return {
+    id: normalizeString(input.id, existing.id || `chatty-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`),
+    companyId: normalizeString(input.companyId, existing.companyId || DEFAULT_COMPANY_ID),
+    organizationId: normalizeString(
+      input.organizationId,
+      existing.organizationId || input.companyId || existing.companyId || DEFAULT_COMPANY_ID,
+    ),
+    organizationName: normalizeString(input.organizationName, existing.organizationName || DEFAULT_COMPANY_NAME),
+    conversationId: normalizeString(input.conversationId, existing.conversationId || ""),
+    userId: normalizeString(input.userId, existing.userId || ""),
+    isTyping: normalizeBoolean(input.isTyping, existing.isTyping || false),
+    startedAt: existing.startedAt || input.startedAt || timestamp,
+    lastTypedAt: normalizeString(input.lastTypedAt, existing.lastTypedAt || timestamp),
+    createdAt: existing.createdAt || input.createdAt || timestamp,
+    updatedAt: input.updatedAt || timestamp,
+  };
+}
+
+const CHAT_ONLINE_WINDOW_MS = 70 * 1000;
+const CHAT_TYPING_WINDOW_MS = 8 * 1000;
 
 function normalizeExpectedResults(value) {
   if (Array.isArray(value)) {
@@ -1773,6 +1822,37 @@ function conversationParticipants(conversationId) {
   return chatParticipants.filter((participant) => participant.conversationId === conversationId && !participant.leftAt);
 }
 
+function activeChatPresenceEntry(userId, organizationId = DEFAULT_COMPANY_ID) {
+  return (
+    chatPresence.find(
+      (entry) =>
+        entry.userId === userId && (entry.organizationId || entry.companyId || DEFAULT_COMPANY_ID) === organizationId,
+    ) || null
+  );
+}
+
+function activeChatTypingEntry(conversationId, userId) {
+  return chatTyping.find(
+    (entry) => entry.conversationId === conversationId && entry.userId === userId,
+  ) || null;
+}
+
+function pruneExpiredChatActivity() {
+  const now = Date.now();
+  for (let index = chatTyping.length - 1; index >= 0; index -= 1) {
+    const entry = chatTyping[index];
+    const participantIsActive = chatParticipants.some(
+      (participant) =>
+        participant.conversationId === entry.conversationId && participant.userId === entry.userId && !participant.leftAt,
+    );
+    const lastTypedAt = Date.parse(entry.lastTypedAt || entry.updatedAt || entry.createdAt || "");
+    const expired = !Number.isFinite(lastTypedAt) || now - lastTypedAt > CHAT_TYPING_WINDOW_MS;
+    if (!participantIsActive || expired || entry.isTyping === false) {
+      chatTyping.splice(index, 1);
+    }
+  }
+}
+
 function latestConversationMessage(conversationId) {
   return chatMessages
     .filter((message) => message.conversationId === conversationId && !message.isDeleted)
@@ -2006,6 +2086,113 @@ export function updateChatConversation(conversationId, input = {}) {
   return structuredClone(conversation);
 }
 
+export function heartbeatChatPresence(input = {}) {
+  const timestamp = nowIso();
+  const organizationId = normalizeString(input.organizationId, input.companyId || DEFAULT_COMPANY_ID);
+  const userId = normalizeString(input.userId);
+  if (!userId) return null;
+  const existing = activeChatPresenceEntry(userId, organizationId);
+  if (existing) {
+    existing.activeConversationId = normalizeString(input.activeConversationId, existing.activeConversationId || "");
+    existing.activeView = normalizeString(input.activeView, existing.activeView || "");
+    existing.deviceLabel = normalizeString(input.deviceLabel, existing.deviceLabel || "");
+    existing.lastSeenAt = timestamp;
+    existing.updatedAt = timestamp;
+    persistStore();
+    return structuredClone(existing);
+  }
+  const created = normalizedChatPresence({
+    ...input,
+    organizationId,
+    companyId: organizationId,
+    userId,
+    lastSeenAt: timestamp,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  });
+  chatPresence.push(created);
+  persistStore();
+  return structuredClone(created);
+}
+
+export function setChatConversationTyping(conversationId, input = {}) {
+  const conversation = chatConversations.find((item) => item.id === conversationId);
+  if (!conversation) return null;
+  const userId = normalizeString(input.userId);
+  if (!userId) return null;
+  pruneExpiredChatActivity();
+  const existing = activeChatTypingEntry(conversationId, userId);
+  const timestamp = nowIso();
+  const nextTyping = Boolean(input.isTyping);
+  if (!nextTyping) {
+    if (!existing) return { conversationId, userId, isTyping: false, updatedAt: timestamp };
+    const index = chatTyping.findIndex((entry) => entry.id === existing.id);
+    if (index >= 0) {
+      chatTyping.splice(index, 1);
+      persistStore();
+    }
+    return { conversationId, userId, isTyping: false, updatedAt: timestamp };
+  }
+  if (existing) {
+    existing.isTyping = true;
+    existing.lastTypedAt = timestamp;
+    existing.updatedAt = timestamp;
+    persistStore();
+    return structuredClone(existing);
+  }
+  const created = normalizedChatTyping({
+    ...input,
+    conversationId,
+    organizationId: input.organizationId || conversation.organizationId,
+    companyId: input.companyId || conversation.companyId,
+    organizationName: input.organizationName || conversation.organizationName,
+    userId,
+    isTyping: true,
+    startedAt: timestamp,
+    lastTypedAt: timestamp,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  });
+  chatTyping.push(created);
+  persistStore();
+  return structuredClone(created);
+}
+
+export function getChatConversationPresence(conversationId, filters = {}) {
+  const conversation = chatConversations.find((item) => item.id === conversationId);
+  if (!conversation) return null;
+  const scopedOrganizationId = normalizeString(filters.organizationId, filters.companyId || DEFAULT_COMPANY_ID);
+  if ((conversation.organizationId || conversation.companyId || DEFAULT_COMPANY_ID) !== scopedOrganizationId) {
+    return null;
+  }
+  pruneExpiredChatActivity();
+  const now = Date.now();
+  const participants = conversationParticipants(conversationId).map((participant) => {
+    const presence = activeChatPresenceEntry(participant.userId, scopedOrganizationId);
+    const typing = activeChatTypingEntry(conversationId, participant.userId);
+    const lastSeenAt = presence?.lastSeenAt || "";
+    const lastSeenMs = Date.parse(lastSeenAt);
+    const isOnline = Number.isFinite(lastSeenMs) ? now - lastSeenMs <= CHAT_ONLINE_WINDOW_MS : false;
+    return {
+      ...structuredClone(participant),
+      lastSeenAt,
+      activeConversationId: presence?.activeConversationId || "",
+      activeView: presence?.activeView || "",
+      deviceLabel: presence?.deviceLabel || "",
+      isOnline,
+      isTyping: Boolean(typing?.isTyping),
+      typingUpdatedAt: typing?.lastTypedAt || "",
+    };
+  });
+  return {
+    conversationId,
+    onlineCount: participants.filter((participant) => participant.isOnline).length,
+    typingCount: participants.filter((participant) => participant.isTyping).length,
+    participants,
+    updatedAt: nowIso(),
+  };
+}
+
 export function listChatMessages(filters = {}) {
   const { companyId, organizationId, conversationId, before, limit = 50 } = filters;
   const scopedLimit = Math.max(1, Math.min(200, Number(limit) || 50));
@@ -2036,6 +2223,7 @@ export function createChatMessage(conversationId, input = {}) {
   const conversation = chatConversations.find((item) => item.id === conversationId);
   if (!conversation) return null;
   const timestamp = nowIso();
+  pruneExpiredChatActivity();
   const message = normalizedChatMessage({
     ...input,
     conversationId,
@@ -2048,6 +2236,19 @@ export function createChatMessage(conversationId, input = {}) {
   chatMessages.push(message);
   conversation.lastMessageAt = message.createdAt;
   conversation.updatedAt = timestamp;
+  const typingIndex = chatTyping.findIndex(
+    (entry) => entry.conversationId === conversationId && entry.userId === message.senderUserId,
+  );
+  if (typingIndex >= 0) {
+    chatTyping.splice(typingIndex, 1);
+  }
+  const presence = activeChatPresenceEntry(message.senderUserId, conversation.organizationId || conversation.companyId);
+  if (presence) {
+    presence.activeConversationId = conversationId;
+    presence.activeView = presence.activeView || "chat";
+    presence.lastSeenAt = timestamp;
+    presence.updatedAt = timestamp;
+  }
 
   const activeParticipants = conversationParticipants(conversationId);
   activeParticipants
