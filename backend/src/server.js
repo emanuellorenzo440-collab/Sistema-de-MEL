@@ -56,6 +56,7 @@ import {
   saveAttendanceSession,
   searchChat,
   saveReportStatusDecision,
+  updateChatConversation,
   updateIndicator,
   updateProgram,
   updateProgramCenter,
@@ -1420,6 +1421,13 @@ function canArchiveConversation(participant, actor, conversation) {
   return Boolean(participant.canRemovePeople || participant.canAddPeople);
 }
 
+function canEditConversation(participant, actor, conversation) {
+  if (!participant) return false;
+  if (actor.role === "Supervision M&E") return true;
+  if (conversation?.createdByUserId === actor.id) return true;
+  return conversation?.type === "group" && Boolean(participant.canAddPeople || participant.canRemovePeople);
+}
+
 export async function handleChatConversationsList(request, response, url) {
   const actor = requireAuthenticatedUser(request, response);
   if (!actor) return;
@@ -1495,6 +1503,43 @@ export async function handleChatConversationDetail(request, response, conversati
       usersById,
     ),
   });
+}
+
+export async function handleChatConversationUpdate(request, response, conversationId) {
+  try {
+    const actor = requireAuthenticatedUser(request, response);
+    if (!actor) return;
+    const conversation = findChatConversationById(conversationId, {
+      organizationId: actor.organizationId,
+      participantUserId: actor.id,
+    });
+    if (!conversation) {
+      sendJson(response, 404, { error: "No encontre la conversacion solicitada." });
+      return;
+    }
+    const participant = actorChatParticipant(conversationId, actor);
+    if (!canEditConversation(participant, actor, conversation)) {
+      sendJson(response, 403, { error: "No tienes permiso para editar esta conversacion." });
+      return;
+    }
+    const payload = await readJsonBody(request);
+    const updated = updateChatConversation(conversationId, {
+      title: payload.title,
+      description: payload.description,
+    });
+    const usersById = chatUserDirectory(actor);
+    sendJson(response, 200, {
+      data: decorateChatConversation(
+        {
+          ...updated,
+          participants: listChatParticipants({ organizationId: actor.organizationId, conversationId }),
+        },
+        usersById,
+      ),
+    });
+  } catch (error) {
+    sendApiError(response, error);
+  }
 }
 
 export async function handleChatMessagesList(request, response, conversationId, url) {
@@ -2414,6 +2459,10 @@ async function router(request, response) {
   const chatConversationMatch = pathname.match(/^\/api\/v1\/chat\/conversations\/([^/]+)$/);
   if (request.method === "GET" && chatConversationMatch) {
     await handleChatConversationDetail(request, response, decodeURIComponent(chatConversationMatch[1]));
+    return;
+  }
+  if (request.method === "PATCH" && chatConversationMatch) {
+    await handleChatConversationUpdate(request, response, decodeURIComponent(chatConversationMatch[1]));
     return;
   }
   if (request.method === "DELETE" && chatConversationMatch) {

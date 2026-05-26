@@ -90,6 +90,8 @@ export const elements = {
   chatConversationList: $("#chatConversationList"),
   chatConversationTitle: $("#chatConversationTitle"),
   chatConversationMeta: $("#chatConversationMeta"),
+  chatRenameButton: $("#chatRenameButton"),
+  chatLeaveButton: $("#chatLeaveButton"),
   chatDeleteButton: $("#chatDeleteButton"),
   chatParticipantStrip: $("#chatParticipantStrip"),
   chatAddParticipantForm: $("#chatAddParticipantForm"),

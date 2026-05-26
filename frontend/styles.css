@@ -321,6 +321,19 @@ button:disabled {
   width: 20px;
 }
 
+.nav-badge {
+  background: color-mix(in srgb, var(--warning) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warning) 35%, var(--line));
+  border-radius: 999px;
+  color: var(--warning-strong);
+  font-size: 0.74rem;
+  font-weight: 700;
+  margin-left: auto;
+  min-width: 24px;
+  padding: 2px 8px;
+  text-align: center;
+}
+
 .nav-item:hover,
 .nav-item.active {
   background: rgba(255, 255, 255, 0.08);

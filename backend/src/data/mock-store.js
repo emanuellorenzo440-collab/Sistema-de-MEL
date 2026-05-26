@@ -1991,6 +1991,21 @@ export function archiveChatConversation(conversationId, options = {}) {
   return structuredClone(conversation);
 }
 
+export function updateChatConversation(conversationId, input = {}) {
+  const conversation = chatConversations.find((item) => item.id === conversationId);
+  if (!conversation) return null;
+  const timestamp = nowIso();
+  if (Object.prototype.hasOwnProperty.call(input, "title")) {
+    conversation.title = normalizeString(input.title, conversation.title || "");
+  }
+  if (Object.prototype.hasOwnProperty.call(input, "description")) {
+    conversation.description = normalizeString(input.description, conversation.description || "");
+  }
+  conversation.updatedAt = timestamp;
+  persistStore();
+  return structuredClone(conversation);
+}
+
 export function listChatMessages(filters = {}) {
   const { companyId, organizationId, conversationId, before, limit = 50 } = filters;
   const scopedLimit = Math.max(1, Math.min(200, Number(limit) || 50));

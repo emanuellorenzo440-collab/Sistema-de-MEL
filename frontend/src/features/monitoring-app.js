@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260526d";
+import { $, $$, elements } from "../core/dom.js?v=20260526e";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260526d";
+} from "../services/auth-service.js?v=20260526e";
 import {
   apiFileUrl,
   addApiChatParticipants,
@@ -62,15 +62,17 @@ import {
   isApiConfigured,
   markApiChatConversationRead,
   markApiNotificationRead,
+  removeApiChatParticipant,
   resetApiAttendanceProgram,
   searchApiChat,
   saveApiAttendanceSession,
+  updateApiChatConversation,
   updateApiReportStatus,
   updateApiIndicator,
   updateApiProgram,
   updateApiProgramCenter,
   uploadApiFile,
-} from "../services/mel-api.js?v=20260526d";
+} from "../services/mel-api.js?v=20260526e";
 import {
   currentMonth,
   escapeHtml,
@@ -3438,6 +3440,19 @@ function activeChatMessages() {
   return state.chatMessagesByConversation?.[conversation.id] || [];
 }
 
+function ensureChatNavBadge() {
+  const chatNav = document.querySelector('.nav-item[data-view="chat"]');
+  if (!chatNav) return null;
+  let badge = chatNav.querySelector(".nav-badge");
+  if (!badge) {
+    badge = document.createElement("small");
+    badge.className = "nav-badge";
+    badge.hidden = true;
+    chatNav.appendChild(badge);
+  }
+  return badge;
+}
+
 function chatReplyMessage(messageId, messages = activeChatMessages()) {
   return (messages || []).find((message) => message.id === messageId) || null;
 }
@@ -3647,6 +3662,12 @@ function renderChatWorkspace() {
   const searchMessages = chatSearchResults?.query === normalizedQuery ? chatSearchResults.messages || [] : [];
 
   elements.chatUnreadCount.textContent = `${Number(state.chatUnreadCount?.totalUnreadMessages || 0)} sin leer`;
+  const chatNavBadge = ensureChatNavBadge();
+  if (chatNavBadge) {
+    const totalUnread = Number(state.chatUnreadCount?.totalUnreadMessages || 0);
+    chatNavBadge.hidden = totalUnread <= 0;
+    chatNavBadge.textContent = totalUnread > 99 ? "99+" : String(totalUnread);
+  }
   elements.chatConversationList.innerHTML = conversations.length
     ? conversations
         .map(
@@ -3674,6 +3695,14 @@ function renderChatWorkspace() {
   if (elements.chatDeleteButton) {
     elements.chatDeleteButton.hidden = !activeConversation || !canDeleteActiveChatConversation(activeConversation);
     elements.chatDeleteButton.disabled = !activeConversation || !canDeleteActiveChatConversation(activeConversation);
+  }
+  if (elements.chatRenameButton) {
+    elements.chatRenameButton.hidden = !activeConversation || !canRenameActiveChatConversation(activeConversation);
+    elements.chatRenameButton.disabled = !activeConversation || !canRenameActiveChatConversation(activeConversation);
+  }
+  if (elements.chatLeaveButton) {
+    elements.chatLeaveButton.hidden = !activeConversation || !canLeaveActiveChatConversation(activeConversation);
+    elements.chatLeaveButton.disabled = !activeConversation || !canLeaveActiveChatConversation(activeConversation);
   }
   populateChatParticipantManager(activeConversation);
   elements.chatMessageList.innerHTML = activeConversation
@@ -3968,6 +3997,60 @@ async function deleteActiveChatConversation() {
   }
   renderChatWorkspace();
   showToast("Chat eliminado.");
+}
+
+function canRenameActiveChatConversation(conversation = activeChatConversation()) {
+  if (!conversation) return false;
+  if (conversation.type !== "group") return false;
+  if (isSystemAdminRole()) return true;
+  return conversation.createdByUserId === currentUser?.id;
+}
+
+function canLeaveActiveChatConversation(conversation = activeChatConversation()) {
+  if (!conversation) return false;
+  return Array.isArray(conversation.participants) && conversation.participants.some((participant) => participant.userId === currentUser?.id);
+}
+
+async function renameActiveChatConversation() {
+  const conversation = activeChatConversation();
+  if (!conversation) {
+    showToast("Selecciona un chat.");
+    return;
+  }
+  if (!canRenameActiveChatConversation(conversation)) {
+    showToast("Solo quien creo el grupo o Supervision M&E puede renombrarlo.");
+    return;
+  }
+  const nextTitle = window.prompt("Nuevo nombre del grupo:", conversation.title || chatConversationTitle(conversation));
+  if (!nextTitle?.trim()) return;
+  await updateApiChatConversation(conversation.id, { title: nextTitle.trim() });
+  await refreshChatFromApi({ includeMessages: false });
+  await loadChatConversation(conversation.id, { markRead: true });
+  renderChatWorkspace();
+  showToast("Grupo actualizado.");
+}
+
+async function leaveActiveChatConversation() {
+  const conversation = activeChatConversation();
+  if (!conversation) {
+    showToast("Selecciona un chat.");
+    return;
+  }
+  if (!canLeaveActiveChatConversation(conversation)) {
+    showToast("No puedes salir de este chat.");
+    return;
+  }
+  const confirmed = window.confirm("Saldras de este chat y dejara de aparecer en tu lista activa. Deseas continuar?");
+  if (!confirmed) return;
+  await removeApiChatParticipant(conversation.id, currentUser?.id);
+  clearChatReplyTarget();
+  await refreshChatFromApi({ includeMessages: false });
+  state.chatActiveConversationId = state.chatConversations[0]?.id || "";
+  if (state.chatActiveConversationId) {
+    await loadChatConversation(state.chatActiveConversationId, { markRead: true });
+  }
+  renderChatWorkspace();
+  showToast("Saliste del chat.");
 }
 
 async function sendCurrentChatMessage() {
@@ -5545,6 +5628,28 @@ function bindEvents() {
       } catch (error) {
         console.error(error);
         showToast(error.message || "No pude eliminar el chat.");
+      }
+    })();
+  });
+
+  elements.chatRenameButton?.addEventListener("click", () => {
+    void (async () => {
+      try {
+        await renameActiveChatConversation();
+      } catch (error) {
+        console.error(error);
+        showToast(error.message || "No pude renombrar el chat.");
+      }
+    })();
+  });
+
+  elements.chatLeaveButton?.addEventListener("click", () => {
+    void (async () => {
+      try {
+        await leaveActiveChatConversation();
+      } catch (error) {
+        console.error(error);
+        showToast(error.message || "No pude salir del chat.");
       }
     })();
   });
