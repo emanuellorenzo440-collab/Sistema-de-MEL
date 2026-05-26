@@ -94,6 +94,7 @@ export const elements = {
   chatLeaveButton: $("#chatLeaveButton"),
   chatDeleteButton: $("#chatDeleteButton"),
   chatParticipantStrip: $("#chatParticipantStrip"),
+  chatSharedFiles: $("#chatSharedFiles"),
   chatAddParticipantForm: $("#chatAddParticipantForm"),
   chatAddParticipantSelect: $("#chatAddParticipantSelect"),
   chatMessageList: $("#chatMessageList"),

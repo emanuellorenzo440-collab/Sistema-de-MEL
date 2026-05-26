@@ -628,7 +628,8 @@ h3 {
 }
 
 .chat-member-picker,
-.chat-participant-strip {
+.chat-participant-strip,
+.chat-shared-files {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
@@ -665,6 +666,33 @@ h3 {
   gap: 12px;
   grid-template-columns: minmax(0, 1fr) auto;
   margin-top: 14px;
+}
+
+.chat-shared-files {
+  align-items: center;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-top: 14px;
+  min-height: 48px;
+  padding: 10px 12px;
+}
+
+.chat-shared-file-chip {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  display: inline-flex;
+  gap: 8px;
+  padding: 6px 10px;
+}
+
+.chat-message-item.system {
+  background: var(--surface-2);
+  border-style: dashed;
+  justify-self: stretch;
+  max-width: 100%;
 }
 
 .chat-attachment-field {

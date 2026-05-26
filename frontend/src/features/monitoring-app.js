@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260526e";
+import { $, $$, elements } from "../core/dom.js?v=20260526f";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260526e";
+} from "../services/auth-service.js?v=20260526f";
 import {
   apiFileUrl,
   addApiChatParticipants,
@@ -72,7 +72,7 @@ import {
   updateApiProgram,
   updateApiProgramCenter,
   uploadApiFile,
-} from "../services/mel-api.js?v=20260526e";
+} from "../services/mel-api.js?v=20260526f";
 import {
   currentMonth,
   escapeHtml,
@@ -3453,6 +3453,29 @@ function ensureChatNavBadge() {
   return badge;
 }
 
+function sharedChatAttachments(messages = activeChatMessages()) {
+  const items = [];
+  const seen = new Set();
+  (messages || []).forEach((message) => {
+    const attachments = Array.isArray(message.attachments) ? message.attachments : [];
+    attachments.forEach((attachment) => {
+      const href = uploadFileUrl(attachment) || attachment.fileUrl || attachment.dataUrl || "";
+      const key = `${href}::${attachment.name || attachment.fileName || ""}`;
+      if (!href || seen.has(key)) return;
+      seen.add(key);
+      items.push({
+        ...attachment,
+        href,
+        messageId: message.id,
+        messageCreatedAt: message.createdAt,
+      });
+    });
+  });
+  return items
+    .sort((left, right) => String(right.messageCreatedAt || "").localeCompare(String(left.messageCreatedAt || "")))
+    .slice(0, 10);
+}
+
 function chatReplyMessage(messageId, messages = activeChatMessages()) {
   return (messages || []).find((message) => message.id === messageId) || null;
 }
@@ -3704,6 +3727,18 @@ function renderChatWorkspace() {
     elements.chatLeaveButton.hidden = !activeConversation || !canLeaveActiveChatConversation(activeConversation);
     elements.chatLeaveButton.disabled = !activeConversation || !canLeaveActiveChatConversation(activeConversation);
   }
+  if (elements.chatSharedFiles) {
+    const sharedFiles = sharedChatAttachments(messages);
+    elements.chatSharedFiles.innerHTML = sharedFiles.length
+      ? sharedFiles
+          .map((attachment) => {
+            const label = escapeHtml(attachment.name || attachment.fileName || "Adjunto");
+            const meta = escapeHtml(formatFileSize(attachment.size || attachment.fileSizeBytes || 0));
+            return `<a class="chat-shared-file-chip" href="${escapeHtml(attachment.href)}" target="_blank" rel="noreferrer">Archivo: ${label}${meta ? ` <small>${meta}</small>` : ""}</a>`;
+          })
+          .join("")
+      : `<p class="item-meta">Sin archivos compartidos todavia.</p>`;
+  }
   populateChatParticipantManager(activeConversation);
   elements.chatMessageList.innerHTML = activeConversation
     ? messages.length
@@ -3715,8 +3750,9 @@ function renderChatWorkspace() {
                 message.senderUserId === currentUser?.id && Array.isArray(message.readBy) && message.readBy.length
                   ? `Leido por ${message.readBy.length}`
                   : "";
+              const isSystemMessage = message.messageType === "system";
               return `
-              <article class="chat-message-item ${message.senderUserId === currentUser?.id ? "mine" : ""}">
+              <article class="chat-message-item ${message.senderUserId === currentUser?.id ? "mine" : ""} ${isSystemMessage ? "system" : ""}">
                 <div class="chat-message-item-head">
                   <strong>${escapeHtml(message.senderName || "Usuario")}</strong>
                   <span class="item-meta">${escapeHtml(String(message.createdAt || "").slice(0, 16).replace("T", " "))}</span>
@@ -3729,7 +3765,7 @@ function renderChatWorkspace() {
                 <p>${escapeHtml(message.body || "(Sin texto)")}</p>
                 ${renderChatAttachmentLinks(message.attachments || [])}
                 <div class="chat-message-actions">
-                  <button class="ghost-action" type="button" data-chat-reply="${message.id}">Responder</button>
+                  ${!isSystemMessage ? `<button class="ghost-action" type="button" data-chat-reply="${message.id}">Responder</button>` : ""}
                   ${readSummary ? `<span class="item-meta">${escapeHtml(readSummary)}</span>` : ""}
                 </div>
               </article>

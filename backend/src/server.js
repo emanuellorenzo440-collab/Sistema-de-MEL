@@ -1428,6 +1428,18 @@ function canEditConversation(participant, actor, conversation) {
   return conversation?.type === "group" && Boolean(participant.canAddPeople || participant.canRemovePeople);
 }
 
+function postSystemChatMessage(conversation, actor, body) {
+  if (!conversation || !String(body || "").trim()) return null;
+  return createChatMessage(conversation.id, {
+    messageType: "system",
+    body: String(body || "").trim(),
+    senderUserId: actor.id,
+    organizationId: actor.organizationId,
+    companyId: actor.organizationId,
+    organizationName: actor.organizationName,
+  });
+}
+
 export async function handleChatConversationsList(request, response, url) {
   const actor = requireAuthenticatedUser(request, response);
   if (!actor) return;
@@ -1523,10 +1535,15 @@ export async function handleChatConversationUpdate(request, response, conversati
       return;
     }
     const payload = await readJsonBody(request);
+    const previousTitle = String(conversation.title || "").trim();
     const updated = updateChatConversation(conversationId, {
       title: payload.title,
       description: payload.description,
     });
+    const nextTitle = String(updated?.title || "").trim();
+    if (nextTitle && nextTitle !== previousTitle) {
+      postSystemChatMessage(updated, actor, `${actor.fullName || actor.id} renombro el grupo a "${nextTitle}".`);
+    }
     const usersById = chatUserDirectory(actor);
     sendJson(response, 200, {
       data: decorateChatConversation(
@@ -1665,6 +1682,13 @@ export async function handleChatParticipantAdd(request, response, conversationId
       return;
     }
     const added = addChatParticipants(conversationId, { participantUserIds });
+    if (added?.length) {
+      const participantNames = added
+        .map((entry) => usersById.get(entry.userId)?.fullName || entry.userId)
+        .filter(Boolean)
+        .join(", ");
+      postSystemChatMessage(conversation, actor, `${actor.fullName || actor.id} agrego a ${participantNames} al chat.`);
+    }
     sendJson(response, 200, {
       data: {
         conversationId,
@@ -1699,6 +1723,13 @@ export async function handleChatParticipantDelete(request, response, conversatio
       sendJson(response, 404, { error: "No encontre el participante solicitado." });
       return;
     }
+    const usersById = chatUserDirectory(actor);
+    const targetName = usersById.get(userId)?.fullName || userId;
+    const message =
+      actor.id === userId
+        ? `${actor.fullName || actor.id} salio del chat.`
+        : `${actor.fullName || actor.id} quito a ${targetName} del chat.`;
+    postSystemChatMessage(conversation, actor, message);
     sendJson(response, 200, {
       data: {
         conversationId,
