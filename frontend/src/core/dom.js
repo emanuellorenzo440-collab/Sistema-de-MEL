@@ -86,6 +86,7 @@ export const elements = {
   chatGroupCreateForm: $("#chatGroupCreateForm"),
   chatGroupNameInput: $("#chatGroupNameInput"),
   chatGroupMemberChecklist: $("#chatGroupMemberChecklist"),
+  chatAreaChannels: $("#chatAreaChannels"),
   chatSearchInput: $("#chatSearchInput"),
   chatSearchSummary: $("#chatSearchSummary"),
   chatConversationList: $("#chatConversationList"),

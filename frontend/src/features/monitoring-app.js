@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260526j";
+import { $, $$, elements } from "../core/dom.js?v=20260526k";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260526j";
+} from "../services/auth-service.js?v=20260526k";
 import {
   apiFileUrl,
   addApiChatParticipants,
@@ -72,7 +72,7 @@ import {
   updateApiProgram,
   updateApiProgramCenter,
   uploadApiFile,
-} from "../services/mel-api.js?v=20260526j";
+} from "../services/mel-api.js?v=20260526k";
 import {
   currentMonth,
   escapeHtml,
@@ -116,6 +116,11 @@ let chatReplyMessageId = "";
 let chatSearchRequestId = 0;
 let chatSyncPrimed = false;
 const BASE_DOCUMENT_TITLE = document.title || "Pulso M&E";
+const INSTITUTIONAL_CHAT_AREAS = [
+  { id: "mel", title: "M&E", description: "Coordinacion institucional de monitoreo, evaluacion y aprendizaje." },
+  { id: "access", title: "Accesos", description: "Gestión de usuarios, permisos y credenciales." },
+  { id: "supervision", title: "Supervision", description: "Seguimiento, alertas y validaciones operativas." },
+];
 
 function loadState() {
   return loadStoredState(STORAGE_KEY, seedState, normalizeState);
@@ -3500,6 +3505,18 @@ function renderChatSearchSummary(conversations = filteredChatConversations()) {
   `;
 }
 
+function renderChatAreaChannels() {
+  if (!elements.chatAreaChannels) return;
+  elements.chatAreaChannels.innerHTML = INSTITUTIONAL_CHAT_AREAS.map(
+    (area) => `
+      <button class="chat-area-button" type="button" data-open-chat-area="${escapeHtml(area.id)}">
+        <strong>${escapeHtml(area.title)}</strong>
+        <span>${escapeHtml(area.description)}</span>
+      </button>
+    `,
+  ).join("");
+}
+
 function renderChatDetails(conversation, messages = []) {
   if (!elements.chatDetailsGrid) return;
   if (!conversation) {
@@ -3901,6 +3918,7 @@ function renderChatWorkspace() {
 
   populateChatDirectoryChoices();
   renderChatGroupMemberChecklist();
+  renderChatAreaChannels();
   const conversations = filteredChatConversations();
   const activeConversation = activeChatConversation();
   const messages = activeConversation ? state.chatMessagesByConversation?.[activeConversation.id] || [] : [];
@@ -4003,7 +4021,7 @@ function renderChatWorkspace() {
                 }
                 <p>${escapeHtml(message.body || "(Sin texto)")}</p>
                 ${isSearchHit ? `<span class="status-pill info">Coincide con la busqueda</span>` : ""}
-                ${renderChatAttachmentLinks(message.attachments || [])}
+                ${renderRichChatAttachmentLinks(message.attachments || [])}
                 <div class="chat-message-actions">
                   ${!isSystemMessage ? `<button class="ghost-action" type="button" data-chat-reply="${message.id}">Responder</button>` : ""}
                   ${readSummary ? `<span class="item-meta">${escapeHtml(readSummary)}</span>` : ""}
@@ -4049,6 +4067,35 @@ function renderChatAttachmentLinks(attachments = []) {
         .join(" · ");
       if (!href) {
         return `<span class="attachment-link unavailable">${label}${meta ? ` <small>${escapeHtml(meta)}</small>` : ""}</span>`;
+      }
+      return `<a class="attachment-link" href="${escapeHtml(href)}" target="_blank" rel="noreferrer">Abrir ${label}${meta ? ` <small>${escapeHtml(meta)}</small>` : ""}</a>`;
+    })
+    .join("");
+  return `<div class="attachment-list">${items}</div>`;
+}
+
+function renderRichChatAttachmentLinks(attachments = []) {
+  if (!Array.isArray(attachments) || !attachments.length) return "";
+  const items = attachments
+    .map((attachment, index) => {
+      const label = escapeHtml(attachment.name || `Adjunto ${index + 1}`);
+      const href = chatAttachmentHref(attachment);
+      const meta = [attachment.type || attachment.mimeType || "", formatFileSize(attachment.size || attachment.fileSizeBytes || 0)]
+        .filter(Boolean)
+        .join(" · ");
+      if (!href) {
+        return `<span class="attachment-link unavailable">${label}${meta ? ` <small>${escapeHtml(meta)}</small>` : ""}</span>`;
+      }
+      if (isImageChatAttachment(attachment)) {
+        return `
+          <a class="chat-image-attachment" href="${escapeHtml(href)}" target="_blank" rel="noreferrer">
+            <img src="${escapeHtml(href)}" alt="${label}" />
+            <span>${label}${meta ? ` <small>${escapeHtml(meta)}</small>` : ""}</span>
+          </a>
+        `;
+      }
+      if (isPdfChatAttachment(attachment)) {
+        return `<a class="attachment-link pdf" href="${escapeHtml(href)}" target="_blank" rel="noreferrer">PDF: ${label}${meta ? ` <small>${escapeHtml(meta)}</small>` : ""}</a>`;
       }
       return `<a class="attachment-link" href="${escapeHtml(href)}" target="_blank" rel="noreferrer">Abrir ${label}${meta ? ` <small>${escapeHtml(meta)}</small>` : ""}</a>`;
     })
@@ -4146,6 +4193,28 @@ function activeOrganizationParticipantIds() {
   return [...new Set((state.chatDirectory || []).map((user) => user.id).filter(Boolean))];
 }
 
+function chatAttachmentHref(attachment = {}) {
+  return uploadFileUrl(attachment) || attachment.fileUrl || attachment.dataUrl || "";
+}
+
+function isImageChatAttachment(attachment = {}) {
+  return String(attachment.type || attachment.mimeType || "").startsWith("image/");
+}
+
+function isPdfChatAttachment(attachment = {}) {
+  return String(attachment.type || attachment.mimeType || "").includes("pdf");
+}
+
+async function sendAutomatedChatMessage(conversationId, body, options = {}) {
+  if (!isApiConfigured() || !conversationId || !String(body || "").trim()) return null;
+  return createApiChatMessage(conversationId, {
+    messageType: options.messageType || "system",
+    body: String(body || "").trim(),
+    replyToMessageId: "",
+    attachments: Array.isArray(options.attachments) ? options.attachments : [],
+  });
+}
+
 async function ensureContextChatConversation({
   title,
   description = "",
@@ -4160,7 +4229,8 @@ async function ensureContextChatConversation({
   if (existing) return existing;
 
   await ensureChatDirectoryLoaded();
-  const participantIds = [...new Set(participantUserIds.map((item) => String(item || "").trim()).filter(Boolean))];
+  const requestedParticipantIds = participantUserIds.length ? participantUserIds : activeOrganizationParticipantIds();
+  const participantIds = [...new Set(requestedParticipantIds.map((item) => String(item || "").trim()).filter(Boolean))];
   const created = await createApiChatConversation({
     type: "group",
     title,
@@ -4205,6 +4275,24 @@ async function openAttendanceChat(options = {}) {
     description: `Seguimiento operativo de asistencia para ${programName}.`,
     contextType: "attendance",
     contextId: `attendance-${slugify(programName)}`,
+    participantUserIds: activeOrganizationParticipantIds(),
+  });
+  await openChatConversationById(conversation.id, { switchToChat: openView, markRead: true });
+}
+
+async function openAreaChat(areaId, options = {}) {
+  const { openView = true } = options;
+  const area = INSTITUTIONAL_CHAT_AREAS.find((item) => item.id === areaId);
+  if (!area) {
+    showToast("No encontre el canal institucional solicitado.");
+    return;
+  }
+  await ensureChatDirectoryLoaded();
+  const conversation = await ensureContextChatConversation({
+    title: `Canal · ${area.title}`,
+    description: area.description,
+    contextType: "area",
+    contextId: `area-${area.id}`,
     participantUserIds: activeOrganizationParticipantIds(),
   });
   await openChatConversationById(conversation.id, { switchToChat: openView, markRead: true });
@@ -4480,6 +4568,22 @@ async function saveCurrentAttendance() {
   };
   const saved = isApiConfigured() ? await saveApiAttendanceSession(session) : session;
   upsertAttendanceSession({ ...saved, locked: saved.locked ?? true });
+  if (isApiConfigured()) {
+    const conversation = await ensureContextChatConversation({
+      title: `Asistencia · ${state.attendanceProgram}`,
+      description: `Seguimiento operativo de asistencia para ${state.attendanceProgram}.`,
+      contextType: "attendance",
+      contextId: `attendance-${slugify(state.attendanceProgram)}`,
+      participantUserIds: activeOrganizationParticipantIds(),
+    });
+    const presentCount = entries.filter((entry) => entry.status === "present").length;
+    const excusedCount = entries.filter((entry) => entry.status === "excused").length;
+    const absentCount = entries.filter((entry) => entry.status === "absent").length;
+    await sendAutomatedChatMessage(
+      conversation.id,
+      `${currentUser?.fullName || activeRole()} actualizo asistencia de ${state.attendanceProgram} para ${state.attendanceWeek} en ${attendanceCenterValue()}: ${presentCount} presentes, ${excusedCount} excusas y ${absentCount} ausentes.`,
+    );
+  }
   renderAttendance();
 }
 
@@ -5747,6 +5851,19 @@ async function saveProgramFromForm(formData) {
     }
     saveState();
     renderAll();
+    if (isApiConfigured()) {
+      const conversation = await ensureContextChatConversation({
+        title: `Programa · ${saved.name}`,
+        description: `Chat institucional del programa ${saved.name}.`,
+        contextType: "program",
+        contextId: saved.id || `program-${slugify(saved.name)}`,
+        participantUserIds: activeOrganizationParticipantIds(),
+      });
+      await sendAutomatedChatMessage(
+        conversation.id,
+        `${currentUser?.fullName || activeRole()} ${programId ? "actualizo" : "registro"} el programa ${saved.name}. Provincias: ${(saved.provinces || []).join(", ") || "Sin provincias"}.`,
+      );
+    }
     resetProgramForm();
     showToast(programId ? "Programa actualizado." : "Programa creado.");
   } catch (error) {
@@ -5887,6 +6004,20 @@ async function saveProgramCenterFromForm(formData) {
     saveState();
     resetProgramCenterForm();
     renderAll();
+    if (isApiConfigured()) {
+      const targetProgram = (state.programs || []).find((program) => program.id === saved.programId || program.name === saved.program);
+      const conversation = await ensureContextChatConversation({
+        title: `Programa · ${saved.program}`,
+        description: `Chat institucional del programa ${saved.program}.`,
+        contextType: "program",
+        contextId: targetProgram?.id || saved.programId || `program-${slugify(saved.program)}`,
+        participantUserIds: activeOrganizationParticipantIds(),
+      });
+      await sendAutomatedChatMessage(
+        conversation.id,
+        `${currentUser?.fullName || activeRole()} ${centerId ? "actualizo" : "agrego"} el centro ${saved.name} en ${saved.province} para ${saved.program}.`,
+      );
+    }
     showToast("Centro guardado.");
   } catch (error) {
     console.error(error);
@@ -5949,6 +6080,15 @@ function bindEvents() {
 
   elements.chatAttachmentInput?.addEventListener("change", () => {
     setChatAttachmentFiles(Array.from(elements.chatAttachmentInput.files || []));
+  });
+
+  elements.chatAreaChannels?.addEventListener("click", (event) => {
+    const areaId = event.target.closest("[data-open-chat-area]")?.dataset.openChatArea;
+    if (!areaId) return;
+    void openAreaChat(areaId, { openView: true }).catch((error) => {
+      console.error(error);
+      showToast(error.message || "No pude abrir el canal institucional.");
+    });
   });
 
   elements.chatConversationList?.addEventListener("click", (event) => {
