@@ -90,6 +90,8 @@ export const elements = {
   chatMessageList: $("#chatMessageList"),
   chatComposerForm: $("#chatComposerForm"),
   chatComposerInput: $("#chatComposerInput"),
+  chatAttachmentInput: $("#chatAttachmentInput"),
+  chatAttachmentPreview: $("#chatAttachmentPreview"),
   attendanceSummary: $("#attendanceSummary"),
   attendanceProgramSelect: $("#attendanceProgramSelect"),
   attendanceCenterInput: $("#attendanceCenterInput"),

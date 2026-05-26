@@ -9,7 +9,7 @@
         display: none !important;
       }
     </style>
-    <link rel="stylesheet" href="styles.css?v=20260525m" />
+    <link rel="stylesheet" href="styles.css?v=20260526a" />
   </head>
   <body>
     <section class="auth-shell" id="authShell">
@@ -770,6 +770,13 @@
                   Mensaje
                   <textarea id="chatComposerInput" rows="3" placeholder="Escribe tu mensaje"></textarea>
                 </label>
+                <label class="chat-attachment-field">
+                  Adjuntos
+                  <input id="chatAttachmentInput" type="file" multiple />
+                </label>
+                <div class="chat-attachment-preview" id="chatAttachmentPreview">
+                  <p class="item-meta">Sin adjuntos seleccionados.</p>
+                </div>
                 <div class="item-actions">
                   <button class="primary-action" type="submit">Enviar</button>
                 </div>
@@ -989,7 +996,7 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="src/main.js?v=20260525m"></script>
+    <script type="module" src="src/main.js?v=20260526a"></script>
   </body>
 </html>
 

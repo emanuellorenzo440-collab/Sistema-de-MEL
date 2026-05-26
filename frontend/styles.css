@@ -609,6 +609,11 @@ h3 {
   margin-top: 14px;
 }
 
+.chat-attachment-field {
+  display: grid;
+  gap: 8px;
+}
+
 .chat-conversation-list,
 .chat-message-list {
   display: grid;
@@ -679,6 +684,23 @@ h3 {
 .chat-message-item p {
   margin: 0;
   white-space: pre-wrap;
+}
+
+.chat-attachment-preview {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-height: 48px;
+  padding: 10px 12px;
+}
+
+.chat-attachment-preview ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.chat-attachment-preview li {
+  margin: 0;
 }
 
 .chat-empty-state {

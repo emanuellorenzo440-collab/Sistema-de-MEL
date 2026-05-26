@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260525m";
+import { $, $$, elements } from "../core/dom.js?v=20260526a";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260525m";
+} from "../services/auth-service.js?v=20260526a";
 import {
   apiFileUrl,
   addApiChatParticipants,
@@ -69,7 +69,7 @@ import {
   updateApiProgram,
   updateApiProgramCenter,
   uploadApiFile,
-} from "../services/mel-api.js?v=20260525m";
+} from "../services/mel-api.js?v=20260526a";
 import {
   currentMonth,
   escapeHtml,
@@ -107,6 +107,7 @@ let accessSyncIntervalId = null;
 let accessSyncInFlight = false;
 let chatSyncIntervalId = null;
 let chatSyncInFlight = false;
+let chatAttachmentFiles = [];
 
 function loadState() {
   return loadStoredState(STORAGE_KEY, seedState, normalizeState);
@@ -1056,13 +1057,13 @@ function uploadFileUrl(fileRef) {
   }
 }
 
-async function attachmentFromFile(file, uploadedBy = null) {
+async function attachmentFromFile(file, uploadedBy = null, kind = "report-attachments") {
   if (!file) return null;
   if (file.size > MAX_REPORT_ATTACHMENT_BYTES) {
     throw new Error(`El documento adjunto supera ${formatFileSize(MAX_REPORT_ATTACHMENT_BYTES)}. Sube un archivo más liviano.`);
   }
 
-  const uploadedFile = isApiConfigured() ? await uploadApiFile(file, { kind: "report-attachments" }) : null;
+  const uploadedFile = isApiConfigured() ? await uploadApiFile(file, { kind }) : null;
   return {
     id: `att-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
     name: file.name,
@@ -1076,10 +1077,10 @@ async function attachmentFromFile(file, uploadedBy = null) {
   };
 }
 
-async function attachmentsFromFiles(files, uploadedBy = null) {
+async function attachmentsFromFiles(files, uploadedBy = null, kind = "report-attachments") {
   const fileList = Array.from(files || []).filter(Boolean);
   if (!fileList.length) return [];
-  const attachments = await Promise.all(fileList.map((file) => attachmentFromFile(file, uploadedBy)));
+  const attachments = await Promise.all(fileList.map((file) => attachmentFromFile(file, uploadedBy, kind)));
   return attachments.filter(Boolean);
 }
 
@@ -3510,6 +3511,7 @@ function renderChatWorkspace() {
                   <span class="item-meta">${escapeHtml(String(message.createdAt || "").slice(0, 16).replace("T", " "))}</span>
                 </div>
                 <p>${escapeHtml(message.body || "(Sin texto)")}</p>
+                ${renderChatAttachmentLinks(message.attachments || [])}
               </article>
             `,
           )
@@ -3523,6 +3525,56 @@ function renderChatWorkspace() {
       elements.chatComposerInput.value = "";
     }
   }
+  if (elements.chatAttachmentInput) {
+    elements.chatAttachmentInput.disabled = !activeConversation;
+    if (!activeConversation) {
+      elements.chatAttachmentInput.value = "";
+    }
+  }
+  if (!activeConversation && chatAttachmentFiles.length) {
+    chatAttachmentFiles = [];
+  }
+  renderChatAttachmentPreview();
+}
+
+function renderChatAttachmentLinks(attachments = []) {
+  if (!Array.isArray(attachments) || !attachments.length) return "";
+  const items = attachments
+    .map((attachment, index) => {
+      const label = escapeHtml(attachment.name || `Adjunto ${index + 1}`);
+      const href = uploadFileUrl(attachment) || attachment.fileUrl || attachment.dataUrl || "";
+      const meta = [attachment.type || attachment.mimeType || "", formatFileSize(attachment.size || attachment.fileSizeBytes || 0)]
+        .filter(Boolean)
+        .join(" · ");
+      if (!href) {
+        return `<span class="attachment-link unavailable">${label}${meta ? ` <small>${escapeHtml(meta)}</small>` : ""}</span>`;
+      }
+      return `<a class="attachment-link" href="${escapeHtml(href)}" target="_blank" rel="noreferrer">Abrir ${label}${meta ? ` <small>${escapeHtml(meta)}</small>` : ""}</a>`;
+    })
+    .join("");
+  return `<div class="attachment-list">${items}</div>`;
+}
+
+function renderChatAttachmentPreview() {
+  if (!elements.chatAttachmentPreview) return;
+  const files = Array.from(chatAttachmentFiles || []);
+  if (!files.length) {
+    elements.chatAttachmentPreview.innerHTML = `<p class="item-meta">Sin adjuntos seleccionados.</p>`;
+    return;
+  }
+  const hasOversized = files.some((file) => file.size > MAX_REPORT_ATTACHMENT_BYTES);
+  if (hasOversized) {
+    elements.chatAttachmentPreview.innerHTML = `<p class="item-meta">Uno o mÃ¡s adjuntos superan ${formatFileSize(MAX_REPORT_ATTACHMENT_BYTES)}.</p>`;
+    return;
+  }
+  elements.chatAttachmentPreview.innerHTML = `<ul>${files
+    .map((file) => `<li>${escapeHtml(file.name)} <span class="item-meta">(${escapeHtml(formatFileSize(file.size))})</span></li>`)
+    .join("")}</ul>`;
+}
+
+function setChatAttachmentFiles(files = []) {
+  chatAttachmentFiles = Array.from(files || []).filter(Boolean);
+  renderChatAttachmentPreview();
 }
 
 async function createDirectChat(userId) {
@@ -3557,20 +3609,28 @@ async function createDirectChat(userId) {
 async function sendCurrentChatMessage() {
   const activeConversation = activeChatConversation();
   const body = String(elements.chatComposerInput?.value || "").trim();
+  const selectedFiles = Array.from(chatAttachmentFiles || []);
   if (!activeConversation) {
     showToast("Selecciona una conversacion.");
     return;
   }
-  if (!body) {
-    showToast("Escribe un mensaje.");
+  if (!body && !selectedFiles.length) {
+    showToast("Escribe un mensaje o adjunta un archivo.");
     return;
   }
+  const attachments = await attachmentsFromFiles(selectedFiles, currentUser?.email || activeRole(), "chat-attachments");
+  const inferredType =
+    attachments.length && attachments.every((attachment) => String(attachment.type || "").startsWith("image/")) ? "image" : attachments.length ? "file" : "text";
   await createApiChatMessage(activeConversation.id, {
-    messageType: "text",
+    messageType: inferredType,
     body,
-    attachments: [],
+    attachments,
   });
   elements.chatComposerInput.value = "";
+  if (elements.chatAttachmentInput) {
+    elements.chatAttachmentInput.value = "";
+  }
+  setChatAttachmentFiles([]);
   await refreshChatFromApi({ includeMessages: true });
   renderChatWorkspace();
 }
@@ -5078,6 +5138,10 @@ function bindEvents() {
     state.chatSearch = elements.chatSearchInput.value || "";
     saveState();
     renderChatWorkspace();
+  });
+
+  elements.chatAttachmentInput?.addEventListener("change", () => {
+    setChatAttachmentFiles(Array.from(elements.chatAttachmentInput.files || []));
   });
 
   elements.chatConversationList?.addEventListener("click", (event) => {
