@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260526h";
+import { $, $$, elements } from "../core/dom.js?v=20260526i";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260526h";
+} from "../services/auth-service.js?v=20260526i";
 import {
   apiFileUrl,
   addApiChatParticipants,
@@ -72,7 +72,7 @@ import {
   updateApiProgram,
   updateApiProgramCenter,
   uploadApiFile,
-} from "../services/mel-api.js?v=20260526h";
+} from "../services/mel-api.js?v=20260526i";
 import {
   currentMonth,
   escapeHtml,
@@ -115,6 +115,7 @@ let chatSearchResults = null;
 let chatReplyMessageId = "";
 let chatSearchRequestId = 0;
 let chatSyncPrimed = false;
+const BASE_DOCUMENT_TITLE = document.title || "Pulso M&E";
 
 function loadState() {
   return loadStoredState(STORAGE_KEY, seedState, normalizeState);
@@ -2101,27 +2102,35 @@ function renderNotifications() {
   const role = activeRole();
   const inboxReports = inboxReportsForRole(role);
   const visibleNotifications = notificationsForActiveRole();
-  const visibleCount = inboxReports.length || visibleNotifications.length;
+  const chatAlertConversation = latestUnreadChatConversation();
+  const chatAlertCount = Number(state.chatUnreadCount?.totalUnreadConversations || 0);
+  const visibleCount = inboxReports.length + visibleNotifications.length + chatAlertCount;
   const countText = `${visibleCount} pendiente${visibleCount === 1 ? "" : "s"}`;
   elements.notificationCount.textContent = countText;
   elements.notificationCount.className = `status-pill ${visibleCount ? "warning" : "good"}`;
   const waitingMessage = waitingMessageForRole(role);
   const activeStatusReport = state.reports.find((report) => report.id === activeStatusReportId);
   const detailMarkup = activeStatusReport ? renderReportStatusDetail(activeStatusReport) : "";
+  const chatMarkup = chatAlertConversation ? renderChatNotificationCard(chatAlertConversation) : "";
   const markup = inboxReports.length
     ? inboxReports.slice(0, 6).map((report) => renderReportInboxCard(report, role)).join("")
     : visibleNotifications.length
       ? visibleNotifications.slice(0, 6).map(renderNotificationCard).join("")
-    : `<p class="item-meta">${waitingMessage}</p>`;
+      : chatMarkup
+        ? ""
+        : `<p class="item-meta">${waitingMessage}</p>`;
 
-  elements.notificationList.innerHTML = `${detailMarkup}${markup}`;
-  elements.supervisionNotificationList.innerHTML = `${detailMarkup}${
+  elements.notificationList.innerHTML = `${detailMarkup}${chatMarkup}${markup}`;
+  elements.supervisionNotificationList.innerHTML = `${detailMarkup}${chatMarkup}${
     inboxReports.length
     ? inboxReports.slice(0, 3).map((report) => renderReportInboxCard(report, role)).join("")
     : visibleNotifications.length
       ? visibleNotifications.slice(0, 3).map(renderNotificationCard).join("")
-    : `<p class="item-meta">${waitingMessage}</p>`
+      : chatMarkup
+        ? ""
+        : `<p class="item-meta">${waitingMessage}</p>`
   }`;
+  updateAppDocumentTitle();
 }
 
 function renderActions() {
@@ -3762,6 +3771,17 @@ async function loadChatConversation(conversationId, options = {}) {
   saveState();
 }
 
+async function openChatConversationById(conversationId, options = {}) {
+  const { switchToChat = false, markRead = true } = options;
+  if (!conversationId) return;
+  await loadChatConversation(conversationId, { markRead });
+  if (switchToChat) {
+    switchView("chat", { persist: true, resetScroll: false });
+  } else {
+    renderChatWorkspace();
+  }
+}
+
 async function refreshChatFromApi(options = {}) {
   if (!isApiConfigured()) return;
   const { includeMessages = true, includeDirectory = true } = options;
@@ -3800,6 +3820,42 @@ function notifyNewChatMessage(conversation) {
   showToast(preview ? `Nuevo mensaje en ${title}: ${preview.slice(0, 90)}` : `Nuevo mensaje en ${title}.`);
 }
 
+function latestUnreadChatConversation() {
+  return (state.chatConversations || [])
+    .filter((conversation) => Number(conversation.unreadCount || 0) > 0)
+    .sort((left, right) => String(right.lastMessageAt || "").localeCompare(String(left.lastMessageAt || "")))[0] || null;
+}
+
+function updateAppDocumentTitle() {
+  const unreadMessages = Number(state?.chatUnreadCount?.totalUnreadMessages || 0);
+  const reportAlerts = Number(inboxReportsForRole(activeRole()).length || 0);
+  const operationalAlerts = Number(notificationsForActiveRole().length || 0);
+  const totalAlerts = unreadMessages + reportAlerts + operationalAlerts;
+  document.title = totalAlerts > 0 ? `(${totalAlerts}) ${BASE_DOCUMENT_TITLE}` : BASE_DOCUMENT_TITLE;
+}
+
+function renderChatNotificationCard(conversation) {
+  if (!conversation) return "";
+  const unreadCount = Number(conversation.unreadCount || 0);
+  const preview = String(conversation.lastMessagePreview || "").trim() || "Tienes actividad nueva en este chat.";
+  return `
+    <article class="notification-item chat-alert">
+      <div class="notification-top">
+        <div>
+          <p class="eyebrow">Mensajeria interna</p>
+          <h3>${escapeHtml(chatConversationTitle(conversation))}</h3>
+          <p class="item-meta">${escapeHtml(chatConversationMeta(conversation))} · ${escapeHtml(formatShortDateTime(conversation.lastMessageAt || conversation.updatedAt || ""))}</p>
+        </div>
+        <span class="status-pill info">${escapeHtml(String(unreadCount))} sin leer</span>
+      </div>
+      <p>${escapeHtml(preview.slice(0, 180))}</p>
+      <div class="item-actions">
+        <button class="ghost-action" type="button" data-open-chat-conversation="${escapeHtml(conversation.id)}">Abrir chat</button>
+      </div>
+    </article>
+  `;
+}
+
 async function syncChatInbox(options = {}) {
   if (!isApiConfigured() || chatSyncInFlight) return;
   const {
@@ -3816,6 +3872,7 @@ async function syncChatInbox(options = {}) {
       includeDirectory: includeDirectory || !Array.isArray(state?.chatDirectory) || !state.chatDirectory.length,
     });
     renderChatWorkspace();
+    renderNotifications();
     const nextUnreadTotal = Number(state?.chatUnreadCount?.totalUnreadMessages || 0);
     if (chatSyncPrimed && showToastOnNewMessages && nextUnreadTotal > previousUnreadTotal) {
       notifyNewChatMessage(selectNewestUnreadConversation(state.chatConversations || [], previousConversations));
@@ -5826,8 +5883,7 @@ function bindEvents() {
     if (!conversationId) return;
     void (async () => {
       try {
-        await loadChatConversation(conversationId, { markRead: true });
-        renderChatWorkspace();
+        await openChatConversationById(conversationId, { markRead: true });
       } catch (error) {
         console.error(error);
         showToast(error.message || "No pude abrir la conversacion.");
@@ -6209,6 +6265,7 @@ function bindEvents() {
 
   [elements.notificationList, elements.supervisionNotificationList].forEach((list) => {
     list.addEventListener("click", (event) => {
+      const conversationId = event.target.closest("[data-open-chat-conversation]")?.dataset.openChatConversation;
       const reportId = event.target.closest("[data-open-report]")?.dataset.openReport;
       const reportChatId = event.target.closest("[data-open-report-chat]")?.dataset.openReportChat;
       const notificationId = event.target.closest("[data-read-notification]")?.dataset.readNotification;
@@ -6223,6 +6280,18 @@ function bindEvents() {
 
       if (deleteReportId) {
         void deleteReportFromUi(deleteReportId);
+        return;
+      }
+
+      if (conversationId) {
+        void (async () => {
+          try {
+            await openChatConversationById(conversationId, { switchToChat: true, markRead: true });
+          } catch (error) {
+            console.error(error);
+            showToast(error.message || "No pude abrir la conversacion.");
+          }
+        })();
         return;
       }
 

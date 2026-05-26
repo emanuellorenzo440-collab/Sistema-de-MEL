@@ -1187,6 +1187,11 @@ textarea {
   background: #fffbeb;
 }
 
+.notification-item.chat-alert {
+  background: #eef7f5;
+  border-left-color: var(--teal);
+}
+
 .item-actions {
   display: flex;
   flex-wrap: wrap;
