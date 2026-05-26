@@ -623,6 +623,22 @@ h3 {
   margin-top: 14px;
 }
 
+.chat-search-summary {
+  margin-top: 12px;
+}
+
+.chat-search-summary-card {
+  align-items: center;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  justify-content: space-between;
+  padding: 10px 12px;
+}
+
 .chat-group-form {
   margin-top: 14px;
 }
@@ -666,6 +682,28 @@ h3 {
   gap: 12px;
   grid-template-columns: minmax(0, 1fr) auto;
   margin-top: 14px;
+}
+
+.chat-details-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  margin-bottom: 14px;
+}
+
+.chat-detail-card {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  min-height: 92px;
+  padding: 12px;
+}
+
+.chat-detail-card h3 {
+  font-size: 1rem;
+  margin: 0;
 }
 
 .chat-shared-files {
@@ -754,6 +792,12 @@ h3 {
 .chat-conversation-item.active {
   border-color: var(--teal);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--teal) 25%, transparent);
+}
+
+.chat-conversation-item.search-hit,
+.chat-message-item.search-hit {
+  border-color: color-mix(in srgb, var(--teal) 45%, var(--line));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--teal) 18%, transparent);
 }
 
 .chat-conversation-item-head,

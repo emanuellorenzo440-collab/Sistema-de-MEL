@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260526f";
+import { $, $$, elements } from "../core/dom.js?v=20260526g";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260526f";
+} from "../services/auth-service.js?v=20260526g";
 import {
   apiFileUrl,
   addApiChatParticipants,
@@ -72,7 +72,7 @@ import {
   updateApiProgram,
   updateApiProgramCenter,
   uploadApiFile,
-} from "../services/mel-api.js?v=20260526f";
+} from "../services/mel-api.js?v=20260526g";
 import {
   currentMonth,
   escapeHtml,
@@ -3402,6 +3402,126 @@ function chatConversationMeta(conversation = {}) {
   return `${participants.length} participante${participants.length === 1 ? "" : "s"}`;
 }
 
+function formatChatContextLabel(contextType = "") {
+  const normalized = String(contextType || "").trim().toLowerCase();
+  if (!normalized) return "General";
+  const labels = {
+    report: "Reporte",
+    program: "Programa",
+    attendance: "Asistencia",
+    access_request: "Acceso",
+  };
+  return labels[normalized] || normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function formatChatConversationType(conversation = {}) {
+  if (conversation.contextType) return `Chat de ${formatChatContextLabel(conversation.contextType)}`;
+  if (conversation.type === "group") return "Grupo";
+  if (conversation.type === "direct") return "Directo";
+  return "Conversacion";
+}
+
+function formatShortDateTime(value) {
+  if (!value) return "Sin actividad";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value).slice(0, 16).replace("T", " ");
+  return date.toLocaleString("es-DO", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function activeChatSearchInsights() {
+  const query = String(state.chatSearch || "").trim().toLowerCase();
+  const empty = {
+    query,
+    conversationIds: new Set(),
+    messagesByConversationId: new Map(),
+  };
+  if (!query || chatSearchResults?.query !== query) return empty;
+  const conversations = Array.isArray(chatSearchResults.conversations) ? chatSearchResults.conversations : [];
+  const messages = Array.isArray(chatSearchResults.messages) ? chatSearchResults.messages : [];
+  const conversationIds = new Set(conversations.map((item) => item.id).filter(Boolean));
+  const messagesByConversationId = new Map();
+  messages.forEach((message) => {
+    if (!message?.conversationId) return;
+    if (!messagesByConversationId.has(message.conversationId)) {
+      messagesByConversationId.set(message.conversationId, []);
+    }
+    messagesByConversationId.get(message.conversationId).push(message);
+  });
+  return {
+    query,
+    conversationIds,
+    messagesByConversationId,
+  };
+}
+
+function resolveChatCreatorName(conversation = {}) {
+  const creatorId = String(conversation.createdByUserId || "").trim();
+  if (!creatorId) return "Sistema";
+  if (creatorId === currentUser?.id) return currentUser.fullName || currentUser.email || "Tu usuario";
+  const participant = (conversation.participants || []).find((item) => item.userId === creatorId);
+  if (participant) return participant.displayName || participant.email || creatorId;
+  const directoryMatch = (state.chatDirectory || []).find((item) => item.id === creatorId);
+  if (directoryMatch) return directoryMatch.fullName || directoryMatch.email || creatorId;
+  return creatorId;
+}
+
+function renderChatSearchSummary(conversations = filteredChatConversations()) {
+  if (!elements.chatSearchSummary) return;
+  const query = String(state.chatSearch || "").trim();
+  if (!query) {
+    elements.chatSearchSummary.innerHTML = `<p class="item-meta">Busca por nombre, mensaje o participante.</p>`;
+    return;
+  }
+  const insights = activeChatSearchInsights();
+  const totalConversationHits = insights.conversationIds.size;
+  const totalMessageHits = Array.from(insights.messagesByConversationId.values()).reduce((sum, items) => sum + items.length, 0);
+  elements.chatSearchSummary.innerHTML = `
+    <div class="chat-search-summary-card">
+      <strong>${escapeHtml(String(conversations.length))} resultado${conversations.length === 1 ? "" : "s"}</strong>
+      <span class="item-meta">Chats: ${escapeHtml(String(totalConversationHits))} · Mensajes: ${escapeHtml(String(totalMessageHits))}</span>
+    </div>
+  `;
+}
+
+function renderChatDetails(conversation, messages = []) {
+  if (!elements.chatDetailsGrid) return;
+  if (!conversation) {
+    elements.chatDetailsGrid.innerHTML = "";
+    return;
+  }
+  const participants = Array.isArray(conversation.participants) ? conversation.participants : [];
+  const lastActivity = conversation.lastMessageAt || conversation.updatedAt || conversation.createdAt || "";
+  const sharedFilesCount = sharedChatAttachments(messages).length;
+  elements.chatDetailsGrid.innerHTML = `
+    <article class="chat-detail-card">
+      <p class="eyebrow">Tipo</p>
+      <h3>${escapeHtml(formatChatConversationType(conversation))}</h3>
+      <p class="item-meta">${escapeHtml(formatChatContextLabel(conversation.contextType || ""))}</p>
+    </article>
+    <article class="chat-detail-card">
+      <p class="eyebrow">Participantes</p>
+      <h3>${escapeHtml(String(participants.length))}</h3>
+      <p class="item-meta">${escapeHtml(participants.map((item) => item.displayName || item.email || item.userId).slice(0, 3).join(", ") || "Sin participantes")}</p>
+    </article>
+    <article class="chat-detail-card">
+      <p class="eyebrow">Actividad</p>
+      <h3>${escapeHtml(formatShortDateTime(lastActivity))}</h3>
+      <p class="item-meta">Archivos compartidos: ${escapeHtml(String(sharedFilesCount))}</p>
+    </article>
+    <article class="chat-detail-card">
+      <p class="eyebrow">Creado por</p>
+      <h3>${escapeHtml(resolveChatCreatorName(conversation))}</h3>
+      <p class="item-meta">${escapeHtml(formatShortDateTime(conversation.createdAt || ""))}</p>
+    </article>
+  `;
+}
+
 function filteredChatConversations() {
   const query = String(state.chatSearch || "").trim().toLowerCase();
   if (!query) return state.chatConversations || [];
@@ -3682,7 +3802,8 @@ function renderChatWorkspace() {
   const activeConversation = activeChatConversation();
   const messages = activeConversation ? state.chatMessagesByConversation?.[activeConversation.id] || [] : [];
   const normalizedQuery = String(state.chatSearch || "").trim().toLowerCase();
-  const searchMessages = chatSearchResults?.query === normalizedQuery ? chatSearchResults.messages || [] : [];
+  const searchInsights = activeChatSearchInsights();
+  const searchMessages = searchInsights.query === normalizedQuery ? chatSearchResults?.messages || [] : [];
 
   elements.chatUnreadCount.textContent = `${Number(state.chatUnreadCount?.totalUnreadMessages || 0)} sin leer`;
   const chatNavBadge = ensureChatNavBadge();
@@ -3691,19 +3812,31 @@ function renderChatWorkspace() {
     chatNavBadge.hidden = totalUnread <= 0;
     chatNavBadge.textContent = totalUnread > 99 ? "99+" : String(totalUnread);
   }
+  renderChatSearchSummary(conversations);
   elements.chatConversationList.innerHTML = conversations.length
     ? conversations
         .map(
           (conversation) => {
-            const matchedMessage = searchMessages.find((message) => message.conversationId === conversation.id);
+            const matchedMessages = searchInsights.messagesByConversationId.get(conversation.id) || [];
+            const matchedMessage = matchedMessages[0] || searchMessages.find((message) => message.conversationId === conversation.id);
+            const hasConversationMatch = searchInsights.conversationIds.has(conversation.id);
+            const hasMessageMatch = matchedMessages.length > 0;
+            const searchBadge = normalizedQuery
+              ? hasMessageMatch
+                ? `<span class="status-pill info">Coincide en mensaje</span>`
+                : hasConversationMatch
+                  ? `<span class="status-pill neutral">Coincide en chat</span>`
+                  : ""
+              : "";
             return `
-            <article class="chat-conversation-item ${conversation.id === activeConversation?.id ? "active" : ""}" data-open-chat-conversation="${conversation.id}">
+            <article class="chat-conversation-item ${conversation.id === activeConversation?.id ? "active" : ""} ${hasMessageMatch ? "search-hit" : ""}" data-open-chat-conversation="${conversation.id}">
               <div class="chat-conversation-item-head">
                 <h3>${escapeHtml(chatConversationTitle(conversation))}</h3>
                 <span class="status-pill ${conversation.unreadCount ? "warning" : "neutral"}">${conversation.unreadCount || 0}</span>
               </div>
               <p class="item-meta">${escapeHtml(chatConversationMeta(conversation))}</p>
-              <p>${escapeHtml(matchedMessage?.body || conversation.lastMessagePreview || "Sin mensajes todavia.")}</p>
+              ${searchBadge}
+              <p>${escapeHtml(String(matchedMessage?.body || conversation.lastMessagePreview || "Sin mensajes todavia.").slice(0, 180))}</p>
             </article>
           `;
           },
@@ -3715,6 +3848,7 @@ function renderChatWorkspace() {
   elements.chatConversationMeta.textContent = activeConversation
     ? chatConversationMeta(activeConversation)
     : "Elige un chat o crea uno nuevo para empezar.";
+  renderChatDetails(activeConversation, messages);
   if (elements.chatDeleteButton) {
     elements.chatDeleteButton.hidden = !activeConversation || !canDeleteActiveChatConversation(activeConversation);
     elements.chatDeleteButton.disabled = !activeConversation || !canDeleteActiveChatConversation(activeConversation);
@@ -3751,8 +3885,10 @@ function renderChatWorkspace() {
                   ? `Leido por ${message.readBy.length}`
                   : "";
               const isSystemMessage = message.messageType === "system";
+              const activeConversationSearchHits = searchInsights.messagesByConversationId.get(activeConversation.id) || [];
+              const isSearchHit = activeConversationSearchHits.some((item) => item.id === message.id);
               return `
-              <article class="chat-message-item ${message.senderUserId === currentUser?.id ? "mine" : ""} ${isSystemMessage ? "system" : ""}">
+              <article class="chat-message-item ${message.senderUserId === currentUser?.id ? "mine" : ""} ${isSystemMessage ? "system" : ""} ${isSearchHit ? "search-hit" : ""}">
                 <div class="chat-message-item-head">
                   <strong>${escapeHtml(message.senderName || "Usuario")}</strong>
                   <span class="item-meta">${escapeHtml(String(message.createdAt || "").slice(0, 16).replace("T", " "))}</span>
@@ -3763,6 +3899,7 @@ function renderChatWorkspace() {
                     : ""
                 }
                 <p>${escapeHtml(message.body || "(Sin texto)")}</p>
+                ${isSearchHit ? `<span class="status-pill info">Coincide con la busqueda</span>` : ""}
                 ${renderChatAttachmentLinks(message.attachments || [])}
                 <div class="chat-message-actions">
                   ${!isSystemMessage ? `<button class="ghost-action" type="button" data-chat-reply="${message.id}">Responder</button>` : ""}

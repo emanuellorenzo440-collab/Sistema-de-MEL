@@ -9,7 +9,7 @@
         display: none !important;
       }
     </style>
-    <link rel="stylesheet" href="styles.css?v=20260526f" />
+    <link rel="stylesheet" href="styles.css?v=20260526g" />
   </head>
   <body>
     <section class="auth-shell" id="authShell">
@@ -761,6 +761,7 @@
                 Buscar
                 <input id="chatSearchInput" type="search" placeholder="Buscar conversaciones o mensajes" />
               </label>
+              <div class="chat-search-summary" id="chatSearchSummary"></div>
               <div class="chat-conversation-list" id="chatConversationList"></div>
             </aside>
 
@@ -777,6 +778,7 @@
                   <button class="ghost-action danger-action" id="chatDeleteButton" type="button" hidden>Eliminar chat</button>
                 </div>
               </div>
+              <div class="chat-details-grid" id="chatDetailsGrid"></div>
               <div class="chat-participant-strip" id="chatParticipantStrip"></div>
               <div class="chat-shared-files" id="chatSharedFiles"></div>
               <form class="chat-add-participant-form" id="chatAddParticipantForm" hidden>
@@ -1019,7 +1021,7 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="src/main.js?v=20260526f"></script>
+    <script type="module" src="src/main.js?v=20260526g"></script>
   </body>
 </html>
 
