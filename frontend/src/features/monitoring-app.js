@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260526b";
+import { $, $$, elements } from "../core/dom.js?v=20260526c";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260526b";
+} from "../services/auth-service.js?v=20260526c";
 import {
   apiFileUrl,
   addApiChatParticipants,
@@ -69,7 +69,7 @@ import {
   updateApiProgram,
   updateApiProgramCenter,
   uploadApiFile,
-} from "../services/mel-api.js?v=20260526b";
+} from "../services/mel-api.js?v=20260526c";
 import {
   currentMonth,
   escapeHtml,
@@ -1949,6 +1949,7 @@ function renderReviewQueue() {
   const currentRole = activeRole();
   const pendingReports = reportsAssignedToRole(currentRole);
   const validationEnabled = canValidate();
+  const chatEnabled = viewIsEnabled("chat");
   elements.reviewList.innerHTML = pendingReports.length
     ? pendingReports
         .map((report) => {
@@ -1971,6 +1972,7 @@ function renderReviewQueue() {
               </div>
               ${report.notes ? `<p class="item-meta">${report.notes}</p>` : ""}
               <div class="review-actions">
+                ${chatEnabled ? `<button class="ghost-action" data-open-report-chat="${report.id}" type="button">Abrir chat</button>` : ""}
                 <button class="approve-button" data-approve="${report.id}" type="button" ${validationEnabled ? "" : "disabled"}>? Aprobar</button>
                 <button class="return-button" data-return="${report.id}" type="button" ${validationEnabled ? "" : "disabled"}>? Solicitar correccion</button>
               </div>
@@ -1989,6 +1991,7 @@ function renderReviewQueue() {
 }
 
 function renderNotificationCard(notification) {
+  const chatEnabled = viewIsEnabled("chat");
   return `
     <article class="notification-item ${notification.priority || "normal"}">
       <div class="notification-top">
@@ -2001,6 +2004,7 @@ function renderNotificationCard(notification) {
       <p>${notification.message}</p>
       <div class="item-actions">
         <button type="button" data-open-report="${notification.reportId}">Ver revision</button>
+        ${chatEnabled ? `<button class="ghost-action" type="button" data-open-report-chat="${notification.reportId}">Abrir chat</button>` : ""}
         <button type="button" data-read-notification="${notification.id}">Marcar leida</button>
       </div>
     </article>
@@ -2011,6 +2015,7 @@ function renderReportStatusDetail(report) {
   if (!report) return "";
   const indicator = indicatorById(report.indicatorId);
   const correctionNote = latestCorrectionNote(report);
+  const chatEnabled = viewIsEnabled("chat");
   const nextStage = reviewRoleForStatus(report.status);
   const deleteAllowed = canDeleteReport(report);
   const isSupervisorDelete = isSystemAdminRole() && report.status !== REPORT_STATUSES.NEEDS_CORRECTION;
@@ -2040,6 +2045,7 @@ function renderReportStatusDetail(report) {
             ? `<button class="ghost-action danger-action" type="button" data-delete-report="${report.id}">${isSupervisorDelete ? "Eliminar reporte" : "Eliminar y subir corregido"}</button>`
             : ""
         }
+        ${chatEnabled ? `<button class="ghost-action" type="button" data-open-report-chat="${report.id}">Abrir chat del reporte</button>` : ""}
         <button type="button" data-close-report-detail>Ocultar detalle</button>
       </div>
     </article>
@@ -2051,6 +2057,7 @@ function renderReportInboxCard(report, role) {
   const currentStage = reviewRoleForStatus(report.status);
   const participants = reportParticipantSummary(report, " · ");
   const correctionNote = latestCorrectionNote(report);
+  const chatEnabled = viewIsEnabled("chat");
   const roleMessage =
     report.status === REPORT_STATUSES.NEEDS_CORRECTION
       ? `Correccion asignada a ${report.correctionForRole || "Facilitador"}.`
@@ -2077,6 +2084,7 @@ function renderReportInboxCard(report, role) {
       ${correctionNote ? `<p class="item-meta"><strong>Correccion solicitada:</strong> ${escapeHtml(correctionNote)}</p>` : ""}
       <div class="item-actions">
         <button type="button" data-open-report="${report.id}">${role === "Facilitador" ? "Ver estado" : "Ver revision"}</button>
+        ${chatEnabled ? `<button class="ghost-action" type="button" data-open-report-chat="${report.id}">Abrir chat</button>` : ""}
       </div>
     </article>
   `;
@@ -3717,6 +3725,99 @@ async function addParticipantsToCurrentGroup(userIds = []) {
   showToast("Participante agregado al grupo.");
 }
 
+async function ensureChatDirectoryLoaded() {
+  if (!isApiConfigured()) return state.chatDirectory || [];
+  if (Array.isArray(state.chatDirectory) && state.chatDirectory.length) {
+    return state.chatDirectory;
+  }
+  const directory = await fetchApiChatDirectory();
+  state.chatDirectory = directory;
+  saveState();
+  return directory;
+}
+
+function findReportOwnerUser(report, directory = state.chatDirectory || []) {
+  if (!report) return null;
+  const ownerUserId = String(report.ownerUserId || "").trim();
+  const ownerEmail = String(report.ownerEmail || "").trim().toLowerCase();
+  const ownerLabel = String(report.owner || "").trim().toLowerCase();
+  return (
+    directory.find((user) => ownerUserId && user.id === ownerUserId) ||
+    directory.find((user) => ownerEmail && String(user.email || "").trim().toLowerCase() === ownerEmail) ||
+    directory.find((user) => ownerLabel && String(user.fullName || "").trim().toLowerCase() === ownerLabel) ||
+    null
+  );
+}
+
+function reportChatTitle(report) {
+  const indicator = indicatorById(report?.indicatorId);
+  const program = String(report?.program || "Reporte").trim();
+  const indicatorName = String(indicator?.name || "").trim();
+  const period = String(report?.period || report?.date || "").trim();
+  return ["Reporte", program, indicatorName || null, period || null].filter(Boolean).join(" · ");
+}
+
+async function ensureReportConversation(report, options = {}) {
+  const { openView = true, seedMessage = "" } = options;
+  if (!report || !isApiConfigured()) return null;
+  if (!viewIsEnabled("chat")) {
+    if (openView) showToast("Tu perfil no tiene acceso a chat.");
+    return null;
+  }
+
+  const directory = await ensureChatDirectoryLoaded();
+  const existing = await fetchApiChatConversations({
+    contextType: "report",
+    contextId: report.id,
+  });
+
+  let conversation = existing[0] || null;
+  if (!conversation) {
+    const participantIds = new Set([currentUser?.id].filter(Boolean));
+    const ownerUser = findReportOwnerUser(report, directory);
+    if (ownerUser?.id) participantIds.add(ownerUser.id);
+    directory.forEach((user) => {
+      if (["Coordinador de programa", "Program Manager", "Supervision M&E", "Director Nacional"].includes(user.primaryRole)) {
+        participantIds.add(user.id);
+      }
+    });
+    conversation = await createApiChatConversation({
+      type: "group",
+      title: reportChatTitle(report),
+      contextType: "report",
+      contextId: report.id,
+      participantUserIds: [...participantIds],
+    });
+  }
+
+  if (String(seedMessage || "").trim()) {
+    await createApiChatMessage(conversation.id, {
+      messageType: "system",
+      body: String(seedMessage || "").trim(),
+      attachments: [],
+    });
+  }
+
+  await refreshChatFromApi({ includeMessages: false });
+  state.chatActiveConversationId = conversation.id;
+  await loadChatConversation(conversation.id, { markRead: true });
+  if (openView) {
+    switchView("chat");
+  } else if (state.activeView === "chat") {
+    renderChatWorkspace();
+  }
+  return conversation;
+}
+
+async function openReportChatById(reportId, options = {}) {
+  const report = (state.reports || []).find((item) => item.id === reportId);
+  if (!report) {
+    showToast("No encontre el reporte para abrir el chat.");
+    return null;
+  }
+  return ensureReportConversation(report, options);
+}
+
 async function sendCurrentChatMessage() {
   const activeConversation = activeChatConversation();
   const body = String(elements.chatComposerInput?.value || "").trim();
@@ -4349,6 +4450,8 @@ async function addReport(formData) {
     youth: participantBreakdown.adolescents,
     participantBreakdown,
     owner: formData.get("owner"),
+    ownerUserId: currentUser?.id || null,
+    ownerEmail: currentUser?.email || "",
     evidence: buildEvidenceSummary(evidenceType, evidenceDetail, attachedDocuments),
     notes: formData.get("notes"),
     attachments: attachedDocuments,
@@ -4644,6 +4747,8 @@ function rowsToReports(rows, fileName) {
         youth: participantBreakdown.adolescents,
         participantBreakdown,
         owner: record.responsable || metadata.responsable || form.owner,
+        ownerUserId: currentUser?.id || null,
+        ownerEmail: currentUser?.email || "",
         evidence: record.evidencia || fileName,
         notes: record.observaciones || `${form.title}: ${mapping.field}`,
         status: REPORT_STATUSES.PENDING_COORDINATION,
@@ -5610,6 +5715,7 @@ function bindEvents() {
   [elements.notificationList, elements.supervisionNotificationList].forEach((list) => {
     list.addEventListener("click", (event) => {
       const reportId = event.target.closest("[data-open-report]")?.dataset.openReport;
+      const reportChatId = event.target.closest("[data-open-report-chat]")?.dataset.openReportChat;
       const notificationId = event.target.closest("[data-read-notification]")?.dataset.readNotification;
       const closeDetail = event.target.closest("[data-close-report-detail]");
       const deleteReportId = event.target.closest("[data-delete-report]")?.dataset.deleteReport;
@@ -5622,6 +5728,14 @@ function bindEvents() {
 
       if (deleteReportId) {
         void deleteReportFromUi(deleteReportId);
+        return;
+      }
+
+      if (reportChatId) {
+        void openReportChatById(reportChatId, { openView: true }).catch((error) => {
+          console.error(error);
+          showToast(error.message || "No pude abrir el chat del reporte.");
+        });
         return;
       }
 
@@ -5813,6 +5927,14 @@ function bindEvents() {
   elements.reviewList.addEventListener("click", (event) => {
     const approveId = event.target.dataset.approve;
     const returnId = event.target.dataset.return;
+    const reportChatId = event.target.closest("[data-open-report-chat]")?.dataset.openReportChat;
+    if (reportChatId) {
+      void openReportChatById(reportChatId, { openView: true }).catch((error) => {
+        console.error(error);
+        showToast(error.message || "No pude abrir el chat del reporte.");
+      });
+      return;
+    }
     const report = state.reports.find((item) => item.id === approveId || item.id === returnId);
     if (!report) return;
 
@@ -5835,6 +5957,11 @@ function bindEvents() {
             return;
           }
           await saveReviewDecision(report, REPORT_STATUSES.NEEDS_CORRECTION, note.trim());
+          const latestReport = state.reports.find((item) => item.id === report.id) || report;
+          await ensureReportConversation(latestReport, {
+            openView: false,
+            seedMessage: `${currentUser?.fullName || activeRole()} solicito correccion para ${latestReport.correctionForRole || "Facilitador"}: ${note.trim()}`,
+          });
           activeStatusReportId = report.id;
           showToast("Correccion solicitada con nota.");
         }

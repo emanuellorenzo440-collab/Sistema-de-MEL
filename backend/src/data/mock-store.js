@@ -407,6 +407,8 @@ function normalizedReport(input = {}) {
     youth: participantBreakdown.adolescents,
     participantBreakdown,
     owner: String(input.owner || ""),
+    ownerUserId: input.ownerUserId || null,
+    ownerEmail: String(input.ownerEmail || ""),
     evidence: String(input.evidence || ""),
     notes: String(input.notes || ""),
     attachments: Array.isArray(input.attachments)
