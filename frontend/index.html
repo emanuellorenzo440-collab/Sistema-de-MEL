@@ -9,7 +9,7 @@
         display: none !important;
       }
     </style>
-    <link rel="stylesheet" href="styles.css?v=20260526a" />
+    <link rel="stylesheet" href="styles.css?v=20260526b" />
   </head>
   <body>
     <section class="auth-shell" id="authShell">
@@ -749,6 +749,14 @@
                 </label>
                 <button class="primary-action" type="submit">Crear chat</button>
               </form>
+              <form class="chat-group-form" id="chatGroupCreateForm">
+                <label>
+                  Nuevo grupo
+                  <input id="chatGroupNameInput" type="text" placeholder="Ej. Equipo Girls Empowerment" required />
+                </label>
+                <div class="chat-member-picker" id="chatGroupMemberChecklist"></div>
+                <button class="primary-action" type="submit">Crear grupo</button>
+              </form>
               <label class="chat-search-field">
                 Buscar
                 <input id="chatSearchInput" type="search" placeholder="Buscar conversaciones o mensajes" />
@@ -764,6 +772,14 @@
                   <p class="item-meta" id="chatConversationMeta">Elige un chat o crea uno nuevo para empezar.</p>
                 </div>
               </div>
+              <div class="chat-participant-strip" id="chatParticipantStrip"></div>
+              <form class="chat-add-participant-form" id="chatAddParticipantForm" hidden>
+                <label>
+                  Agregar participante
+                  <select id="chatAddParticipantSelect"></select>
+                </label>
+                <button class="ghost-action" type="submit">Agregar</button>
+              </form>
               <div class="chat-message-list" id="chatMessageList"></div>
               <form class="chat-composer" id="chatComposerForm">
                 <label>
@@ -996,7 +1012,7 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="src/main.js?v=20260526a"></script>
+    <script type="module" src="src/main.js?v=20260526b"></script>
   </body>
 </html>
 

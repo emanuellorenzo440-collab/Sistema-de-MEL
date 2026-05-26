@@ -598,6 +598,7 @@ h3 {
 }
 
 .chat-create-form,
+.chat-group-form,
 .chat-composer {
   display: grid;
   gap: 12px;
@@ -606,6 +607,50 @@ h3 {
 .chat-search-field {
   display: grid;
   gap: 8px;
+  margin-top: 14px;
+}
+
+.chat-group-form {
+  margin-top: 14px;
+}
+
+.chat-member-picker,
+.chat-participant-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.chat-member-picker {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  max-height: 160px;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+.chat-member-option,
+.chat-participant-chip {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  display: inline-flex;
+  gap: 8px;
+  min-height: 36px;
+  padding: 8px 12px;
+}
+
+.chat-member-option input {
+  margin: 0;
+}
+
+.chat-add-participant-form {
+  align-items: end;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
   margin-top: 14px;
 }
 
@@ -1971,5 +2016,9 @@ textarea {
 
   .chat-message-item {
     max-width: 100%;
+  }
+
+  .chat-add-participant-form {
+    grid-template-columns: 1fr;
   }
 }

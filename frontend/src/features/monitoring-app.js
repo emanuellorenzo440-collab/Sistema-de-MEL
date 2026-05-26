@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260526a";
+import { $, $$, elements } from "../core/dom.js?v=20260526b";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260526a";
+} from "../services/auth-service.js?v=20260526b";
 import {
   apiFileUrl,
   addApiChatParticipants,
@@ -69,7 +69,7 @@ import {
   updateApiProgram,
   updateApiProgramCenter,
   uploadApiFile,
-} from "../services/mel-api.js?v=20260526a";
+} from "../services/mel-api.js?v=20260526b";
 import {
   currentMonth,
   escapeHtml,
@@ -3415,6 +3415,71 @@ function populateChatDirectoryChoices() {
     .join("");
 }
 
+function renderChatGroupMemberChecklist() {
+  if (!elements.chatGroupMemberChecklist) return;
+  const users = state.chatDirectory || [];
+  elements.chatGroupMemberChecklist.innerHTML = users.length
+    ? users
+        .map(
+          (user) => `
+            <label class="chat-member-option">
+              <input type="checkbox" value="${escapeHtml(user.id)}" data-chat-group-member />
+              <span>${escapeHtml(user.fullName)}</span>
+            </label>
+          `,
+        )
+        .join("")
+    : `<p class="item-meta">No hay usuarios disponibles.</p>`;
+}
+
+function selectedChatGroupMemberIds() {
+  if (!elements.chatGroupMemberChecklist) return [];
+  return Array.from(elements.chatGroupMemberChecklist.querySelectorAll("[data-chat-group-member]:checked"))
+    .map((input) => input.value)
+    .filter(Boolean);
+}
+
+function availableParticipantsForActiveConversation(conversation = activeChatConversation()) {
+  const participantIds = new Set((conversation?.participants || []).map((participant) => participant.userId));
+  return (state.chatDirectory || []).filter((user) => !participantIds.has(user.id));
+}
+
+function populateChatParticipantManager(conversation = activeChatConversation()) {
+  if (!elements.chatParticipantStrip || !elements.chatAddParticipantForm || !elements.chatAddParticipantSelect) return;
+  const participants = conversation?.participants || [];
+  elements.chatParticipantStrip.innerHTML = participants.length
+    ? participants
+        .map(
+          (participant) => `
+            <span class="chat-participant-chip">
+              <strong>${escapeHtml(participant.displayName || participant.email || participant.userId)}</strong>
+              <small>${escapeHtml(participant.primaryRole || participant.participantRole || "")}</small>
+            </span>
+          `,
+        )
+        .join("")
+    : `<p class="item-meta">Sin participantes.</p>`;
+
+  const canManageParticipants = Boolean(conversation && conversation.type === "group");
+  elements.chatAddParticipantForm.hidden = !canManageParticipants;
+  if (!canManageParticipants) {
+    elements.chatAddParticipantSelect.innerHTML = "";
+    return;
+  }
+  const availableUsers = availableParticipantsForActiveConversation(conversation);
+  elements.chatAddParticipantSelect.innerHTML = availableUsers.length
+    ? availableUsers
+        .map(
+          (user, index) =>
+            `<option value="${escapeHtml(user.id)}" ${index === 0 ? "selected" : ""}>${escapeHtml(`${user.fullName} · ${user.primaryRole || "Usuario"}`)}</option>`,
+        )
+        .join("")
+    : `<option value="">No hay mas usuarios disponibles</option>`;
+  elements.chatAddParticipantSelect.disabled = !availableUsers.length;
+  const submitButton = elements.chatAddParticipantForm.querySelector("button[type='submit']");
+  if (submitButton) submitButton.disabled = !availableUsers.length;
+}
+
 async function loadChatConversation(conversationId, options = {}) {
   if (!isApiConfigured() || !conversationId) return;
   const { markRead = true } = options;
@@ -3474,6 +3539,7 @@ function renderChatWorkspace() {
   }
 
   populateChatDirectoryChoices();
+  renderChatGroupMemberChecklist();
   const conversations = filteredChatConversations();
   const activeConversation = activeChatConversation();
   const messages = activeConversation ? state.chatMessagesByConversation?.[activeConversation.id] || [] : [];
@@ -3500,6 +3566,7 @@ function renderChatWorkspace() {
   elements.chatConversationMeta.textContent = activeConversation
     ? chatConversationMeta(activeConversation)
     : "Elige un chat o crea uno nuevo para empezar.";
+  populateChatParticipantManager(activeConversation);
   elements.chatMessageList.innerHTML = activeConversation
     ? messages.length
       ? messages
@@ -3604,6 +3671,50 @@ async function createDirectChat(userId) {
   await refreshChatFromApi({ includeMessages: true });
   renderChatWorkspace();
   showToast("Chat creado.");
+}
+
+async function createGroupChat(groupName, participantUserIds = []) {
+  const normalizedName = String(groupName || "").trim();
+  if (!normalizedName) {
+    showToast("Escribe el nombre del grupo.");
+    return;
+  }
+  const uniqueParticipantIds = [...new Set(participantUserIds.map((item) => String(item || "").trim()).filter(Boolean))];
+  if (!uniqueParticipantIds.length) {
+    showToast("Selecciona al menos un participante.");
+    return;
+  }
+  const created = await createApiChatConversation({
+    type: "group",
+    title: normalizedName,
+    participantUserIds: uniqueParticipantIds,
+  });
+  state.chatActiveConversationId = created.id;
+  await refreshChatFromApi({ includeMessages: true });
+  elements.chatGroupCreateForm?.reset();
+  renderChatGroupMemberChecklist();
+  renderChatWorkspace();
+  showToast("Grupo creado.");
+}
+
+async function addParticipantsToCurrentGroup(userIds = []) {
+  const activeConversation = activeChatConversation();
+  if (!activeConversation || activeConversation.type !== "group") {
+    showToast("Selecciona un grupo.");
+    return;
+  }
+  const uniqueParticipantIds = [...new Set(userIds.map((item) => String(item || "").trim()).filter(Boolean))];
+  if (!uniqueParticipantIds.length) {
+    showToast("Selecciona un participante valido.");
+    return;
+  }
+  await addApiChatParticipants(activeConversation.id, {
+    participantUserIds: uniqueParticipantIds,
+  });
+  await refreshChatFromApi({ includeMessages: true });
+  elements.chatAddParticipantForm?.reset();
+  renderChatWorkspace();
+  showToast("Participante agregado al grupo.");
 }
 
 async function sendCurrentChatMessage() {
@@ -5134,6 +5245,18 @@ function bindEvents() {
     })();
   });
 
+  elements.chatGroupCreateForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void (async () => {
+      try {
+        await createGroupChat(elements.chatGroupNameInput?.value || "", selectedChatGroupMemberIds());
+      } catch (error) {
+        console.error(error);
+        showToast(error.message || "No pude crear el grupo.");
+      }
+    })();
+  });
+
   elements.chatSearchInput?.addEventListener("input", () => {
     state.chatSearch = elements.chatSearchInput.value || "";
     saveState();
@@ -5154,6 +5277,18 @@ function bindEvents() {
       } catch (error) {
         console.error(error);
         showToast(error.message || "No pude abrir la conversacion.");
+      }
+    })();
+  });
+
+  elements.chatAddParticipantForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void (async () => {
+      try {
+        await addParticipantsToCurrentGroup([elements.chatAddParticipantSelect?.value || ""]);
+      } catch (error) {
+        console.error(error);
+        showToast(error.message || "No pude agregar el participante.");
       }
     })();
   });
