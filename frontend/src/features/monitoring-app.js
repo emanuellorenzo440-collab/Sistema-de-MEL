@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260526i";
+import { $, $$, elements } from "../core/dom.js?v=20260526j";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260526i";
+} from "../services/auth-service.js?v=20260526j";
 import {
   apiFileUrl,
   addApiChatParticipants,
@@ -72,7 +72,7 @@ import {
   updateApiProgram,
   updateApiProgramCenter,
   uploadApiFile,
-} from "../services/mel-api.js?v=20260526i";
+} from "../services/mel-api.js?v=20260526j";
 import {
   currentMonth,
   escapeHtml,
@@ -1790,6 +1790,10 @@ function renderAttendance() {
   const session = attendanceSessionFor();
   const isAdmin = isSystemAdminRole();
   const isLockedForUser = Boolean(session?.locked && !attendanceCanEdit(session));
+  if (elements.attendanceChatButton) {
+    elements.attendanceChatButton.hidden = !viewIsEnabled("chat");
+    elements.attendanceChatButton.disabled = !viewIsEnabled("chat");
+  }
   elements.attendanceSummary.textContent = `${presentCount} presentes · ${excusedCount} excusas · ${absentCount} ausentes`;
   elements.attendanceNotes.value = session?.notes || "";
   elements.attendanceNotes.disabled = isLockedForUser;
@@ -2181,6 +2185,7 @@ function renderPrograms() {
             <span>${registeredCenters().filter((center) => center.program === program.name).length} centros</span>
           </div>
           <div class="item-actions">
+            ${viewIsEnabled("chat") ? `<button class="ghost-action" type="button" data-open-program-chat="${escapeHtml(program.id || program.name)}">Abrir chat</button>` : ""}
             <button type="button" data-edit-program="${program.id}" data-edit-program-name="${escapeHtml(program.name)}">Editar</button>
             <button type="button" data-delete-program="${program.id}" data-delete-program-name="${escapeHtml(program.name)}">Eliminar</button>
           </div>
@@ -4126,6 +4131,85 @@ async function createGroupChat(groupName, participantUserIds = []) {
   showToast("Grupo creado.");
 }
 
+async function ensureChatDirectoryLoaded() {
+  if (!isApiConfigured()) return state.chatDirectory || [];
+  if (Array.isArray(state.chatDirectory) && state.chatDirectory.length) {
+    return state.chatDirectory;
+  }
+  const directory = await fetchApiChatDirectory();
+  state.chatDirectory = directory;
+  saveState();
+  return directory;
+}
+
+function activeOrganizationParticipantIds() {
+  return [...new Set((state.chatDirectory || []).map((user) => user.id).filter(Boolean))];
+}
+
+async function ensureContextChatConversation({
+  title,
+  description = "",
+  contextType,
+  contextId,
+  participantUserIds = [],
+}) {
+  if (!contextType || !contextId) throw new Error("El chat contextual necesita tipo y contexto.");
+  const existing = (state.chatConversations || []).find(
+    (conversation) => conversation.contextType === contextType && conversation.contextId === contextId,
+  );
+  if (existing) return existing;
+
+  await ensureChatDirectoryLoaded();
+  const participantIds = [...new Set(participantUserIds.map((item) => String(item || "").trim()).filter(Boolean))];
+  const created = await createApiChatConversation({
+    type: "group",
+    title,
+    description,
+    contextType,
+    contextId,
+    participantUserIds: participantIds,
+  });
+  await refreshChatFromApi({ includeMessages: false, includeDirectory: false });
+  return created;
+}
+
+async function openProgramChat(programIdOrName, options = {}) {
+  const { openView = true } = options;
+  const program = (state.programs || []).find(
+    (item) => item.id === programIdOrName || item.name === programIdOrName,
+  );
+  if (!program) {
+    showToast("No encontre el programa para abrir su chat.");
+    return;
+  }
+  const conversation = await ensureContextChatConversation({
+    title: `Programa · ${program.name}`,
+    description: `Chat institucional del programa ${program.name}.`,
+    contextType: "program",
+    contextId: program.id || `program-${slugify(program.name)}`,
+    participantUserIds: activeOrganizationParticipantIds(),
+  });
+  await openChatConversationById(conversation.id, { switchToChat: openView, markRead: true });
+}
+
+async function openAttendanceChat(options = {}) {
+  const { openView = true } = options;
+  const programName = String(state.attendanceProgram || "").trim();
+  if (!programName) {
+    showToast("Selecciona un programa para abrir el chat de asistencia.");
+    return;
+  }
+  await ensureChatDirectoryLoaded();
+  const conversation = await ensureContextChatConversation({
+    title: `Asistencia · ${programName}`,
+    description: `Seguimiento operativo de asistencia para ${programName}.`,
+    contextType: "attendance",
+    contextId: `attendance-${slugify(programName)}`,
+    participantUserIds: activeOrganizationParticipantIds(),
+  });
+  await openChatConversationById(conversation.id, { switchToChat: openView, markRead: true });
+}
+
 async function addParticipantsToCurrentGroup(userIds = []) {
   const activeConversation = activeChatConversation();
   if (!activeConversation || activeConversation.type !== "group") {
@@ -4144,17 +4228,6 @@ async function addParticipantsToCurrentGroup(userIds = []) {
   elements.chatAddParticipantForm?.reset();
   renderChatWorkspace();
   showToast("Participante agregado al grupo.");
-}
-
-async function ensureChatDirectoryLoaded() {
-  if (!isApiConfigured()) return state.chatDirectory || [];
-  if (Array.isArray(state.chatDirectory) && state.chatDirectory.length) {
-    return state.chatDirectory;
-  }
-  const directory = await fetchApiChatDirectory();
-  state.chatDirectory = directory;
-  saveState();
-  return directory;
 }
 
 function findReportOwnerUser(report, directory = state.chatDirectory || []) {
@@ -6096,6 +6169,13 @@ function bindEvents() {
     renderAttendance();
   });
 
+  elements.attendanceChatButton?.addEventListener("click", () => {
+    void openAttendanceChat({ openView: true }).catch((error) => {
+      console.error(error);
+      showToast(error.message || "No pude abrir el chat de asistencia.");
+    });
+  });
+
   elements.attendanceWeekInput?.addEventListener("change", () => {
     state.attendanceWeek = elements.attendanceWeekInput.value || new Date().toISOString().slice(0, 10);
     if (!elements.attendancePeriodInput?.value) {
@@ -6571,10 +6651,19 @@ function bindEvents() {
   });
 
   elements.programGrid.addEventListener("click", (event) => {
+    const programChatId = event.target.closest("[data-open-program-chat]")?.dataset.openProgramChat;
     const editId = event.target.closest("[data-edit-program]")?.dataset.editProgram;
     const editName = event.target.closest("[data-edit-program-name]")?.dataset.editProgramName;
     const deleteId = event.target.closest("[data-delete-program]")?.dataset.deleteProgram;
     const deleteName = event.target.closest("[data-delete-program-name]")?.dataset.deleteProgramName;
+
+    if (programChatId) {
+      void openProgramChat(programChatId, { openView: true }).catch((error) => {
+        console.error(error);
+        showToast(error.message || "No pude abrir el chat del programa.");
+      });
+      return;
+    }
 
     if (editId || editName) {
       const program = state.programs.find((item) => item.id === editId) || state.programs.find((item) => item.name === editName);

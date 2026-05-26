@@ -106,6 +106,7 @@ export const elements = {
   chatAttachmentInput: $("#chatAttachmentInput"),
   chatAttachmentPreview: $("#chatAttachmentPreview"),
   attendanceSummary: $("#attendanceSummary"),
+  attendanceChatButton: $("#attendanceChatButton"),
   attendanceProgramSelect: $("#attendanceProgramSelect"),
   attendanceCenterInput: $("#attendanceCenterInput"),
   attendancePeriodInput: $("#attendancePeriodInput"),
