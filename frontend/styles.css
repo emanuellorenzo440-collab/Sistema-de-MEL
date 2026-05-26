@@ -659,6 +659,21 @@ h3 {
   gap: 8px;
 }
 
+.chat-reply-preview {
+  align-items: start;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--teal);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+}
+
+.chat-reply-preview .item-meta {
+  margin: 0;
+}
+
 .chat-conversation-list,
 .chat-message-list {
   display: grid;
@@ -729,6 +744,20 @@ h3 {
 .chat-message-item p {
   margin: 0;
   white-space: pre-wrap;
+}
+
+.chat-message-reply {
+  background: var(--surface-2);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+}
+
+.chat-message-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .chat-attachment-preview {

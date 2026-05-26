@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from "./mel-api.js?v=20260526c";
+import { getApiBaseUrl } from "./mel-api.js?v=20260526d";
 
 const AUTH_STORAGE_KEY = "pulso-me-auth-v1";
 const AUTH_SESSION_KEY = "pulso-me-session-v1";

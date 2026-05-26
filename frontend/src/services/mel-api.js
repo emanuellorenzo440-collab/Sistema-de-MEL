@@ -406,6 +406,13 @@ export async function fetchApiChatConversation(conversationId) {
   return response.data;
 }
 
+export async function deleteApiChatConversation(conversationId) {
+  const response = await requestJson("chat/conversations/" + encodeURIComponent(conversationId), {
+    method: "DELETE",
+  });
+  return response.data;
+}
+
 export async function fetchApiChatMessages(conversationId, filters = {}) {
   return requestJson("chat/conversations/" + encodeURIComponent(conversationId) + "/messages", {}, filters);
 }

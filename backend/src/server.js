@@ -15,6 +15,7 @@ import {
   createReportsBulk,
   createFormSubmission,
   addChatParticipants,
+  archiveChatConversation,
   deleteAttendanceParticipant,
   deleteAttendanceParticipantsForProgram,
   deleteAttendanceSession,
@@ -1412,6 +1413,13 @@ function canManageConversationParticipants(participant, actor, conversation) {
   return conversation?.createdByUserId === actor.id;
 }
 
+function canArchiveConversation(participant, actor, conversation) {
+  if (!participant) return false;
+  if (actor.role === "Supervision M&E") return true;
+  if (conversation?.createdByUserId === actor.id) return true;
+  return Boolean(participant.canRemovePeople || participant.canAddPeople);
+}
+
 export async function handleChatConversationsList(request, response, url) {
   const actor = requireAuthenticatedUser(request, response);
   if (!actor) return;
@@ -1653,6 +1661,30 @@ export async function handleChatParticipantDelete(request, response, conversatio
         removedAt: removed.leftAt || removed.updatedAt,
       },
     });
+  } catch (error) {
+    sendApiError(response, error);
+  }
+}
+
+export async function handleChatConversationArchive(request, response, conversationId) {
+  try {
+    const actor = requireAuthenticatedUser(request, response);
+    if (!actor) return;
+    const conversation = findChatConversationById(conversationId, {
+      organizationId: actor.organizationId,
+      participantUserId: actor.id,
+    });
+    if (!conversation) {
+      sendJson(response, 404, { error: "No encontre la conversacion solicitada." });
+      return;
+    }
+    const participant = actorChatParticipant(conversationId, actor);
+    if (!canArchiveConversation(participant, actor, conversation)) {
+      sendJson(response, 403, { error: "No tienes permiso para eliminar esta conversacion." });
+      return;
+    }
+    const archived = archiveChatConversation(conversationId, { actorId: actor.id });
+    sendJson(response, 200, { data: archived });
   } catch (error) {
     sendApiError(response, error);
   }
@@ -2382,6 +2414,10 @@ async function router(request, response) {
   const chatConversationMatch = pathname.match(/^\/api\/v1\/chat\/conversations\/([^/]+)$/);
   if (request.method === "GET" && chatConversationMatch) {
     await handleChatConversationDetail(request, response, decodeURIComponent(chatConversationMatch[1]));
+    return;
+  }
+  if (request.method === "DELETE" && chatConversationMatch) {
+    await handleChatConversationArchive(request, response, decodeURIComponent(chatConversationMatch[1]));
     return;
   }
 

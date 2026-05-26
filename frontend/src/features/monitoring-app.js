@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260526c";
+import { $, $$, elements } from "../core/dom.js?v=20260526d";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260526c";
+} from "../services/auth-service.js?v=20260526d";
 import {
   apiFileUrl,
   addApiChatParticipants,
@@ -38,6 +38,7 @@ import {
   deleteApiAttendanceParticipant,
   deleteApiAttendanceParticipants,
   deleteApiAttendanceSession,
+  deleteApiChatConversation,
   deleteApiConceptPaper,
   deleteApiReport,
   deleteApiIndicator,
@@ -69,7 +70,7 @@ import {
   updateApiProgram,
   updateApiProgramCenter,
   uploadApiFile,
-} from "../services/mel-api.js?v=20260526c";
+} from "../services/mel-api.js?v=20260526d";
 import {
   currentMonth,
   escapeHtml,
@@ -108,6 +109,9 @@ let accessSyncInFlight = false;
 let chatSyncIntervalId = null;
 let chatSyncInFlight = false;
 let chatAttachmentFiles = [];
+let chatSearchResults = null;
+let chatReplyMessageId = "";
+let chatSearchRequestId = 0;
 
 function loadState() {
   return loadStoredState(STORAGE_KEY, seedState, normalizeState);
@@ -3399,6 +3403,22 @@ function chatConversationMeta(conversation = {}) {
 function filteredChatConversations() {
   const query = String(state.chatSearch || "").trim().toLowerCase();
   if (!query) return state.chatConversations || [];
+  if (chatSearchResults?.query && chatSearchResults.query === query) {
+    const messageMatches = Array.isArray(chatSearchResults.messages) ? chatSearchResults.messages : [];
+    const directMatches = Array.isArray(chatSearchResults.conversations) ? chatSearchResults.conversations : [];
+    const conversationMap = new Map((state.chatConversations || []).map((conversation) => [conversation.id, conversation]));
+    const ordered = [];
+    const seen = new Set();
+    [...directMatches, ...messageMatches]
+      .map((item) => conversationMap.get(item.conversationId || item.id) || null)
+      .filter(Boolean)
+      .forEach((conversation) => {
+        if (seen.has(conversation.id)) return;
+        seen.add(conversation.id);
+        ordered.push(conversation);
+      });
+    if (ordered.length) return ordered;
+  }
   return (state.chatConversations || []).filter((conversation) => {
     const haystack = [
       chatConversationTitle(conversation),
@@ -3410,6 +3430,78 @@ function filteredChatConversations() {
       .toLowerCase();
     return haystack.includes(query);
   });
+}
+
+function activeChatMessages() {
+  const conversation = activeChatConversation();
+  if (!conversation) return [];
+  return state.chatMessagesByConversation?.[conversation.id] || [];
+}
+
+function chatReplyMessage(messageId, messages = activeChatMessages()) {
+  return (messages || []).find((message) => message.id === messageId) || null;
+}
+
+function renderChatReplyPreview() {
+  if (!elements.chatReplyPreview) return;
+  const replyTarget = chatReplyMessage(chatReplyMessageId);
+  if (!replyTarget) {
+    elements.chatReplyPreview.hidden = true;
+    elements.chatReplyPreview.innerHTML = "";
+    return;
+  }
+  const summary = String(replyTarget.body || "").trim() || "(Sin texto)";
+  elements.chatReplyPreview.hidden = false;
+  elements.chatReplyPreview.innerHTML = `
+    <p class="item-meta"><strong>Respondiendo a ${escapeHtml(replyTarget.senderName || "Usuario")}</strong></p>
+    <p>${escapeHtml(summary.slice(0, 160))}</p>
+    <div class="item-actions">
+      <button class="ghost-action" type="button" data-clear-chat-reply>Cancelar respuesta</button>
+    </div>
+  `;
+}
+
+function startReplyToChatMessage(messageId) {
+  const target = chatReplyMessage(messageId);
+  if (!target) {
+    showToast("No encontre el mensaje para responder.");
+    return;
+  }
+  chatReplyMessageId = target.id;
+  renderChatReplyPreview();
+  elements.chatComposerInput?.focus();
+}
+
+function clearChatReplyTarget() {
+  chatReplyMessageId = "";
+  renderChatReplyPreview();
+}
+
+async function handleChatSearchQuery(query) {
+  state.chatSearch = query;
+  saveState();
+  const normalizedQuery = String(query || "").trim().toLowerCase();
+  if (!normalizedQuery || normalizedQuery.length < 2 || !isApiConfigured()) {
+    chatSearchResults = null;
+    renderChatWorkspace();
+    return;
+  }
+  const requestId = ++chatSearchRequestId;
+  try {
+    const results = await searchApiChat(normalizedQuery);
+    if (requestId !== chatSearchRequestId) return;
+    chatSearchResults = {
+      query: normalizedQuery,
+      conversations: Array.isArray(results.conversations) ? results.conversations : [],
+      messages: Array.isArray(results.messages) ? results.messages : [],
+    };
+    renderChatWorkspace();
+  } catch (error) {
+    if (requestId !== chatSearchRequestId) return;
+    console.error("No pude buscar en el chat.", error);
+    chatSearchResults = null;
+    renderChatWorkspace();
+  }
 }
 
 function populateChatDirectoryChoices() {
@@ -3551,21 +3643,26 @@ function renderChatWorkspace() {
   const conversations = filteredChatConversations();
   const activeConversation = activeChatConversation();
   const messages = activeConversation ? state.chatMessagesByConversation?.[activeConversation.id] || [] : [];
+  const normalizedQuery = String(state.chatSearch || "").trim().toLowerCase();
+  const searchMessages = chatSearchResults?.query === normalizedQuery ? chatSearchResults.messages || [] : [];
 
   elements.chatUnreadCount.textContent = `${Number(state.chatUnreadCount?.totalUnreadMessages || 0)} sin leer`;
   elements.chatConversationList.innerHTML = conversations.length
     ? conversations
         .map(
-          (conversation) => `
+          (conversation) => {
+            const matchedMessage = searchMessages.find((message) => message.conversationId === conversation.id);
+            return `
             <article class="chat-conversation-item ${conversation.id === activeConversation?.id ? "active" : ""}" data-open-chat-conversation="${conversation.id}">
               <div class="chat-conversation-item-head">
                 <h3>${escapeHtml(chatConversationTitle(conversation))}</h3>
                 <span class="status-pill ${conversation.unreadCount ? "warning" : "neutral"}">${conversation.unreadCount || 0}</span>
               </div>
               <p class="item-meta">${escapeHtml(chatConversationMeta(conversation))}</p>
-              <p>${escapeHtml(conversation.lastMessagePreview || "Sin mensajes todavia.")}</p>
+              <p>${escapeHtml(matchedMessage?.body || conversation.lastMessagePreview || "Sin mensajes todavia.")}</p>
             </article>
-          `,
+          `;
+          },
         )
         .join("")
     : `<div class="chat-empty-state">No hay conversaciones todavia.</div>`;
@@ -3574,21 +3671,41 @@ function renderChatWorkspace() {
   elements.chatConversationMeta.textContent = activeConversation
     ? chatConversationMeta(activeConversation)
     : "Elige un chat o crea uno nuevo para empezar.";
+  if (elements.chatDeleteButton) {
+    elements.chatDeleteButton.hidden = !activeConversation || !canDeleteActiveChatConversation(activeConversation);
+    elements.chatDeleteButton.disabled = !activeConversation || !canDeleteActiveChatConversation(activeConversation);
+  }
   populateChatParticipantManager(activeConversation);
   elements.chatMessageList.innerHTML = activeConversation
     ? messages.length
       ? messages
           .map(
-            (message) => `
+            (message) => {
+              const replied = message.replyToMessageId ? chatReplyMessage(message.replyToMessageId, messages) : null;
+              const readSummary =
+                message.senderUserId === currentUser?.id && Array.isArray(message.readBy) && message.readBy.length
+                  ? `Leido por ${message.readBy.length}`
+                  : "";
+              return `
               <article class="chat-message-item ${message.senderUserId === currentUser?.id ? "mine" : ""}">
                 <div class="chat-message-item-head">
                   <strong>${escapeHtml(message.senderName || "Usuario")}</strong>
                   <span class="item-meta">${escapeHtml(String(message.createdAt || "").slice(0, 16).replace("T", " "))}</span>
                 </div>
+                ${
+                  replied
+                    ? `<div class="chat-message-reply"><p class="item-meta"><strong>${escapeHtml(replied.senderName || "Usuario")}</strong></p><p>${escapeHtml(String(replied.body || "(Sin texto)").slice(0, 140))}</p></div>`
+                    : ""
+                }
                 <p>${escapeHtml(message.body || "(Sin texto)")}</p>
                 ${renderChatAttachmentLinks(message.attachments || [])}
+                <div class="chat-message-actions">
+                  <button class="ghost-action" type="button" data-chat-reply="${message.id}">Responder</button>
+                  ${readSummary ? `<span class="item-meta">${escapeHtml(readSummary)}</span>` : ""}
+                </div>
               </article>
-            `,
+            `;
+            },
           )
           .join("")
       : `<div class="chat-empty-state">Todavia no hay mensajes en esta conversacion.</div>`
@@ -3609,6 +3726,10 @@ function renderChatWorkspace() {
   if (!activeConversation && chatAttachmentFiles.length) {
     chatAttachmentFiles = [];
   }
+  if (!activeConversation) {
+    clearChatReplyTarget();
+  }
+  renderChatReplyPreview();
   renderChatAttachmentPreview();
 }
 
@@ -3818,6 +3939,37 @@ async function openReportChatById(reportId, options = {}) {
   return ensureReportConversation(report, options);
 }
 
+function canDeleteActiveChatConversation(conversation = activeChatConversation()) {
+  if (!conversation) return false;
+  if (isSystemAdminRole()) return true;
+  return conversation.createdByUserId === currentUser?.id;
+}
+
+async function deleteActiveChatConversation() {
+  const conversation = activeChatConversation();
+  if (!conversation) {
+    showToast("Selecciona un chat.");
+    return;
+  }
+  if (!canDeleteActiveChatConversation(conversation)) {
+    showToast("Solo quien creo el chat o Supervision M&E puede eliminarlo.");
+    return;
+  }
+  const confirmed = window.confirm("Este chat se eliminara de la lista activa para todos los participantes. Deseas continuar?");
+  if (!confirmed) return;
+  await deleteApiChatConversation(conversation.id);
+  chatReplyMessageId = "";
+  await refreshChatFromApi({ includeMessages: false });
+  if (state.chatActiveConversationId === conversation.id) {
+    state.chatActiveConversationId = state.chatConversations[0]?.id || "";
+  }
+  if (state.chatActiveConversationId) {
+    await loadChatConversation(state.chatActiveConversationId, { markRead: true });
+  }
+  renderChatWorkspace();
+  showToast("Chat eliminado.");
+}
+
 async function sendCurrentChatMessage() {
   const activeConversation = activeChatConversation();
   const body = String(elements.chatComposerInput?.value || "").trim();
@@ -3836,6 +3988,7 @@ async function sendCurrentChatMessage() {
   await createApiChatMessage(activeConversation.id, {
     messageType: inferredType,
     body,
+    replyToMessageId: chatReplyMessageId || "",
     attachments,
   });
   elements.chatComposerInput.value = "";
@@ -3843,6 +3996,7 @@ async function sendCurrentChatMessage() {
     elements.chatAttachmentInput.value = "";
   }
   setChatAttachmentFiles([]);
+  clearChatReplyTarget();
   await refreshChatFromApi({ includeMessages: true });
   renderChatWorkspace();
 }
@@ -5363,9 +5517,7 @@ function bindEvents() {
   });
 
   elements.chatSearchInput?.addEventListener("input", () => {
-    state.chatSearch = elements.chatSearchInput.value || "";
-    saveState();
-    renderChatWorkspace();
+    void handleChatSearchQuery(elements.chatSearchInput.value || "");
   });
 
   elements.chatAttachmentInput?.addEventListener("change", () => {
@@ -5384,6 +5536,30 @@ function bindEvents() {
         showToast(error.message || "No pude abrir la conversacion.");
       }
     })();
+  });
+
+  elements.chatDeleteButton?.addEventListener("click", () => {
+    void (async () => {
+      try {
+        await deleteActiveChatConversation();
+      } catch (error) {
+        console.error(error);
+        showToast(error.message || "No pude eliminar el chat.");
+      }
+    })();
+  });
+
+  elements.chatMessageList?.addEventListener("click", (event) => {
+    const replyId = event.target.closest("[data-chat-reply]")?.dataset.chatReply;
+    if (replyId) {
+      startReplyToChatMessage(replyId);
+    }
+  });
+
+  elements.chatReplyPreview?.addEventListener("click", (event) => {
+    if (event.target.closest("[data-clear-chat-reply]")) {
+      clearChatReplyTarget();
+    }
   });
 
   elements.chatAddParticipantForm?.addEventListener("submit", (event) => {

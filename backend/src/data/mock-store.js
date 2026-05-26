@@ -754,6 +754,7 @@ function normalizedChatConversation(input = {}, existing = {}) {
     contextType: normalizeString(input.contextType, existing.contextType || ""),
     contextId: normalizeString(input.contextId, existing.contextId || ""),
     createdByUserId: normalizeString(input.createdByUserId, existing.createdByUserId || ""),
+    archivedByUserId: normalizeString(input.archivedByUserId, existing.archivedByUserId || ""),
     isArchived: normalizeBoolean(input.isArchived, existing.isArchived || false),
     lastMessageAt: normalizeString(input.lastMessageAt, existing.lastMessageAt || input.createdAt || timestamp),
     createdAt: existing.createdAt || input.createdAt || timestamp,
@@ -1783,13 +1784,14 @@ function readKey(conversationId, messageId, userId) {
 }
 
 export function findChatConversationById(conversationId, filters = {}) {
-  const { companyId, organizationId, participantUserId } = filters;
+  const { companyId, organizationId, participantUserId, includeArchived = false } = filters;
   const conversation = chatConversations.find((item) => item.id === conversationId);
   if (!conversation) return null;
   const scopedOrganizationId = organizationId || companyId;
   if (scopedOrganizationId && (conversation.organizationId || conversation.companyId || DEFAULT_COMPANY_ID) !== scopedOrganizationId) {
     return null;
   }
+  if (!includeArchived && conversation.isArchived) return null;
   if (participantUserId) {
     const isParticipant = chatParticipants.some(
       (participant) =>
@@ -1976,6 +1978,19 @@ export function removeChatParticipant(conversationId, userId) {
   return structuredClone(participant);
 }
 
+export function archiveChatConversation(conversationId, options = {}) {
+  const conversation = chatConversations.find((item) => item.id === conversationId);
+  if (!conversation) return null;
+  const timestamp = nowIso();
+  conversation.isArchived = true;
+  conversation.updatedAt = timestamp;
+  if (options.actorId) {
+    conversation.archivedByUserId = normalizeString(options.actorId, conversation.archivedByUserId || "");
+  }
+  persistStore();
+  return structuredClone(conversation);
+}
+
 export function listChatMessages(filters = {}) {
   const { companyId, organizationId, conversationId, before, limit = 50 } = filters;
   const scopedLimit = Math.max(1, Math.min(200, Number(limit) || 50));
@@ -2110,7 +2125,7 @@ export function searchChat(filters = {}) {
     companyId,
     organizationId,
     participantUserId,
-    includeArchived: true,
+    includeArchived: false,
   }).filter(
     (conversation) =>
       String(conversation.title || "").toLowerCase().includes(query) ||
