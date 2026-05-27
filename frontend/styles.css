@@ -1025,26 +1025,20 @@ h3 {
 
 .chat-message-menu {
   display: grid;
+  gap: 8px;
 }
 
-.chat-message-menu summary {
+.chat-message-menu-toggle {
   color: var(--teal);
-  cursor: pointer;
   font-size: 0.92rem;
   font-weight: 700;
-  list-style: none;
   width: fit-content;
-}
-
-.chat-message-menu summary::-webkit-details-marker {
-  display: none;
 }
 
 .chat-message-menu-panel {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 8px;
 }
 
 .chat-reaction-bar {
@@ -1064,21 +1058,11 @@ h3 {
   gap: 8px;
 }
 
-.chat-reaction-menu summary {
+.chat-reaction-toggle {
   color: var(--teal);
-  cursor: pointer;
   font-size: 0.92rem;
   font-weight: 700;
-  list-style: none;
   width: fit-content;
-}
-
-.chat-reaction-menu summary::-webkit-details-marker {
-  display: none;
-}
-
-.chat-reaction-menu[open] summary {
-  color: var(--ink);
 }
 
 .chat-reaction-chip,

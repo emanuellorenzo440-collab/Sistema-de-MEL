@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260527i";
+import { $, $$, elements } from "../core/dom.js?v=20260527j";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -21,7 +21,7 @@ import {
   listVisibleViews,
   updateCurrentUserChatAlertSettings,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260527i";
+} from "../services/auth-service.js?v=20260527j";
 import {
   apiFileUrl,
   addApiChatParticipants,
@@ -78,7 +78,7 @@ import {
   updateApiProgram,
   updateApiProgramCenter,
   uploadApiFile,
-} from "../services/mel-api.js?v=20260527i";
+} from "../services/mel-api.js?v=20260527j";
 import {
   currentMonth,
   escapeHtml,
@@ -144,6 +144,8 @@ let chatTypingLastSentAt = 0;
 let chatAudioContext = null;
 let chatAudioUnlocked = false;
 let chatLastRenderedMessageId = "";
+let openChatReactionMessageId = "";
+let openChatOptionsMessageId = "";
 const BASE_DOCUMENT_TITLE = document.title || "Pulso M&E";
 const INSTITUTIONAL_CHAT_AREAS = [
   { id: "mel", title: "M&E", description: "Coordinacion institucional de monitoreo, evaluacion y aprendizaje." },
@@ -4103,10 +4105,10 @@ function renderChatReactionBar(message = {}) {
   return `
     <div class="chat-reaction-bar">
       ${summary ? `<div class="chat-reaction-summary">${summary}</div>` : ""}
-      <details class="chat-reaction-menu">
-        <summary>${currentReaction ? `Cambiar reaccion ${currentReaction.emoji}` : "Reaccionar"}</summary>
-        <div class="chat-reaction-picker-row">${picker}</div>
-      </details>
+      <div class="chat-reaction-menu">
+        <button class="ghost-action chat-reaction-toggle" type="button" data-toggle-chat-reaction-menu="${escapeHtml(message.id)}">${currentReaction ? `Cambiar reaccion ${currentReaction.emoji}` : "Reaccionar"}</button>
+        <div class="chat-reaction-picker-row ${openChatReactionMessageId === message.id ? "" : "hidden"}">${picker}</div>
+      </div>
     </div>
   `;
 }
@@ -4130,12 +4132,12 @@ function renderChatMessageOptionsMenu(message, options = {}) {
   }
   if (!actions.length) return "";
   return `
-    <details class="chat-message-menu">
-      <summary>Opciones</summary>
-      <div class="chat-message-menu-panel">
+    <div class="chat-message-menu">
+      <button class="ghost-action chat-message-menu-toggle" type="button" data-toggle-chat-options-menu="${escapeHtml(message.id)}">Opciones</button>
+      <div class="chat-message-menu-panel ${openChatOptionsMessageId === message.id ? "" : "hidden"}">
         ${actions.join("")}
       </div>
-    </details>
+    </div>
   `;
 }
 
@@ -4291,6 +4293,29 @@ function insertEmojiIntoChatComposer(emoji) {
   input.setSelectionRange(nextCaret, nextCaret);
   input.focus();
   handleChatComposerInputChange();
+}
+
+function toggleChatReactionMenu(messageId) {
+  const normalizedId = String(messageId || "").trim();
+  openChatReactionMessageId = openChatReactionMessageId === normalizedId ? "" : normalizedId;
+  if (openChatReactionMessageId) {
+    openChatOptionsMessageId = "";
+  }
+  renderChatWorkspace();
+}
+
+function toggleChatOptionsMenu(messageId) {
+  const normalizedId = String(messageId || "").trim();
+  openChatOptionsMessageId = openChatOptionsMessageId === normalizedId ? "" : normalizedId;
+  if (openChatOptionsMessageId) {
+    openChatReactionMessageId = "";
+  }
+  renderChatWorkspace();
+}
+
+function closeChatActionMenus() {
+  openChatReactionMessageId = "";
+  openChatOptionsMessageId = "";
 }
 
 async function handleChatSearchQuery(query) {
@@ -7247,13 +7272,25 @@ function bindEvents() {
   });
 
   elements.chatMessageList?.addEventListener("click", (event) => {
+    const toggleReactionId = event.target.closest("[data-toggle-chat-reaction-menu]")?.dataset.toggleChatReactionMenu;
+    if (toggleReactionId) {
+      toggleChatReactionMenu(toggleReactionId);
+      return;
+    }
+    const toggleOptionsId = event.target.closest("[data-toggle-chat-options-menu]")?.dataset.toggleChatOptionsMenu;
+    if (toggleOptionsId) {
+      toggleChatOptionsMenu(toggleOptionsId);
+      return;
+    }
     const replyId = event.target.closest("[data-chat-reply]")?.dataset.chatReply;
     if (replyId) {
+      closeChatActionMenus();
       startReplyToChatMessage(replyId);
       return;
     }
     const editId = event.target.closest("[data-chat-edit]")?.dataset.chatEdit;
     if (editId) {
+      closeChatActionMenus();
       startEditChatMessage(editId);
       return;
     }
@@ -7276,6 +7313,7 @@ function bindEvents() {
             }
             setChatAttachmentFiles([]);
           }
+          closeChatActionMenus();
           await refreshChatFromApi({ includeMessages: true });
           renderChatWorkspace();
           showToast("Mensaje eliminado.");
@@ -7288,6 +7326,7 @@ function bindEvents() {
     }
     const pinButton = event.target.closest("[data-chat-pin]");
     if (pinButton) {
+      closeChatActionMenus();
       const messageId = pinButton.dataset.chatPin;
       const nextPinned = pinButton.dataset.chatPinNext === "true";
       void (async () => {
@@ -7302,6 +7341,7 @@ function bindEvents() {
     }
     const reactionButton = event.target.closest("[data-chat-react]");
     if (reactionButton) {
+      closeChatActionMenus();
       const messageId = reactionButton.dataset.chatReact;
       const emoji = reactionButton.dataset.chatReactEmoji;
       void (async () => {
@@ -7472,6 +7512,7 @@ function bindEvents() {
       if (settled) return;
       settled = true;
       hydrateState();
+      closeChatActionMenus();
       renderAll();
       appRefreshInFlight = false;
       window.removeEventListener("mel:state-synced", handleSynced);
