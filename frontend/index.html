@@ -9,7 +9,7 @@
         display: none !important;
       }
     </style>
-    <link rel="stylesheet" href="styles.css?v=20260527d" />
+    <link rel="stylesheet" href="styles.css?v=20260527e" />
   </head>
   <body>
     <section class="auth-shell" id="authShell">
@@ -800,6 +800,7 @@
                 <button class="ghost-action" type="submit">Agregar</button>
               </form>
               <div class="chat-participant-moderation" id="chatParticipantModeration" hidden></div>
+              <div class="chat-message-filters" id="chatMessageFilters"></div>
               <div class="chat-message-list" id="chatMessageList"></div>
               <form class="chat-composer" id="chatComposerForm">
                 <div class="chat-reply-preview" id="chatReplyPreview" hidden></div>
@@ -807,6 +808,10 @@
                   Mensaje
                   <textarea id="chatComposerInput" rows="3" placeholder="Escribe tu mensaje"></textarea>
                 </label>
+                <details class="chat-emoji-panel">
+                  <summary>Emojis</summary>
+                  <div class="chat-emoji-picker" id="chatEmojiPicker"></div>
+                </details>
                 <label class="chat-attachment-field">
                   Adjuntos
                   <input id="chatAttachmentInput" type="file" multiple />
@@ -1036,7 +1041,7 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="src/main.js?v=20260527d"></script>
+    <script type="module" src="src/main.js?v=20260527e"></script>
   </body>
 </html>
 

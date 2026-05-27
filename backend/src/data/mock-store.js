@@ -844,8 +844,10 @@ function normalizedChatMessage(input = {}, existing = {}) {
     pinnedAt: input.pinnedAt === null ? null : normalizeString(input.pinnedAt, existing.pinnedAt || ""),
     pinnedByUserId: input.pinnedByUserId === null ? null : normalizeString(input.pinnedByUserId, existing.pinnedByUserId || ""),
     isEdited: normalizeBoolean(input.isEdited, existing.isEdited || false),
+    editedByUserId: input.editedByUserId === null ? null : normalizeString(input.editedByUserId, existing.editedByUserId || ""),
     editedAt: input.editedAt === null ? null : normalizeString(input.editedAt, existing.editedAt || ""),
     isDeleted: normalizeBoolean(input.isDeleted, existing.isDeleted || false),
+    deletedByUserId: input.deletedByUserId === null ? null : normalizeString(input.deletedByUserId, existing.deletedByUserId || ""),
     deletedAt: input.deletedAt === null ? null : normalizeString(input.deletedAt, existing.deletedAt || ""),
     createdAt: existing.createdAt || input.createdAt || timestamp,
     updatedAt: input.updatedAt || timestamp,
@@ -2372,6 +2374,25 @@ export function updateChatMessage(conversationId, messageId, input = {}) {
       message.reactions = nextReactions;
     }
   }
+  if (Object.prototype.hasOwnProperty.call(input, "body")) {
+    message.body = String(input.body ?? message.body ?? "").trim();
+    message.isEdited = true;
+    message.editedAt = input.editedAt || timestamp;
+    message.editedByUserId = normalizeString(input.editedByUserId, message.editedByUserId || "");
+  }
+  if (Object.prototype.hasOwnProperty.call(input, "isDeleted")) {
+    const nextDeleted = Boolean(input.isDeleted);
+    message.isDeleted = nextDeleted;
+    message.deletedAt = nextDeleted ? input.deletedAt || timestamp : "";
+    message.deletedByUserId = nextDeleted ? normalizeString(input.deletedByUserId, message.deletedByUserId || "") : "";
+    if (nextDeleted) {
+      message.body = "";
+      message.attachments = [];
+      message.reactions = [];
+      message.pinnedAt = "";
+      message.pinnedByUserId = "";
+    }
+  }
   message.updatedAt = timestamp;
   conversation.updatedAt = timestamp;
   persistStore();
@@ -2437,9 +2458,19 @@ export function getChatUnreadCount(filters = {}) {
 }
 
 export function searchChat(filters = {}) {
-  const { companyId, organizationId, participantUserId, q } = filters;
+  const { companyId, organizationId, participantUserId, q, conversationId, senderUserId, hasAttachments, date } = filters;
   const query = normalizeString(q).toLowerCase();
-  if (!query) {
+  const normalizedConversationId = String(conversationId || "").trim();
+  const normalizedSenderUserId = String(senderUserId || "").trim();
+  const normalizedAttachmentMode = String(hasAttachments || "").trim().toLowerCase();
+  const normalizedDate = String(date || "").trim();
+  const requiresMessageFiltering =
+    Boolean(normalizedConversationId) ||
+    Boolean(normalizedSenderUserId) ||
+    normalizedAttachmentMode === "yes" ||
+    normalizedAttachmentMode === "no" ||
+    Boolean(normalizedDate);
+  if (!query && !requiresMessageFiltering) {
     return { conversations: [], messages: [] };
   }
   const conversations = listChatConversations({
@@ -2447,11 +2478,14 @@ export function searchChat(filters = {}) {
     organizationId,
     participantUserId,
     includeArchived: false,
-  }).filter(
-    (conversation) =>
+  }).filter((conversation) => {
+    if (normalizedConversationId && conversation.id !== normalizedConversationId) return false;
+    if (!query) return true;
+    return (
       String(conversation.title || "").toLowerCase().includes(query) ||
-      String(conversation.description || "").toLowerCase().includes(query),
-  );
+      String(conversation.description || "").toLowerCase().includes(query)
+    );
+  });
   const allowedConversationIds = new Set(conversations.map((conversation) => conversation.id));
   listChatParticipants({ companyId, organizationId, userId: participantUserId }).forEach((participant) =>
     allowedConversationIds.add(participant.conversationId),
@@ -2468,14 +2502,19 @@ export function searchChat(filters = {}) {
             .map((attachment) => String(attachment.name || attachment.fileName || "").trim())
             .filter(Boolean)
         : [];
+      if (normalizedConversationId && message.conversationId !== normalizedConversationId) return null;
+      if (normalizedSenderUserId && message.senderUserId !== normalizedSenderUserId) return null;
+      if (normalizedDate && String(message.createdAt || "").slice(0, 10) !== normalizedDate) return null;
+      if (normalizedAttachmentMode === "yes" && !attachmentNames.length) return null;
+      if (normalizedAttachmentMode === "no" && attachmentNames.length) return null;
       const lowerBody = body.toLowerCase();
       const lowerSender = sender.toLowerCase();
       const matchingAttachment = attachmentNames.find((name) => name.toLowerCase().includes(query)) || "";
       const matchesBody = lowerBody.includes(query);
       const matchesSender = lowerSender.includes(query);
-      if (!matchesBody && !matchesSender && !matchingAttachment) return null;
+      if (query && !matchesBody && !matchesSender && !matchingAttachment) return null;
       const matchSource = matchesBody ? "message" : matchingAttachment ? "attachment" : "sender";
-      const matchPreview = matchesBody ? body : matchingAttachment ? `Adjunto: ${matchingAttachment}` : `Usuario: ${sender}`;
+      const matchPreview = matchesBody ? body : matchingAttachment ? `Adjunto: ${matchingAttachment}` : sender ? `Usuario: ${sender}` : "Coincide con los filtros";
       return {
         ...structuredClone(message),
         matchSource,

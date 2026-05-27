@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260527d";
+import { $, $$, elements } from "../core/dom.js?v=20260527e";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -21,7 +21,7 @@ import {
   listVisibleViews,
   updateCurrentUserChatAlertSettings,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260527d";
+} from "../services/auth-service.js?v=20260527e";
 import {
   apiFileUrl,
   addApiChatParticipants,
@@ -78,7 +78,7 @@ import {
   updateApiProgram,
   updateApiProgramCenter,
   uploadApiFile,
-} from "../services/mel-api.js?v=20260527d";
+} from "../services/mel-api.js?v=20260527e";
 import {
   currentMonth,
   escapeHtml,
@@ -105,8 +105,14 @@ const CHAT_PRESENCE_INTERVAL_MS = 6000;
 const CHAT_TYPING_IDLE_MS = 4500;
 const CHAT_TYPING_REFRESH_MS = 2500;
 const CHAT_TEMP_MUTE_DURATION_MS = 60 * 60 * 1000;
-const CHAT_REACTION_EMOJIS = ["👍", "❤️", "✅", "👀"];
+const CHAT_REACTION_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "😡", "🙏", "👏", "🔥", "🎉", "💯", "✅", "👀", "🤝", "🙌", "📌", "⭐", "💡", "📣", "🚀"];
 let currentUser = null;
+const CHAT_COMPOSER_EMOJIS = [
+  "😀", "😃", "😄", "😁", "😅", "😂", "🤣", "😊", "😍", "😘", "😎", "🤗", "🤔", "🤝", "🙏", "🙌",
+  "👍", "👎", "👏", "💪", "👀", "❤️", "💙", "💚", "💛", "💜", "🧡", "🤍", "🔥", "✨", "⭐", "🌟",
+  "🎉", "🥳", "✅", "❗", "❓", "⚠️", "📌", "📣", "📢", "💡", "📝", "📊", "📈", "📎", "📁", "🗂️",
+  "📄", "📅", "⏰", "⌛", "🚀", "🎯", "🏆", "🤲", "🙇", "🙂", "😇", "😌", "🤩", "😴", "😬", "😓",
+];
 let currentUserRoles = SYSTEM_ROLES.slice();
 let currentUserViews = VIEW_DEFINITIONS.map((view) => view.id);
 let accessRenderRequest = 0;
@@ -127,6 +133,7 @@ let chatMessageSendInFlight = false;
 let chatAttachmentFiles = [];
 let chatSearchResults = null;
 let chatReplyMessageId = "";
+let chatEditingMessageId = "";
 let chatSearchRequestId = 0;
 let chatSyncPrimed = false;
 let chatTypingStopTimerId = null;
@@ -135,6 +142,7 @@ let chatTypingActive = false;
 let chatTypingLastSentAt = 0;
 let chatAudioContext = null;
 let chatAudioUnlocked = false;
+let chatLastRenderedMessageId = "";
 const BASE_DOCUMENT_TITLE = document.title || "Pulso M&E";
 const INSTITUTIONAL_CHAT_AREAS = [
   { id: "mel", title: "M&E", description: "Coordinacion institucional de monitoreo, evaluacion y aprendizaje." },
@@ -144,6 +152,14 @@ const INSTITUTIONAL_CHAT_AREAS = [
 
 function loadState() {
   return loadStoredState(STORAGE_KEY, seedState, normalizeState);
+}
+
+function normalizeChatMessageFilters(filters = {}) {
+  return {
+    senderUserId: typeof filters.senderUserId === "string" ? filters.senderUserId : "",
+    hasAttachments: typeof filters.hasAttachments === "string" ? filters.hasAttachments : "all",
+    date: typeof filters.date === "string" ? filters.date : "",
+  };
 }
 
 function hydrateState() {
@@ -392,6 +408,7 @@ function normalizeState(savedState) {
       : { totalUnreadConversations: 0, totalUnreadMessages: 0 };
   nextState.chatSelectedDirectUserId = typeof savedState.chatSelectedDirectUserId === "string" ? savedState.chatSelectedDirectUserId : "";
   nextState.chatSearch = typeof savedState.chatSearch === "string" ? savedState.chatSearch : "";
+  nextState.chatMessageFilters = normalizeChatMessageFilters(savedState.chatMessageFilters);
   nextState.chatActiveConversationId = typeof savedState.chatActiveConversationId === "string" ? savedState.chatActiveConversationId : "";
   nextState.attendanceParticipants = Array.isArray(savedState.attendanceParticipants) ? savedState.attendanceParticipants.slice() : [];
   nextState.attendanceSessions = Array.isArray(savedState.attendanceSessions) ? savedState.attendanceSessions.slice() : [];
@@ -3413,18 +3430,23 @@ function playChatAlertSound() {
   const context = ensureChatAudioContext();
   if (!context || context.state !== "running") return;
   const now = context.currentTime;
-  const oscillator = context.createOscillator();
-  const gain = context.createGain();
-  oscillator.type = "triangle";
-  oscillator.frequency.setValueAtTime(880, now);
-  oscillator.frequency.exponentialRampToValueAtTime(660, now + 0.18);
-  gain.gain.setValueAtTime(0.0001, now);
-  gain.gain.exponentialRampToValueAtTime(0.08, now + 0.02);
-  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
-  oscillator.connect(gain);
-  gain.connect(context.destination);
-  oscillator.start(now);
-  oscillator.stop(now + 0.24);
+  [
+    { start: 0, from: 980, to: 760, duration: 0.22 },
+    { start: 0.26, from: 980, to: 680, duration: 0.24 },
+  ].forEach((tone) => {
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = "triangle";
+    oscillator.frequency.setValueAtTime(tone.from, now + tone.start);
+    oscillator.frequency.exponentialRampToValueAtTime(tone.to, now + tone.start + tone.duration);
+    gain.gain.setValueAtTime(0.0001, now + tone.start);
+    gain.gain.exponentialRampToValueAtTime(0.16, now + tone.start + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + tone.start + tone.duration);
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start(now + tone.start);
+    oscillator.stop(now + tone.start + tone.duration + 0.02);
+  });
 }
 
 function showToast(message) {
@@ -3686,6 +3708,101 @@ function renderChatSearchSummary(conversations = filteredChatConversations()) {
   `;
 }
 
+function activeChatMessageFilters() {
+  return normalizeChatMessageFilters(state.chatMessageFilters);
+}
+
+function activeChatLastMessageId(messages = activeChatMessages()) {
+  const list = Array.isArray(messages) ? messages : [];
+  return list[list.length - 1]?.id || "";
+}
+
+function messageMatchesActiveChatFilters(message, searchInsights, conversationId) {
+  const filters = activeChatMessageFilters();
+  if (filters.senderUserId && String(message.senderUserId || "") !== filters.senderUserId) {
+    return false;
+  }
+  const attachments = Array.isArray(message.attachments) ? message.attachments : [];
+  if (filters.hasAttachments === "yes" && !attachments.length) {
+    return false;
+  }
+  if (filters.hasAttachments === "no" && attachments.length) {
+    return false;
+  }
+  if (filters.date && String(message.createdAt || "").slice(0, 10) !== filters.date) {
+    return false;
+  }
+  const query = String(state.chatSearch || "").trim().toLowerCase();
+  if (!query) return true;
+  const hits = searchInsights.messagesByConversationId.get(conversationId) || [];
+  return hits.some((item) => item.id === message.id);
+}
+
+function filteredActiveChatMessages(messages = activeChatMessages(), conversationId = state.chatActiveConversationId) {
+  const searchInsights = activeChatSearchInsights();
+  return (Array.isArray(messages) ? messages : []).filter((message) =>
+    messageMatchesActiveChatFilters(message, searchInsights, conversationId),
+  );
+}
+
+function activeChatMessageFilterOptions(messages = activeChatMessages()) {
+  const senders = unique(
+    (Array.isArray(messages) ? messages : [])
+      .filter((message) => String(message.messageType || "").toLowerCase() !== "system")
+      .map((message) => JSON.stringify({ id: message.senderUserId, name: message.senderName || "Usuario" })),
+  ).map((item) => JSON.parse(item));
+  return {
+    senders,
+  };
+}
+
+function renderChatMessageFilters(conversation = activeChatConversation(), messages = activeChatMessages()) {
+  if (!elements.chatMessageFilters) return;
+  if (!conversation) {
+    elements.chatMessageFilters.innerHTML = "";
+    return;
+  }
+  const filters = activeChatMessageFilters();
+  const options = activeChatMessageFilterOptions(messages);
+  elements.chatMessageFilters.innerHTML = `
+    <div class="chat-filter-card">
+      <div>
+        <p class="eyebrow">Busqueda en esta conversacion</p>
+        <h3>Filtrar mensajes</h3>
+      </div>
+      <div class="chat-filter-grid">
+        <label>
+          Remitente
+          <select id="chatMessageFilterSender">
+            <option value="">Todos</option>
+            ${options.senders
+              .map(
+                (sender) =>
+                  `<option value="${escapeHtml(sender.id)}" ${filters.senderUserId === sender.id ? "selected" : ""}>${escapeHtml(sender.name)}</option>`,
+              )
+              .join("")}
+          </select>
+        </label>
+        <label>
+          Adjuntos
+          <select id="chatMessageFilterAttachments">
+            <option value="all" ${filters.hasAttachments === "all" ? "selected" : ""}>Todos</option>
+            <option value="yes" ${filters.hasAttachments === "yes" ? "selected" : ""}>Con adjuntos</option>
+            <option value="no" ${filters.hasAttachments === "no" ? "selected" : ""}>Sin adjuntos</option>
+          </select>
+        </label>
+        <label>
+          Fecha
+          <input id="chatMessageFilterDate" type="date" value="${escapeHtml(filters.date)}" />
+        </label>
+        <div class="item-actions chat-filter-actions">
+          <button class="ghost-action" type="button" data-clear-chat-filters>Limpiar filtros</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function renderChatAreaChannels() {
   if (!elements.chatAreaChannels) return;
   elements.chatAreaChannels.innerHTML = INSTITUTIONAL_CHAT_AREAS.map(
@@ -3748,6 +3865,10 @@ function renderChatDetails(conversation, messages = []) {
     : muteState.temporarilyMuted
       ? `Silenciado hasta ${formatShortDateTime(new Date(muteState.mutedUntilTime).toISOString())}`
       : "Sonido activo";
+  const soundActions = muteState.permanentlyMuted || muteState.temporarilyMuted
+    ? `<button class="ghost-action" type="button" data-chat-sound-mode="enabled">Activar sonido</button>`
+    : `<button class="ghost-action" type="button" data-chat-sound-mode="temp">Silenciar 1h</button>
+       <button class="ghost-action" type="button" data-chat-sound-mode="permanent">Silenciar siempre</button>`;
   elements.chatDetailsGrid.innerHTML = `
     <article class="chat-detail-card">
       <p class="eyebrow">Tipo</p>
@@ -3783,9 +3904,7 @@ function renderChatDetails(conversation, messages = []) {
       <p class="eyebrow">Alerta sonora</p>
       <h3>${escapeHtml(soundLabel)}</h3>
       <div class="item-actions">
-        <button class="ghost-action" type="button" data-chat-sound-mode="enabled">Activar</button>
-        <button class="ghost-action" type="button" data-chat-sound-mode="temp">Silenciar 1h</button>
-        <button class="ghost-action" type="button" data-chat-sound-mode="permanent">Silenciar siempre</button>
+        ${soundActions}
       </div>
     </article>
   `;
@@ -3843,6 +3962,18 @@ function currentUserReactionForMessage(message = {}) {
   return chatMessageReactions(message).find((reaction) => reaction.userId === currentUser?.id) || null;
 }
 
+function canEditCurrentChatMessage(message, conversation = activeChatConversation()) {
+  if (!message || message.isDeleted || String(message.messageType || "").toLowerCase() === "system") return false;
+  return message.senderUserId === currentUser?.id;
+}
+
+function canDeleteCurrentChatMessage(message, conversation = activeChatConversation()) {
+  if (!message || message.isDeleted || String(message.messageType || "").toLowerCase() === "system") return false;
+  if (isSystemAdminRole()) return true;
+  if (conversation?.createdByUserId === currentUser?.id) return true;
+  return message.senderUserId === currentUser?.id;
+}
+
 function renderChatReactionBar(message = {}) {
   const reactions = chatMessageReactions(message);
   const grouped = new Map();
@@ -3875,6 +4006,16 @@ function scrollToChatMessage(messageId) {
   const target = elements.chatMessageList?.querySelector(`[data-chat-message-id="${CSS.escape(String(messageId || ""))}"]`);
   if (!target) return;
   target.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function scrollChatToLatest(behavior = "auto") {
+  const list = elements.chatMessageList;
+  if (!list) return;
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      list.scrollTo({ top: list.scrollHeight, behavior });
+    });
+  });
 }
 
 function ensureChatNavBadge() {
@@ -3917,15 +4058,36 @@ function chatReplyMessage(messageId, messages = activeChatMessages()) {
   return (messages || []).find((message) => message.id === messageId) || null;
 }
 
+function editingChatMessage(messageId = chatEditingMessageId, messages = activeChatMessages()) {
+  return (messages || []).find((message) => message.id === messageId) || null;
+}
+
 function renderChatReplyPreview() {
   if (!elements.chatReplyPreview) return;
+  const submitButton = elements.chatComposerForm?.querySelector('button[type="submit"]');
+  const editingTarget = editingChatMessage();
+  if (editingTarget) {
+    const summary = String(editingTarget.body || "").trim() || "(Sin texto)";
+    if (submitButton) submitButton.textContent = "Guardar cambios";
+    elements.chatReplyPreview.hidden = false;
+    elements.chatReplyPreview.innerHTML = `
+      <p class="item-meta"><strong>Editando tu mensaje</strong></p>
+      <p>${escapeHtml(summary.slice(0, 160))}</p>
+      <div class="item-actions">
+        <button class="ghost-action" type="button" data-clear-chat-edit>Cancelar edicion</button>
+      </div>
+    `;
+    return;
+  }
   const replyTarget = chatReplyMessage(chatReplyMessageId);
   if (!replyTarget) {
+    if (submitButton) submitButton.textContent = "Enviar";
     elements.chatReplyPreview.hidden = true;
     elements.chatReplyPreview.innerHTML = "";
     return;
   }
   const summary = String(replyTarget.body || "").trim() || "(Sin texto)";
+  if (submitButton) submitButton.textContent = "Enviar";
   elements.chatReplyPreview.hidden = false;
   elements.chatReplyPreview.innerHTML = `
     <p class="item-meta"><strong>Respondiendo a ${escapeHtml(replyTarget.senderName || "Usuario")}</strong></p>
@@ -3942,6 +4104,7 @@ function startReplyToChatMessage(messageId) {
     showToast("No encontre el mensaje para responder.");
     return;
   }
+  chatEditingMessageId = "";
   chatReplyMessageId = target.id;
   renderChatReplyPreview();
   elements.chatComposerInput?.focus();
@@ -3952,11 +4115,57 @@ function clearChatReplyTarget() {
   renderChatReplyPreview();
 }
 
+function startEditChatMessage(messageId) {
+  const target = editingChatMessage(messageId);
+  if (!target) {
+    showToast("No encontre el mensaje para editar.");
+    return;
+  }
+  chatReplyMessageId = "";
+  chatEditingMessageId = target.id;
+  if (elements.chatComposerInput) {
+    elements.chatComposerInput.value = String(target.body || "");
+  }
+  renderChatReplyPreview();
+  elements.chatComposerInput?.focus();
+}
+
+function clearChatEditingMessage() {
+  chatEditingMessageId = "";
+  renderChatReplyPreview();
+}
+
+function renderChatEmojiPicker() {
+  if (!elements.chatEmojiPicker) return;
+  elements.chatEmojiPicker.innerHTML = CHAT_COMPOSER_EMOJIS.map(
+    (emoji) =>
+      `<button class="ghost-action chat-emoji-button" type="button" data-chat-emoji="${escapeHtml(emoji)}">${escapeHtml(emoji)}</button>`,
+  ).join("");
+}
+
+function insertEmojiIntoChatComposer(emoji) {
+  if (!elements.chatComposerInput || !emoji) return;
+  const input = elements.chatComposerInput;
+  const start = Number.isFinite(input.selectionStart) ? input.selectionStart : input.value.length;
+  const end = Number.isFinite(input.selectionEnd) ? input.selectionEnd : input.value.length;
+  const currentValue = String(input.value || "");
+  input.value = `${currentValue.slice(0, start)}${emoji}${currentValue.slice(end)}`;
+  const nextCaret = start + emoji.length;
+  input.setSelectionRange(nextCaret, nextCaret);
+  input.focus();
+  handleChatComposerInputChange();
+}
+
 async function handleChatSearchQuery(query) {
   state.chatSearch = query;
   saveState();
   const normalizedQuery = String(query || "").trim().toLowerCase();
-  if (!normalizedQuery || normalizedQuery.length < 2 || !isApiConfigured()) {
+  if (!isApiConfigured()) {
+    chatSearchResults = null;
+    renderChatWorkspace();
+    return;
+  }
+  if (!normalizedQuery || normalizedQuery.length < 2) {
     chatSearchResults = null;
     renderChatWorkspace();
     return;
@@ -3977,6 +4186,20 @@ async function handleChatSearchQuery(query) {
     chatSearchResults = null;
     renderChatWorkspace();
   }
+}
+
+async function handleChatMessageFiltersChange(nextFilters = {}) {
+  state.chatMessageFilters = normalizeChatMessageFilters({
+    ...activeChatMessageFilters(),
+    ...nextFilters,
+  });
+  saveState();
+  const query = String(state.chatSearch || "").trim();
+  if (query.length >= 2) {
+    await handleChatSearchQuery(query);
+    return;
+  }
+  renderChatWorkspace();
 }
 
 function populateChatDirectoryChoices() {
@@ -4172,12 +4395,24 @@ async function loadChatConversation(conversationId, options = {}) {
 async function openChatConversationById(conversationId, options = {}) {
   const { switchToChat = false, markRead = true } = options;
   if (!conversationId) return;
+  if (state?.chatActiveConversationId && state.chatActiveConversationId !== conversationId) {
+    clearChatReplyTarget();
+    clearChatEditingMessage();
+    if (elements.chatComposerInput) {
+      elements.chatComposerInput.value = "";
+    }
+    if (elements.chatAttachmentInput) {
+      elements.chatAttachmentInput.value = "";
+    }
+    setChatAttachmentFiles([]);
+  }
   await loadChatConversation(conversationId, { markRead });
   if (switchToChat) {
     switchView("chat", { persist: true, resetScroll: false });
   } else {
     renderChatWorkspace();
   }
+  scrollChatToLatest("auto");
 }
 
 async function refreshChatFromApi(options = {}) {
@@ -4346,6 +4581,10 @@ async function syncChatInbox(options = {}) {
   } = options;
   chatSyncInFlight = true;
   try {
+    const previousActiveConversationId = state?.chatActiveConversationId || "";
+    const previousLastMessageId = previousActiveConversationId
+      ? activeChatLastMessageId(state?.chatMessagesByConversation?.[previousActiveConversationId] || [])
+      : "";
     const previousConversations = Array.isArray(state?.chatConversations) ? state.chatConversations.map((item) => ({ ...item })) : [];
     const previousUnreadTotal = Number(state?.chatUnreadCount?.totalUnreadMessages || 0);
     await refreshChatFromApi({
@@ -4353,6 +4592,12 @@ async function syncChatInbox(options = {}) {
       includeDirectory: includeDirectory || !Array.isArray(state?.chatDirectory) || !state.chatDirectory.length,
     });
     renderChatWorkspace();
+    if (state?.activeView === "chat" && state.chatActiveConversationId) {
+      const nextLastMessageId = activeChatLastMessageId(activeChatMessages());
+      if (state.chatActiveConversationId === previousActiveConversationId && nextLastMessageId && nextLastMessageId !== previousLastMessageId) {
+        scrollChatToLatest("smooth");
+      }
+    }
     renderNotifications();
     const nextUnreadTotal = Number(state?.chatUnreadCount?.totalUnreadMessages || 0);
     if (chatSyncPrimed && showToastOnNewMessages && nextUnreadTotal > previousUnreadTotal) {
@@ -4431,6 +4676,8 @@ function renderChatWorkspace() {
     : "Elige un chat o crea uno nuevo para empezar.";
   renderChatLiveStatus(activeConversation);
   renderChatDetails(activeConversation, messages);
+  renderChatMessageFilters(activeConversation, messages);
+  renderChatEmojiPicker();
   if (elements.chatDeleteButton) {
     elements.chatDeleteButton.hidden = !activeConversation || !canDeleteActiveChatConversation(activeConversation);
     elements.chatDeleteButton.disabled = !activeConversation || !canDeleteActiveChatConversation(activeConversation);
@@ -4487,19 +4734,31 @@ function renderChatWorkspace() {
       : `<p class="item-meta">No hay mensajes fijados en este chat.</p>`;
   }
   populateChatParticipantManager(activeConversation);
+  const visibleMessages = activeConversation ? filteredActiveChatMessages(messages, activeConversation.id) : [];
   elements.chatMessageList.innerHTML = activeConversation
-    ? messages.length
-      ? messages
+    ? visibleMessages.length
+      ? visibleMessages
           .map(
             (message) => {
               const replied = message.replyToMessageId ? chatReplyMessage(message.replyToMessageId, messages) : null;
               const readSummary = chatMessageStatusLabel(message, activeConversation);
               const isSystemMessage = message.messageType === "system";
+              const isDeletedMessage = Boolean(message.isDeleted);
               const activeConversationSearchHits = searchInsights.messagesByConversationId.get(activeConversation.id) || [];
               const isSearchHit = activeConversationSearchHits.some((item) => item.id === message.id);
               const searchMatchLabel = isSearchHit ? chatSearchMatchLabel(activeConversationSearchHits.find((item) => item.id === message.id) || message) : "";
+              const canEditMessage = canEditCurrentChatMessage(message, activeConversation);
+              const canDeleteMessage = canDeleteCurrentChatMessage(message, activeConversation);
+              const editedMeta =
+                !isDeletedMessage && message.isEdited
+                  ? `Editado${message.editedByName ? ` por ${message.editedByName}` : ""}${message.editedAt ? ` · ${formatShortDateTime(message.editedAt)}` : ""}`
+                  : "";
+              const deletedMeta =
+                isDeletedMessage
+                  ? `Eliminado${message.deletedByName ? ` por ${message.deletedByName}` : ""}${message.deletedAt ? ` · ${formatShortDateTime(message.deletedAt)}` : ""}`
+                  : "";
               return `
-              <article class="chat-message-item ${message.senderUserId === currentUser?.id ? "mine" : ""} ${isSystemMessage ? "system" : ""} ${isSearchHit ? "search-hit" : ""}" data-chat-message-id="${escapeHtml(message.id)}">
+              <article class="chat-message-item ${message.senderUserId === currentUser?.id ? "mine" : ""} ${isSystemMessage ? "system" : ""} ${isSearchHit ? "search-hit" : ""} ${isDeletedMessage ? "deleted" : ""}" data-chat-message-id="${escapeHtml(message.id)}">
                 <div class="chat-message-item-head">
                   <strong>${escapeHtml(message.senderName || "Usuario")}</strong>
                   <span class="item-meta">${escapeHtml(String(message.createdAt || "").slice(0, 16).replace("T", " "))}</span>
@@ -4509,14 +4768,18 @@ function renderChatWorkspace() {
                     ? `<div class="chat-message-reply"><p class="item-meta"><strong>${escapeHtml(replied.senderName || "Usuario")}</strong></p><p>${escapeHtml(String(replied.body || "(Sin texto)").slice(0, 140))}</p></div>`
                     : ""
                 }
-                <p>${escapeHtml(message.body || "(Sin texto)")}</p>
-                ${message.pinnedAt ? `<span class="status-pill warning">Fijado</span>` : ""}
+                <p class="${isDeletedMessage ? "chat-message-deleted-text" : ""}">${escapeHtml(isDeletedMessage ? "Mensaje eliminado." : message.body || "(Sin texto)")}</p>
+                ${message.pinnedAt && !isDeletedMessage ? `<span class="status-pill warning">Fijado</span>` : ""}
                 ${isSearchHit ? `<span class="status-pill info">${escapeHtml(searchMatchLabel || "Coincide con la busqueda")}</span>` : ""}
-                ${renderRichChatAttachmentLinks(message.attachments || [])}
-                ${!isSystemMessage ? renderChatReactionBar(message) : ""}
+                ${editedMeta ? `<p class="item-meta">${escapeHtml(editedMeta)}</p>` : ""}
+                ${deletedMeta ? `<p class="item-meta">${escapeHtml(deletedMeta)}</p>` : ""}
+                ${!isDeletedMessage ? renderRichChatAttachmentLinks(message.attachments || []) : ""}
+                ${!isSystemMessage && !isDeletedMessage ? renderChatReactionBar(message) : ""}
                 <div class="chat-message-actions">
-                  ${!isSystemMessage ? `<button class="ghost-action" type="button" data-chat-reply="${message.id}">Responder</button>` : ""}
-                  ${!isSystemMessage ? `<button class="ghost-action" type="button" data-chat-pin="${message.id}" data-chat-pin-next="${message.pinnedAt ? "false" : "true"}">${message.pinnedAt ? "Quitar fijado" : "Fijar"}</button>` : ""}
+                  ${!isSystemMessage && !isDeletedMessage ? `<button class="ghost-action" type="button" data-chat-reply="${message.id}">Responder</button>` : ""}
+                  ${!isSystemMessage && !isDeletedMessage && canEditMessage ? `<button class="ghost-action" type="button" data-chat-edit="${message.id}">Editar</button>` : ""}
+                  ${!isSystemMessage && !isDeletedMessage && canDeleteMessage ? `<button class="ghost-action danger-action" type="button" data-chat-delete="${message.id}">Eliminar</button>` : ""}
+                  ${!isSystemMessage && !isDeletedMessage ? `<button class="ghost-action" type="button" data-chat-pin="${message.id}" data-chat-pin-next="${message.pinnedAt ? "false" : "true"}">${message.pinnedAt ? "Quitar fijado" : "Fijar"}</button>` : ""}
                   ${readSummary ? `<span class="item-meta">${escapeHtml(readSummary)}</span>` : ""}
                 </div>
               </article>
@@ -4524,7 +4787,7 @@ function renderChatWorkspace() {
             },
           )
           .join("")
-      : `<div class="chat-empty-state">Todavia no hay mensajes en esta conversacion.</div>`
+      : `<div class="chat-empty-state">${normalizedQuery || activeChatMessageFilters().senderUserId || activeChatMessageFilters().hasAttachments !== "all" || activeChatMessageFilters().date ? "No hay mensajes que coincidan con los filtros." : "Todavia no hay mensajes en esta conversacion."}</div>`
     : `<div class="chat-empty-state">Selecciona una conversacion para ver mensajes.</div>`;
 
   if (elements.chatComposerInput) {
@@ -4544,9 +4807,11 @@ function renderChatWorkspace() {
   }
   if (!activeConversation) {
     clearChatReplyTarget();
+    clearChatEditingMessage();
   }
   renderChatReplyPreview();
   renderChatAttachmentPreview();
+  chatLastRenderedMessageId = activeChatLastMessageId(messages);
 }
 
 function renderChatAttachmentLinks(attachments = []) {
@@ -5062,31 +5327,51 @@ async function sendCurrentChatMessage() {
     showToast("Escribe un mensaje o adjunta un archivo.");
     return;
   }
+  if (chatEditingMessageId && selectedFiles.length) {
+    showToast("Para editar un mensaje, primero quita los adjuntos seleccionados.");
+    return;
+  }
   chatMessageSendInFlight = true;
   const submitButton = elements.chatComposerForm?.querySelector('button[type="submit"]');
   if (submitButton) {
     submitButton.disabled = true;
   }
   try {
-    const attachments = await attachmentsFromFiles(selectedFiles, currentUser?.email || activeRole(), "chat-attachments");
-    const inferredType =
-      attachments.length && attachments.every((attachment) => String(attachment.type || "").startsWith("image/")) ? "image" : attachments.length ? "file" : "text";
+    const editingTarget = editingChatMessage();
+    const editingMessageId = editingTarget?.id || "";
+    if (chatEditingMessageId && !editingMessageId) {
+      clearChatEditingMessage();
+    }
     stopChatTyping({ conversationId: activeConversation.id });
-    await createApiChatMessage(activeConversation.id, {
-      messageType: inferredType,
-      body,
-      replyToMessageId: chatReplyMessageId || "",
-      attachments,
-    });
+    if (editingMessageId) {
+      await updateApiChatMessage(activeConversation.id, editingMessageId, {
+        body,
+      });
+    } else {
+      const attachments = await attachmentsFromFiles(selectedFiles, currentUser?.email || activeRole(), "chat-attachments");
+      const inferredType =
+        attachments.length && attachments.every((attachment) => String(attachment.type || "").startsWith("image/")) ? "image" : attachments.length ? "file" : "text";
+      await createApiChatMessage(activeConversation.id, {
+        messageType: inferredType,
+        body,
+        replyToMessageId: chatReplyMessageId || "",
+        attachments,
+      });
+    }
     elements.chatComposerInput.value = "";
     if (elements.chatAttachmentInput) {
       elements.chatAttachmentInput.value = "";
     }
     setChatAttachmentFiles([]);
     clearChatReplyTarget();
+    clearChatEditingMessage();
     await refreshChatFromApi({ includeMessages: true });
     renderChatWorkspace();
+    scrollChatToLatest("smooth");
     elements.chatComposerInput?.focus();
+    if (editingMessageId) {
+      showToast("Mensaje editado.");
+    }
   } finally {
     chatMessageSendInFlight = false;
     if (submitButton) {
@@ -6802,6 +7087,40 @@ function bindEvents() {
       startReplyToChatMessage(replyId);
       return;
     }
+    const editId = event.target.closest("[data-chat-edit]")?.dataset.chatEdit;
+    if (editId) {
+      startEditChatMessage(editId);
+      return;
+    }
+    const deleteId = event.target.closest("[data-chat-delete]")?.dataset.chatDelete;
+    if (deleteId) {
+      void (async () => {
+        try {
+          const activeConversation = activeChatConversation();
+          if (!activeConversation?.id) return;
+          await updateApiChatMessage(activeConversation.id, deleteId, {
+            isDeleted: true,
+          });
+          if (chatEditingMessageId === deleteId) {
+            clearChatEditingMessage();
+            if (elements.chatComposerInput) {
+              elements.chatComposerInput.value = "";
+            }
+            if (elements.chatAttachmentInput) {
+              elements.chatAttachmentInput.value = "";
+            }
+            setChatAttachmentFiles([]);
+          }
+          await refreshChatFromApi({ includeMessages: true });
+          renderChatWorkspace();
+          showToast("Mensaje eliminado.");
+        } catch (error) {
+          console.error(error);
+          showToast(error.message || "No pude eliminar el mensaje.");
+        }
+      })();
+      return;
+    }
     const pinButton = event.target.closest("[data-chat-pin]");
     if (pinButton) {
       const messageId = pinButton.dataset.chatPin;
@@ -6828,6 +7147,7 @@ function bindEvents() {
           showToast(error.message || "No pude actualizar la reaccion.");
         }
       })();
+      return;
     }
   });
 
@@ -6863,7 +7183,46 @@ function bindEvents() {
   elements.chatReplyPreview?.addEventListener("click", (event) => {
     if (event.target.closest("[data-clear-chat-reply]")) {
       clearChatReplyTarget();
+      return;
     }
+    if (event.target.closest("[data-clear-chat-edit]")) {
+      clearChatEditingMessage();
+      if (elements.chatComposerInput) {
+        elements.chatComposerInput.value = "";
+      }
+    }
+  });
+
+  elements.chatEmojiPicker?.addEventListener("click", (event) => {
+    const emoji = event.target.closest("[data-chat-emoji]")?.dataset.chatEmoji;
+    if (!emoji) return;
+    insertEmojiIntoChatComposer(emoji);
+  });
+
+  elements.chatMessageFilters?.addEventListener("change", (event) => {
+    const sender = event.target.closest("#chatMessageFilterSender");
+    if (sender) {
+      void handleChatMessageFiltersChange({ senderUserId: sender.value || "" });
+      return;
+    }
+    const attachments = event.target.closest("#chatMessageFilterAttachments");
+    if (attachments) {
+      void handleChatMessageFiltersChange({ hasAttachments: attachments.value || "all" });
+      return;
+    }
+    const date = event.target.closest("#chatMessageFilterDate");
+    if (date) {
+      void handleChatMessageFiltersChange({ date: date.value || "" });
+    }
+  });
+
+  elements.chatMessageFilters?.addEventListener("click", (event) => {
+    if (!event.target.closest("[data-clear-chat-filters]")) return;
+    void handleChatMessageFiltersChange({
+      senderUserId: "",
+      hasAttachments: "all",
+      date: "",
+    });
   });
 
   elements.chatAddParticipantForm?.addEventListener("submit", (event) => {

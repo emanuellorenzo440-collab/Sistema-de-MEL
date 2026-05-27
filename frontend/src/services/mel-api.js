@@ -502,8 +502,14 @@ export async function fetchApiChatUnreadCount() {
   return response.data;
 }
 
-export async function searchApiChat(query) {
-  const response = await requestJson("chat/search", {}, { q: query });
+export async function searchApiChat(query, filters = {}) {
+  const response = await requestJson("chat/search", {}, {
+    q: query,
+    conversationId: filters.conversationId || "",
+    senderUserId: filters.senderUserId || "",
+    hasAttachments: filters.hasAttachments || "",
+    date: filters.date || "",
+  });
   return response.data || { conversations: [], messages: [] };
 }
 

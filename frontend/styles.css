@@ -617,6 +617,30 @@ h3 {
   gap: 12px;
 }
 
+.chat-emoji-panel {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.chat-emoji-panel summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.chat-emoji-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.chat-emoji-button {
+  font-size: 1.1rem;
+  min-width: 44px;
+}
+
 .chat-search-field {
   display: grid;
   gap: 8px;
@@ -828,6 +852,31 @@ h3 {
   margin: 0;
 }
 
+.chat-message-filters {
+  margin-top: 14px;
+}
+
+.chat-filter-card {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.chat-filter-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.chat-filter-actions {
+  align-items: end;
+  display: flex;
+  height: 100%;
+}
+
 .chat-pinned-card-head {
   align-items: center;
   display: flex;
@@ -940,6 +989,11 @@ h3 {
   padding: 12px 14px;
 }
 
+.chat-message-item.deleted {
+  border-style: dashed;
+  opacity: 0.84;
+}
+
 .chat-message-item.mine {
   justify-self: end;
   border-color: color-mix(in srgb, var(--teal) 40%, var(--line));
@@ -948,6 +1002,11 @@ h3 {
 .chat-message-item p {
   margin: 0;
   white-space: pre-wrap;
+}
+
+.chat-message-deleted-text {
+  color: var(--muted);
+  font-style: italic;
 }
 
 .chat-message-reply {

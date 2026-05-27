@@ -1407,6 +1407,8 @@ function decorateChatMessage(message, usersById) {
     ...message,
     senderName: usersById.get(message.senderUserId)?.fullName || message.senderUserId,
     pinnedByName: message.pinnedByUserId ? usersById.get(message.pinnedByUserId)?.fullName || message.pinnedByUserId : "",
+    editedByName: message.editedByUserId ? usersById.get(message.editedByUserId)?.fullName || message.editedByUserId : "",
+    deletedByName: message.deletedByUserId ? usersById.get(message.deletedByUserId)?.fullName || message.deletedByUserId : "",
     reactions: Array.isArray(message.reactions)
       ? message.reactions.map((reaction) => ({
           ...reaction,
@@ -1460,6 +1462,22 @@ function canEditConversation(participant, actor, conversation) {
   if (actor.role === "Supervision M&E") return true;
   if (conversation?.createdByUserId === actor.id) return true;
   return conversation?.type === "group" && Boolean(participant.canAddPeople || participant.canRemovePeople);
+}
+
+function canEditChatMessage(actor, participant, message) {
+  if (!actor || !participant || !message) return false;
+  if (String(message.messageType || "").toLowerCase() === "system") return false;
+  if (message.isDeleted) return false;
+  return message.senderUserId === actor.id;
+}
+
+function canDeleteChatMessage(actor, participant, message, conversation) {
+  if (!actor || !participant || !message) return false;
+  if (String(message.messageType || "").toLowerCase() === "system") return false;
+  if (message.isDeleted) return false;
+  if (actor.role === "Supervision M&E") return true;
+  if (conversation?.createdByUserId === actor.id) return true;
+  return message.senderUserId === actor.id;
 }
 
 function postSystemChatMessage(conversation, actor, body) {
@@ -1681,8 +1699,31 @@ export async function handleChatMessageUpdate(request, response, conversationId,
       return;
     }
     const payload = await readJsonBody(request);
-    if (!Object.prototype.hasOwnProperty.call(payload, "isPinned") && !Object.prototype.hasOwnProperty.call(payload, "reactionEmoji")) {
+    const conversationMessages = listChatMessages({
+      organizationId: actor.organizationId,
+      conversationId,
+      limit: 200,
+    });
+    const targetMessage = conversationMessages.find((message) => message.id === messageId) || null;
+    if (!targetMessage) {
+      sendJson(response, 404, { error: "No encontre el mensaje solicitado." });
+      return;
+    }
+    if (
+      !Object.prototype.hasOwnProperty.call(payload, "isPinned") &&
+      !Object.prototype.hasOwnProperty.call(payload, "reactionEmoji") &&
+      !Object.prototype.hasOwnProperty.call(payload, "body") &&
+      !Object.prototype.hasOwnProperty.call(payload, "isDeleted")
+    ) {
       sendJson(response, 400, { error: "No hay cambios validos para este mensaje." });
+      return;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, "body") && !canEditChatMessage(actor, participant, targetMessage)) {
+      sendJson(response, 403, { error: "No tienes permiso para editar este mensaje." });
+      return;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, "isDeleted") && !canDeleteChatMessage(actor, participant, targetMessage, conversation)) {
+      sendJson(response, 403, { error: "No tienes permiso para eliminar este mensaje." });
       return;
     }
     const updated = updateChatMessage(conversationId, messageId, {
@@ -1699,6 +1740,20 @@ export async function handleChatMessageUpdate(request, response, conversationId,
             reactionUserId: actor.id,
           }
         : {}),
+      ...(Object.prototype.hasOwnProperty.call(payload, "body")
+        ? {
+            body: payload.body,
+            editedAt: nowIso(),
+            editedByUserId: actor.id,
+          }
+        : {}),
+      ...(Object.prototype.hasOwnProperty.call(payload, "isDeleted")
+        ? {
+            isDeleted: payload.isDeleted === true,
+            deletedAt: payload.isDeleted === true ? nowIso() : null,
+            deletedByUserId: payload.isDeleted === true ? actor.id : null,
+          }
+        : {}),
     });
     if (!updated) {
       sendJson(response, 404, { error: "No encontre el mensaje solicitado." });
@@ -1708,6 +1763,12 @@ export async function handleChatMessageUpdate(request, response, conversationId,
     if (Object.prototype.hasOwnProperty.call(payload, "isPinned")) {
       const pinVerb = payload.isPinned === true ? "fijo" : "quito del panel fijado";
       postSystemChatMessage(conversation, actor, `${actor.fullName || actor.id} ${pinVerb} un mensaje importante.`);
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, "body")) {
+      postSystemChatMessage(conversation, actor, `${actor.fullName || actor.id} edito un mensaje.`);
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, "isDeleted") && payload.isDeleted === true) {
+      postSystemChatMessage(conversation, actor, `${actor.fullName || actor.id} elimino un mensaje.`);
     }
     sendJson(response, 200, { data: decorateChatMessage(updated, usersById) });
   } catch (error) {
@@ -2033,6 +2094,10 @@ export async function handleChatSearch(request, response, url) {
     organizationId: actor.organizationId,
     participantUserId: actor.id,
     q: url.searchParams.get("q") || "",
+    conversationId: url.searchParams.get("conversationId") || "",
+    senderUserId: url.searchParams.get("senderUserId") || "",
+    hasAttachments: url.searchParams.get("hasAttachments") || "",
+    date: url.searchParams.get("date") || "",
   });
   sendJson(response, 200, {
     data: {
