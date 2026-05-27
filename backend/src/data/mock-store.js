@@ -1979,6 +1979,30 @@ export function createChatConversation(input = {}) {
     .map((item) => normalizeString(item))
     .filter(Boolean);
   const uniqueParticipantIds = [...new Set(requestedParticipants)];
+  const normalizedParticipantKey = [...uniqueParticipantIds].sort().join("::");
+  if (conversation.type === "direct" && uniqueParticipantIds.length === 2) {
+    const existingDirect = chatConversations.find((item) => {
+      if (item.type !== "direct" || item.isArchived) return false;
+      if ((item.organizationId || item.companyId || DEFAULT_COMPANY_ID) !== conversation.organizationId) return false;
+      const itemParticipantIds = conversationParticipants(item.id).map((participant) => participant.userId).sort();
+      return itemParticipantIds.join("::") === normalizedParticipantKey;
+    });
+    if (existingDirect) {
+      return findChatConversationById(existingDirect.id, { organizationId: conversation.organizationId, includeArchived: false });
+    }
+  }
+  if (conversation.contextType && conversation.contextId) {
+    const existingContextChat = chatConversations.find(
+      (item) =>
+        !item.isArchived &&
+        (item.organizationId || item.companyId || DEFAULT_COMPANY_ID) === conversation.organizationId &&
+        item.contextType === conversation.contextType &&
+        item.contextId === conversation.contextId,
+    );
+    if (existingContextChat) {
+      return findChatConversationById(existingContextChat.id, { organizationId: conversation.organizationId, includeArchived: false });
+    }
+  }
   chatConversations.unshift(conversation);
   uniqueParticipantIds.forEach((userId, index) => {
     chatParticipants.push(
