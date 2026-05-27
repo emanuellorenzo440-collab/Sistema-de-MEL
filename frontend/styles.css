@@ -787,6 +787,54 @@ h3 {
   padding: 10px 12px;
 }
 
+.chat-pinned-messages {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+  min-height: 48px;
+  padding: 12px;
+}
+
+.chat-pinned-header {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.chat-pinned-header .eyebrow {
+  margin: 0;
+}
+
+.chat-pinned-list {
+  display: grid;
+  gap: 10px;
+}
+
+.chat-pinned-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.chat-pinned-card p,
+.chat-pinned-card strong {
+  margin: 0;
+}
+
+.chat-pinned-card-head {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
 .chat-shared-file-chip {
   align-items: center;
   background: var(--surface);

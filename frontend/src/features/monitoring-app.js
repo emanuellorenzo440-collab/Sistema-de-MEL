@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260527b";
+import { $, $$, elements } from "../core/dom.js?v=20260527c";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260527b";
+} from "../services/auth-service.js?v=20260527c";
 import {
   apiFileUrl,
   addApiChatParticipants,
@@ -70,13 +70,14 @@ import {
   searchApiChat,
   saveApiAttendanceSession,
   updateApiChatParticipant,
+  updateApiChatMessage,
   updateApiChatConversation,
   updateApiReportStatus,
   updateApiIndicator,
   updateApiProgram,
   updateApiProgramCenter,
   uploadApiFile,
-} from "../services/mel-api.js?v=20260527b";
+} from "../services/mel-api.js?v=20260527c";
 import {
   currentMonth,
   escapeHtml,
@@ -3667,6 +3668,7 @@ function renderChatDetails(conversation, messages = []) {
   const participants = Array.isArray(conversation.participants) ? conversation.participants : [];
   const lastActivity = conversation.lastMessageAt || conversation.updatedAt || conversation.createdAt || "";
   const sharedFilesCount = sharedChatAttachments(messages).length;
+  const pinnedCount = pinnedChatMessages(messages).length;
   const liveParticipants = chatPresenceParticipants(conversation);
   const onlineCount = liveParticipants.filter((participant) => participant.userId !== currentUser?.id && participant.isOnline).length;
   const typingCount = liveParticipants.filter((participant) => participant.userId !== currentUser?.id && participant.isTyping).length;
@@ -3695,6 +3697,11 @@ function renderChatDetails(conversation, messages = []) {
       <p class="eyebrow">Archivos</p>
       <h3>${escapeHtml(String(sharedFilesCount))}</h3>
       <p class="item-meta">Adjuntos compartidos en este chat</p>
+    </article>
+    <article class="chat-detail-card">
+      <p class="eyebrow">Fijados</p>
+      <h3>${escapeHtml(String(pinnedCount))}</h3>
+      <p class="item-meta">Mensajes importantes visibles para todos</p>
     </article>
   `;
 }
@@ -3735,6 +3742,18 @@ function activeChatMessages() {
   const conversation = activeChatConversation();
   if (!conversation) return [];
   return state.chatMessagesByConversation?.[conversation.id] || [];
+}
+
+function pinnedChatMessages(messages = activeChatMessages()) {
+  return (messages || [])
+    .filter((message) => !message.isDeleted && !String(message.messageType || "").includes("system") && String(message.pinnedAt || "").trim())
+    .sort((left, right) => String(right.pinnedAt || "").localeCompare(String(left.pinnedAt || "")));
+}
+
+function scrollToChatMessage(messageId) {
+  const target = elements.chatMessageList?.querySelector(`[data-chat-message-id="${CSS.escape(String(messageId || ""))}"]`);
+  if (!target) return;
+  target.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
 function ensureChatNavBadge() {
@@ -4314,6 +4333,37 @@ function renderChatWorkspace() {
           .join("")
       : `<p class="item-meta">Sin archivos compartidos todavia.</p>`;
   }
+  if (elements.chatPinnedMessages) {
+    const pinnedMessages = pinnedChatMessages(messages);
+    elements.chatPinnedMessages.innerHTML = pinnedMessages.length
+      ? `
+        <div class="chat-pinned-header">
+          <p class="eyebrow">Mensajes fijados</p>
+          <span class="status-pill info">${escapeHtml(String(pinnedMessages.length))}</span>
+        </div>
+        <div class="chat-pinned-list">
+          ${pinnedMessages
+            .map((message) => {
+              const pinnedBy = message.pinnedByName || message.senderName || "Usuario";
+              return `
+                <article class="chat-pinned-card">
+                  <div class="chat-pinned-card-head">
+                    <strong>${escapeHtml(message.senderName || "Usuario")}</strong>
+                    <span class="item-meta">${escapeHtml(formatShortDateTime(message.pinnedAt || message.createdAt || ""))}</span>
+                  </div>
+                  <p>${escapeHtml(String(message.body || "(Sin texto)").slice(0, 180))}</p>
+                  <p class="item-meta">Fijado por ${escapeHtml(pinnedBy)}</p>
+                  <div class="item-actions">
+                    <button class="ghost-action" type="button" data-chat-scroll-to-message="${escapeHtml(message.id)}">Ir al mensaje</button>
+                  </div>
+                </article>
+              `;
+            })
+            .join("")}
+        </div>
+      `
+      : `<p class="item-meta">No hay mensajes fijados en este chat.</p>`;
+  }
   populateChatParticipantManager(activeConversation);
   elements.chatMessageList.innerHTML = activeConversation
     ? messages.length
@@ -4327,7 +4377,7 @@ function renderChatWorkspace() {
               const isSearchHit = activeConversationSearchHits.some((item) => item.id === message.id);
               const searchMatchLabel = isSearchHit ? chatSearchMatchLabel(activeConversationSearchHits.find((item) => item.id === message.id) || message) : "";
               return `
-              <article class="chat-message-item ${message.senderUserId === currentUser?.id ? "mine" : ""} ${isSystemMessage ? "system" : ""} ${isSearchHit ? "search-hit" : ""}">
+              <article class="chat-message-item ${message.senderUserId === currentUser?.id ? "mine" : ""} ${isSystemMessage ? "system" : ""} ${isSearchHit ? "search-hit" : ""}" data-chat-message-id="${escapeHtml(message.id)}">
                 <div class="chat-message-item-head">
                   <strong>${escapeHtml(message.senderName || "Usuario")}</strong>
                   <span class="item-meta">${escapeHtml(String(message.createdAt || "").slice(0, 16).replace("T", " "))}</span>
@@ -4338,10 +4388,12 @@ function renderChatWorkspace() {
                     : ""
                 }
                 <p>${escapeHtml(message.body || "(Sin texto)")}</p>
+                ${message.pinnedAt ? `<span class="status-pill warning">Fijado</span>` : ""}
                 ${isSearchHit ? `<span class="status-pill info">${escapeHtml(searchMatchLabel || "Coincide con la busqueda")}</span>` : ""}
                 ${renderRichChatAttachmentLinks(message.attachments || [])}
                 <div class="chat-message-actions">
                   ${!isSystemMessage ? `<button class="ghost-action" type="button" data-chat-reply="${message.id}">Responder</button>` : ""}
+                  ${!isSystemMessage ? `<button class="ghost-action" type="button" data-chat-pin="${message.id}" data-chat-pin-next="${message.pinnedAt ? "false" : "true"}">${message.pinnedAt ? "Quitar fijado" : "Fijar"}</button>` : ""}
                   ${readSummary ? `<span class="item-meta">${escapeHtml(readSummary)}</span>` : ""}
                 </div>
               </article>
@@ -4918,6 +4970,20 @@ async function sendCurrentChatMessage() {
       submitButton.disabled = false;
     }
   }
+}
+
+async function toggleCurrentChatMessagePin(messageId, shouldPin) {
+  const activeConversation = activeChatConversation();
+  if (!activeConversation?.id || !messageId) {
+    showToast("Selecciona una conversacion valida.");
+    return;
+  }
+  await updateApiChatMessage(activeConversation.id, messageId, {
+    isPinned: Boolean(shouldPin),
+  });
+  await refreshChatFromApi({ includeMessages: true });
+  renderChatWorkspace();
+  showToast(shouldPin ? "Mensaje fijado." : "Mensaje quitado de fijados.");
 }
 
 async function addAttendanceParticipant(name) {
@@ -6581,7 +6647,27 @@ function bindEvents() {
     const replyId = event.target.closest("[data-chat-reply]")?.dataset.chatReply;
     if (replyId) {
       startReplyToChatMessage(replyId);
+      return;
     }
+    const pinButton = event.target.closest("[data-chat-pin]");
+    if (pinButton) {
+      const messageId = pinButton.dataset.chatPin;
+      const nextPinned = pinButton.dataset.chatPinNext === "true";
+      void (async () => {
+        try {
+          await toggleCurrentChatMessagePin(messageId, nextPinned);
+        } catch (error) {
+          console.error(error);
+          showToast(error.message || "No pude actualizar el mensaje fijado.");
+        }
+      })();
+    }
+  });
+
+  elements.chatPinnedMessages?.addEventListener("click", (event) => {
+    const messageId = event.target.closest("[data-chat-scroll-to-message]")?.dataset.chatScrollToMessage;
+    if (!messageId) return;
+    scrollToChatMessage(messageId);
   });
 
   elements.chatReplyPreview?.addEventListener("click", (event) => {

@@ -17,6 +17,7 @@ import {
   addChatParticipants,
   archiveChatConversation,
   getChatConversationPresence,
+  updateChatMessage,
   deleteAttendanceParticipant,
   deleteAttendanceParticipantsForProgram,
   deleteAttendanceSession,
@@ -1404,6 +1405,7 @@ function decorateChatMessage(message, usersById) {
   return {
     ...message,
     senderName: usersById.get(message.senderUserId)?.fullName || message.senderUserId,
+    pinnedByName: message.pinnedByUserId ? usersById.get(message.pinnedByUserId)?.fullName || message.pinnedByUserId : "",
     readBy: Array.isArray(message.readBy)
       ? message.readBy.map((entry) => ({
           ...entry,
@@ -1649,6 +1651,46 @@ export async function handleChatMessageCreate(request, response, conversationId)
       organizationName: actor.organizationName,
     });
     sendJson(response, 201, { data: decorateChatMessage(message, usersById) });
+  } catch (error) {
+    sendApiError(response, error);
+  }
+}
+
+export async function handleChatMessageUpdate(request, response, conversationId, messageId) {
+  try {
+    const actor = requireAuthenticatedUser(request, response);
+    if (!actor) return;
+    const conversation = findChatConversationById(conversationId, {
+      organizationId: actor.organizationId,
+      participantUserId: actor.id,
+    });
+    if (!conversation) {
+      sendJson(response, 404, { error: "No encontre la conversacion solicitada." });
+      return;
+    }
+    const participant = actorChatParticipant(conversationId, actor);
+    if (!participant) {
+      sendJson(response, 403, { error: "No tienes permiso para actualizar mensajes en esta conversacion." });
+      return;
+    }
+    const payload = await readJsonBody(request);
+    if (!Object.prototype.hasOwnProperty.call(payload, "isPinned")) {
+      sendJson(response, 400, { error: "No hay cambios validos para este mensaje." });
+      return;
+    }
+    const updated = updateChatMessage(conversationId, messageId, {
+      isPinned: payload.isPinned === true,
+      pinnedAt: payload.isPinned === true ? nowIso() : null,
+      pinnedByUserId: payload.isPinned === true ? actor.id : null,
+    });
+    if (!updated) {
+      sendJson(response, 404, { error: "No encontre el mensaje solicitado." });
+      return;
+    }
+    const usersById = chatUserDirectory(actor);
+    const pinVerb = payload.isPinned === true ? "fijo" : "quito del panel fijado";
+    postSystemChatMessage(conversation, actor, `${actor.fullName || actor.id} ${pinVerb} un mensaje importante.`);
+    sendJson(response, 200, { data: decorateChatMessage(updated, usersById) });
   } catch (error) {
     sendApiError(response, error);
   }
@@ -2705,6 +2747,17 @@ async function router(request, response) {
 
   if (request.method === "POST" && chatMessagesMatch) {
     await handleChatMessageCreate(request, response, decodeURIComponent(chatMessagesMatch[1]));
+    return;
+  }
+
+  const chatMessageUpdateMatch = pathname.match(/^\/api\/v1\/chat\/conversations\/([^/]+)\/messages\/([^/]+)$/);
+  if (request.method === "PATCH" && chatMessageUpdateMatch) {
+    await handleChatMessageUpdate(
+      request,
+      response,
+      decodeURIComponent(chatMessageUpdateMatch[1]),
+      decodeURIComponent(chatMessageUpdateMatch[2]),
+    );
     return;
   }
 

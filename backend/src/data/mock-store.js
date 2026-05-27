@@ -828,6 +828,8 @@ function normalizedChatMessage(input = {}, existing = {}) {
       : Array.isArray(existing.attachments)
         ? existing.attachments.map(normalizedChatAttachment)
         : [],
+    pinnedAt: input.pinnedAt === null ? null : normalizeString(input.pinnedAt, existing.pinnedAt || ""),
+    pinnedByUserId: input.pinnedByUserId === null ? null : normalizeString(input.pinnedByUserId, existing.pinnedByUserId || ""),
     isEdited: normalizeBoolean(input.isEdited, existing.isEdited || false),
     editedAt: input.editedAt === null ? null : normalizeString(input.editedAt, existing.editedAt || ""),
     isDeleted: normalizeBoolean(input.isDeleted, existing.isDeleted || false),
@@ -2323,6 +2325,24 @@ export function createChatMessage(conversationId, input = {}) {
         }),
       );
     });
+  persistStore();
+  return structuredClone(message);
+}
+
+export function updateChatMessage(conversationId, messageId, input = {}) {
+  const conversation = chatConversations.find((item) => item.id === conversationId);
+  if (!conversation) return null;
+  const message = chatMessages.find((item) => item.conversationId === conversationId && item.id === messageId);
+  if (!message) return null;
+  if (String(message.messageType || "").toLowerCase() === "system") return null;
+  const timestamp = nowIso();
+  if (Object.prototype.hasOwnProperty.call(input, "isPinned")) {
+    const nextPinned = Boolean(input.isPinned);
+    message.pinnedAt = nextPinned ? input.pinnedAt || timestamp : "";
+    message.pinnedByUserId = nextPinned ? normalizeString(input.pinnedByUserId, message.pinnedByUserId || "") : "";
+  }
+  message.updatedAt = timestamp;
+  conversation.updatedAt = timestamp;
   persistStore();
   return structuredClone(message);
 }

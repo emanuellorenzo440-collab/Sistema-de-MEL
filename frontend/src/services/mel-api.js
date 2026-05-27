@@ -433,6 +433,14 @@ export async function createApiChatMessage(conversationId, message) {
   return response.data;
 }
 
+export async function updateApiChatMessage(conversationId, messageId, payload = {}) {
+  const response = await requestJson("chat/conversations/" + encodeURIComponent(conversationId) + "/messages/" + encodeURIComponent(messageId), {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
 export async function markApiChatConversationRead(conversationId, payload) {
   const response = await requestJson("chat/conversations/" + encodeURIComponent(conversationId) + "/read", {
     method: "POST",

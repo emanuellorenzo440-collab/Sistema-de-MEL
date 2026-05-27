@@ -99,6 +99,7 @@ export const elements = {
   chatDetailsGrid: $("#chatDetailsGrid"),
   chatParticipantStrip: $("#chatParticipantStrip"),
   chatSharedFiles: $("#chatSharedFiles"),
+  chatPinnedMessages: $("#chatPinnedMessages"),
   chatAddParticipantForm: $("#chatAddParticipantForm"),
   chatAddParticipantSelect: $("#chatAddParticipantSelect"),
   chatParticipantModeration: $("#chatParticipantModeration"),
