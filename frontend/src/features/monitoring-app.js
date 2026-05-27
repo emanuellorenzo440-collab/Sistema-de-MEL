@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260527g";
+import { $, $$, elements } from "../core/dom.js?v=20260527h";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -21,7 +21,7 @@ import {
   listVisibleViews,
   updateCurrentUserChatAlertSettings,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260527g";
+} from "../services/auth-service.js?v=20260527h";
 import {
   apiFileUrl,
   addApiChatParticipants,
@@ -78,7 +78,7 @@ import {
   updateApiProgram,
   updateApiProgramCenter,
   uploadApiFile,
-} from "../services/mel-api.js?v=20260527g";
+} from "../services/mel-api.js?v=20260527h";
 import {
   currentMonth,
   escapeHtml,
@@ -3271,12 +3271,11 @@ async function refreshAccessStateFromRemote(options = {}) {
   accessSyncInFlight = true;
   try {
     const previousSignature = currentAccessSignature(currentUser);
-    const accessViewActive = state?.activeView === "access";
     await syncAuthenticatedAccess();
     const nextSignature = currentAccessSignature(currentUser);
     const permissionsChanged = previousSignature !== nextSignature;
 
-    if (permissionsChanged || accessViewActive) {
+    if (permissionsChanged) {
       renderAll();
       if (showToastOnPermissionChange && permissionsChanged) {
         showToast("Accesos actualizados.");
@@ -3464,6 +3463,60 @@ function playChatAlertSound() {
     accentOscillator.start(now + tone.start);
     baseOscillator.stop(now + tone.start + tone.duration + 0.02);
     accentOscillator.stop(now + tone.start + tone.duration + 0.02);
+  });
+}
+
+function chatConversationSignature(conversations = state?.chatConversations || []) {
+  return JSON.stringify(
+    (Array.isArray(conversations) ? conversations : []).map((conversation) => ({
+      id: conversation.id || "",
+      title: conversation.title || "",
+      unreadCount: Number(conversation.unreadCount || 0),
+      lastMessageAt: conversation.lastMessageAt || "",
+      updatedAt: conversation.updatedAt || "",
+      participantCount: Array.isArray(conversation.participants) ? conversation.participants.length : 0,
+    })),
+  );
+}
+
+function chatMessagesSignature(messages = []) {
+  return JSON.stringify(
+    (Array.isArray(messages) ? messages : []).map((message) => ({
+      id: message.id || "",
+      body: message.body || "",
+      updatedAt: message.updatedAt || "",
+      pinnedAt: message.pinnedAt || "",
+      editedAt: message.editedAt || "",
+      deletedAt: message.deletedAt || "",
+      reactionCount: Array.isArray(message.reactions) ? message.reactions.length : 0,
+      attachmentCount: Array.isArray(message.attachments) ? message.attachments.length : 0,
+    })),
+  );
+}
+
+function chatUnreadSignature(unreadCount = state?.chatUnreadCount || {}) {
+  return JSON.stringify({
+    totalUnreadConversations: Number(unreadCount.totalUnreadConversations || 0),
+    totalUnreadMessages: Number(unreadCount.totalUnreadMessages || 0),
+  });
+}
+
+function chatPresenceSignature(snapshot = null) {
+  if (!snapshot) return "";
+  return JSON.stringify({
+    latestSeenAt: snapshot.latestSeenAt || "",
+    onlineUsers: Array.isArray(snapshot.onlineUsers)
+      ? snapshot.onlineUsers.map((entry) => ({
+          userId: entry.userId || "",
+          lastSeenAt: entry.lastSeenAt || "",
+        }))
+      : [],
+    typingUsers: Array.isArray(snapshot.typingUsers)
+      ? snapshot.typingUsers.map((entry) => ({
+          userId: entry.userId || "",
+          updatedAt: entry.updatedAt || "",
+        }))
+      : [],
   });
 }
 
@@ -4491,13 +4544,15 @@ async function refreshActiveChatPresence(options = {}) {
   if (!isApiConfigured()) return null;
   const { conversationId = state.chatActiveConversationId, render = false } = options;
   if (!conversationId) return null;
+  const previousSnapshot = state.chatPresenceByConversation?.[conversationId] || null;
+  const previousSignature = chatPresenceSignature(previousSnapshot);
   const snapshot = await fetchApiChatConversationPresence(conversationId);
   state.chatPresenceByConversation = {
     ...(state.chatPresenceByConversation || {}),
     [conversationId]: snapshot,
   };
   saveState();
-  if (render) {
+  if (render && previousSignature !== chatPresenceSignature(snapshot)) {
     renderChatWorkspace();
   }
   return snapshot;
@@ -4634,13 +4689,25 @@ async function syncChatInbox(options = {}) {
     const previousActiveConversationId = state?.chatActiveConversationId || "";
     const previousActiveMessages = previousActiveConversationId ? state?.chatMessagesByConversation?.[previousActiveConversationId] || [] : [];
     const previousLastMessageId = previousActiveConversationId ? activeChatLastMessageId(previousActiveMessages) : "";
+    const previousConversationSignature = chatConversationSignature(state?.chatConversations || []);
+    const previousUnreadSignature = chatUnreadSignature(state?.chatUnreadCount || {});
+    const previousActiveMessagesSignature = previousActiveConversationId ? chatMessagesSignature(previousActiveMessages) : "";
     const previousConversations = Array.isArray(state?.chatConversations) ? state.chatConversations.map((item) => ({ ...item })) : [];
     const previousUnreadTotal = Number(state?.chatUnreadCount?.totalUnreadMessages || 0);
     await refreshChatFromApi({
       includeMessages,
       includeDirectory: includeDirectory || !Array.isArray(state?.chatDirectory) || !state.chatDirectory.length,
     });
-    renderChatWorkspace();
+    const nextConversationSignature = chatConversationSignature(state?.chatConversations || []);
+    const nextUnreadSignature = chatUnreadSignature(state?.chatUnreadCount || {});
+    const nextActiveMessagesSignature = state?.chatActiveConversationId ? chatMessagesSignature(activeChatMessages()) : "";
+    const shouldRenderChat =
+      previousConversationSignature !== nextConversationSignature ||
+      previousUnreadSignature !== nextUnreadSignature ||
+      previousActiveMessagesSignature !== nextActiveMessagesSignature;
+    if (shouldRenderChat) {
+      renderChatWorkspace();
+    }
     let shouldPlayAlert = false;
     if (state?.activeView === "chat" && state.chatActiveConversationId) {
       const nextMessages = activeChatMessages();
@@ -4653,7 +4720,9 @@ async function syncChatInbox(options = {}) {
         }
       }
     }
-    renderNotifications();
+    if (previousConversationSignature !== nextConversationSignature || previousUnreadSignature !== nextUnreadSignature) {
+      renderNotifications();
+    }
     const nextUnreadTotal = Number(state?.chatUnreadCount?.totalUnreadMessages || 0);
     if (chatSyncPrimed && showToastOnNewMessages && nextUnreadTotal > previousUnreadTotal) {
       notifyNewChatMessage(selectNewestUnreadConversation(state.chatConversations || [], previousConversations));
