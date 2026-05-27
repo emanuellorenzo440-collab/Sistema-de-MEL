@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260527c";
+import { $, $$, elements } from "../core/dom.js?v=20260527d";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -19,8 +19,9 @@ import {
   getSessionRole,
   listManagedUsers,
   listVisibleViews,
+  updateCurrentUserChatAlertSettings,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260527c";
+} from "../services/auth-service.js?v=20260527d";
 import {
   apiFileUrl,
   addApiChatParticipants,
@@ -77,7 +78,7 @@ import {
   updateApiProgram,
   updateApiProgramCenter,
   uploadApiFile,
-} from "../services/mel-api.js?v=20260527c";
+} from "../services/mel-api.js?v=20260527d";
 import {
   currentMonth,
   escapeHtml,
@@ -103,6 +104,8 @@ const CHAT_SYNC_INTERVAL_MS = 4000;
 const CHAT_PRESENCE_INTERVAL_MS = 6000;
 const CHAT_TYPING_IDLE_MS = 4500;
 const CHAT_TYPING_REFRESH_MS = 2500;
+const CHAT_TEMP_MUTE_DURATION_MS = 60 * 60 * 1000;
+const CHAT_REACTION_EMOJIS = ["👍", "❤️", "✅", "👀"];
 let currentUser = null;
 let currentUserRoles = SYSTEM_ROLES.slice();
 let currentUserViews = VIEW_DEFINITIONS.map((view) => view.id);
@@ -130,6 +133,8 @@ let chatTypingStopTimerId = null;
 let chatTypingConversationId = "";
 let chatTypingActive = false;
 let chatTypingLastSentAt = 0;
+let chatAudioContext = null;
+let chatAudioUnlocked = false;
 const BASE_DOCUMENT_TITLE = document.title || "Pulso M&E";
 const INSTITUTIONAL_CHAT_AREAS = [
   { id: "mel", title: "M&E", description: "Coordinacion institucional de monitoreo, evaluacion y aprendizaje." },
@@ -3357,6 +3362,71 @@ function switchView(viewName, options = {}) {
   }
 }
 
+function currentChatAlertSettings() {
+  const raw = currentUser?.chatAlertSettings || {};
+  return {
+    soundMode: String(raw.soundMode || "").trim() === "muted-permanent" ? "muted-permanent" : "enabled",
+    mutedUntil: raw.mutedUntil ? String(raw.mutedUntil) : null,
+  };
+}
+
+function chatSoundMuteState() {
+  const settings = currentChatAlertSettings();
+  const mutedUntilTime = Date.parse(settings.mutedUntil || "");
+  const temporarilyMuted = Number.isFinite(mutedUntilTime) && mutedUntilTime > Date.now();
+  return {
+    settings,
+    permanentlyMuted: settings.soundMode === "muted-permanent",
+    temporarilyMuted,
+    mutedUntilTime,
+  };
+}
+
+function canPlayChatAlertSound() {
+  const muteState = chatSoundMuteState();
+  return !muteState.permanentlyMuted && !muteState.temporarilyMuted;
+}
+
+function ensureChatAudioContext() {
+  if (chatAudioContext) return chatAudioContext;
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return null;
+  chatAudioContext = new AudioContextClass();
+  return chatAudioContext;
+}
+
+async function unlockChatAudio() {
+  const context = ensureChatAudioContext();
+  if (!context || chatAudioUnlocked) return;
+  try {
+    if (context.state === "suspended") {
+      await context.resume();
+    }
+    chatAudioUnlocked = context.state === "running";
+  } catch (error) {
+    console.error("No pude habilitar el sonido del chat.", error);
+  }
+}
+
+function playChatAlertSound() {
+  if (!canPlayChatAlertSound()) return;
+  const context = ensureChatAudioContext();
+  if (!context || context.state !== "running") return;
+  const now = context.currentTime;
+  const oscillator = context.createOscillator();
+  const gain = context.createGain();
+  oscillator.type = "triangle";
+  oscillator.frequency.setValueAtTime(880, now);
+  oscillator.frequency.exponentialRampToValueAtTime(660, now + 0.18);
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(0.08, now + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
+  oscillator.connect(gain);
+  gain.connect(context.destination);
+  oscillator.start(now);
+  oscillator.stop(now + 0.24);
+}
+
 function showToast(message) {
   elements.toast.textContent = message;
   elements.toast.classList.add("show");
@@ -3672,6 +3742,12 @@ function renderChatDetails(conversation, messages = []) {
   const liveParticipants = chatPresenceParticipants(conversation);
   const onlineCount = liveParticipants.filter((participant) => participant.userId !== currentUser?.id && participant.isOnline).length;
   const typingCount = liveParticipants.filter((participant) => participant.userId !== currentUser?.id && participant.isTyping).length;
+  const muteState = chatSoundMuteState();
+  const soundLabel = muteState.permanentlyMuted
+    ? "Silenciado permanente"
+    : muteState.temporarilyMuted
+      ? `Silenciado hasta ${formatShortDateTime(new Date(muteState.mutedUntilTime).toISOString())}`
+      : "Sonido activo";
   elements.chatDetailsGrid.innerHTML = `
     <article class="chat-detail-card">
       <p class="eyebrow">Tipo</p>
@@ -3702,6 +3778,15 @@ function renderChatDetails(conversation, messages = []) {
       <p class="eyebrow">Fijados</p>
       <h3>${escapeHtml(String(pinnedCount))}</h3>
       <p class="item-meta">Mensajes importantes visibles para todos</p>
+    </article>
+    <article class="chat-detail-card">
+      <p class="eyebrow">Alerta sonora</p>
+      <h3>${escapeHtml(soundLabel)}</h3>
+      <div class="item-actions">
+        <button class="ghost-action" type="button" data-chat-sound-mode="enabled">Activar</button>
+        <button class="ghost-action" type="button" data-chat-sound-mode="temp">Silenciar 1h</button>
+        <button class="ghost-action" type="button" data-chat-sound-mode="permanent">Silenciar siempre</button>
+      </div>
     </article>
   `;
 }
@@ -3748,6 +3833,42 @@ function pinnedChatMessages(messages = activeChatMessages()) {
   return (messages || [])
     .filter((message) => !message.isDeleted && !String(message.messageType || "").includes("system") && String(message.pinnedAt || "").trim())
     .sort((left, right) => String(right.pinnedAt || "").localeCompare(String(left.pinnedAt || "")));
+}
+
+function chatMessageReactions(message = {}) {
+  return Array.isArray(message.reactions) ? message.reactions : [];
+}
+
+function currentUserReactionForMessage(message = {}) {
+  return chatMessageReactions(message).find((reaction) => reaction.userId === currentUser?.id) || null;
+}
+
+function renderChatReactionBar(message = {}) {
+  const reactions = chatMessageReactions(message);
+  const grouped = new Map();
+  reactions.forEach((reaction) => {
+    if (!grouped.has(reaction.emoji)) {
+      grouped.set(reaction.emoji, []);
+    }
+    grouped.get(reaction.emoji).push(reaction);
+  });
+  const summary = Array.from(grouped.entries())
+    .map(([emoji, entries]) => {
+      const active = entries.some((entry) => entry.userId === currentUser?.id);
+      const names = entries.map((entry) => entry.displayName || entry.userId).join(", ");
+      return `<span class="chat-reaction-chip ${active ? "active" : ""}" title="${escapeHtml(names)}">${escapeHtml(emoji)} <small>${escapeHtml(String(entries.length))}</small></span>`;
+    })
+    .join("");
+  const picker = CHAT_REACTION_EMOJIS.map((emoji) => {
+    const active = currentUserReactionForMessage(message)?.emoji === emoji;
+    return `<button class="ghost-action chat-reaction-picker ${active ? "active" : ""}" type="button" data-chat-react="${escapeHtml(message.id)}" data-chat-react-emoji="${escapeHtml(emoji)}">${escapeHtml(emoji)}</button>`;
+  }).join("");
+  return `
+    <div class="chat-reaction-bar">
+      ${summary ? `<div class="chat-reaction-summary">${summary}</div>` : ""}
+      <div class="chat-reaction-picker-row">${picker}</div>
+    </div>
+  `;
 }
 
 function scrollToChatMessage(messageId) {
@@ -4236,6 +4357,7 @@ async function syncChatInbox(options = {}) {
     const nextUnreadTotal = Number(state?.chatUnreadCount?.totalUnreadMessages || 0);
     if (chatSyncPrimed && showToastOnNewMessages && nextUnreadTotal > previousUnreadTotal) {
       notifyNewChatMessage(selectNewestUnreadConversation(state.chatConversations || [], previousConversations));
+      playChatAlertSound();
     }
     chatSyncPrimed = true;
   } finally {
@@ -4391,6 +4513,7 @@ function renderChatWorkspace() {
                 ${message.pinnedAt ? `<span class="status-pill warning">Fijado</span>` : ""}
                 ${isSearchHit ? `<span class="status-pill info">${escapeHtml(searchMatchLabel || "Coincide con la busqueda")}</span>` : ""}
                 ${renderRichChatAttachmentLinks(message.attachments || [])}
+                ${!isSystemMessage ? renderChatReactionBar(message) : ""}
                 <div class="chat-message-actions">
                   ${!isSystemMessage ? `<button class="ghost-action" type="button" data-chat-reply="${message.id}">Responder</button>` : ""}
                   ${!isSystemMessage ? `<button class="ghost-action" type="button" data-chat-pin="${message.id}" data-chat-pin-next="${message.pinnedAt ? "false" : "true"}">${message.pinnedAt ? "Quitar fijado" : "Fijar"}</button>` : ""}
@@ -4984,6 +5107,36 @@ async function toggleCurrentChatMessagePin(messageId, shouldPin) {
   await refreshChatFromApi({ includeMessages: true });
   renderChatWorkspace();
   showToast(shouldPin ? "Mensaje fijado." : "Mensaje quitado de fijados.");
+}
+
+async function reactToCurrentChatMessage(messageId, emoji) {
+  const activeConversation = activeChatConversation();
+  if (!activeConversation?.id || !messageId || !emoji) {
+    showToast("No pude actualizar la reaccion.");
+    return;
+  }
+  const message = activeChatMessages().find((item) => item.id === messageId) || null;
+  const currentReaction = currentUserReactionForMessage(message);
+  const nextEmoji = currentReaction?.emoji === emoji ? "" : emoji;
+  await updateApiChatMessage(activeConversation.id, messageId, {
+    reactionEmoji: nextEmoji,
+  });
+  await refreshChatFromApi({ includeMessages: true });
+  renderChatWorkspace();
+}
+
+async function updateChatAlertSoundPreference(mode) {
+  const nextSettings =
+    mode === "permanent"
+      ? { soundMode: "muted-permanent", mutedUntil: null }
+      : mode === "temp"
+        ? { soundMode: "enabled", mutedUntil: new Date(Date.now() + CHAT_TEMP_MUTE_DURATION_MS).toISOString() }
+        : { soundMode: "enabled", mutedUntil: null };
+  currentUser = await updateCurrentUserChatAlertSettings(nextSettings);
+  renderChatWorkspace();
+  showToast(
+    mode === "permanent" ? "Sonido silenciado permanentemente." : mode === "temp" ? "Sonido silenciado por 1 hora." : "Sonido activado.",
+  );
 }
 
 async function addAttendanceParticipant(name) {
@@ -6661,6 +6814,20 @@ function bindEvents() {
           showToast(error.message || "No pude actualizar el mensaje fijado.");
         }
       })();
+      return;
+    }
+    const reactionButton = event.target.closest("[data-chat-react]");
+    if (reactionButton) {
+      const messageId = reactionButton.dataset.chatReact;
+      const emoji = reactionButton.dataset.chatReactEmoji;
+      void (async () => {
+        try {
+          await reactToCurrentChatMessage(messageId, emoji);
+        } catch (error) {
+          console.error(error);
+          showToast(error.message || "No pude actualizar la reaccion.");
+        }
+      })();
     }
   });
 
@@ -6668,6 +6835,29 @@ function bindEvents() {
     const messageId = event.target.closest("[data-chat-scroll-to-message]")?.dataset.chatScrollToMessage;
     if (!messageId) return;
     scrollToChatMessage(messageId);
+  });
+
+  elements.chatDetailsGrid?.addEventListener("click", (event) => {
+    const mode = event.target.closest("[data-chat-sound-mode]")?.dataset.chatSoundMode;
+    if (!mode) return;
+    void (async () => {
+      try {
+        await updateChatAlertSoundPreference(mode);
+      } catch (error) {
+        console.error(error);
+        showToast(error.message || "No pude guardar la preferencia de sonido.");
+      }
+    })();
+  });
+
+  ["pointerdown", "keydown"].forEach((eventName) => {
+    document.addEventListener(
+      eventName,
+      () => {
+        void unlockChatAudio();
+      },
+      { passive: true },
+    );
   });
 
   elements.chatReplyPreview?.addEventListener("click", (event) => {

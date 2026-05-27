@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from "./mel-api.js?v=20260527c";
+import { getApiBaseUrl } from "./mel-api.js?v=20260527d";
 
 const AUTH_STORAGE_KEY = "pulso-me-auth-v1";
 const AUTH_SESSION_KEY = "pulso-me-session-v1";
@@ -378,6 +378,15 @@ function normalizeViewPermissions(items = []) {
   return uniqueStrings(items.filter((item) => allowedIds.has(item)));
 }
 
+function normalizeChatAlertSettings(settings = {}) {
+  const soundMode = String(settings.soundMode || "").trim() === "muted-permanent" ? "muted-permanent" : "enabled";
+  const mutedUntil = settings.mutedUntil ? String(settings.mutedUntil) : null;
+  return {
+    soundMode,
+    mutedUntil,
+  };
+}
+
 function defaultPermissionsForRole(role) {
   return clone(DEFAULT_VIEW_PERMISSIONS[normalizeRoleLabel(role)] || DEFAULT_VIEW_PERMISSIONS.Facilitador);
 }
@@ -566,6 +575,7 @@ function normalizeUser(user = {}) {
     temporaryPasswordIssuedAt: user.temporaryPasswordIssuedAt || null,
     lastLoginAt: user.lastLoginAt || null,
     accessNote: user.accessNote || "",
+    chatAlertSettings: normalizeChatAlertSettings(user.chatAlertSettings),
     organizationId: String(user.organizationId || DEFAULT_ORGANIZATION.id),
     organizationName: String(user.organizationName || DEFAULT_ORGANIZATION.name),
     createdAt: user.createdAt || nowIso(),
@@ -860,6 +870,14 @@ export async function getCurrentUser() {
   }
   if (!state.session?.userId) return null;
   return clone(state.users.find((user) => user.id === state.session.userId) || null);
+}
+
+export async function updateCurrentUserChatAlertSettings(chatAlertSettings = {}) {
+  const response = await requestAuthApi("preferences", {
+    method: "PATCH",
+    body: JSON.stringify({ chatAlertSettings }),
+  });
+  return clone(await upsertRemoteUser(response.user, "chat-alert-settings-updated-remote"));
 }
 
 export async function getSessionRole() {

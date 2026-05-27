@@ -808,6 +808,14 @@ function normalizedChatAttachment(input = {}) {
   };
 }
 
+function normalizedChatReaction(input = {}) {
+  return {
+    userId: normalizeString(input.userId, ""),
+    emoji: normalizeString(input.emoji, ""),
+    createdAt: normalizeString(input.createdAt, nowIso()),
+  };
+}
+
 function normalizedChatMessage(input = {}, existing = {}) {
   const timestamp = nowIso();
   return {
@@ -827,6 +835,11 @@ function normalizedChatMessage(input = {}, existing = {}) {
       ? input.attachments.map(normalizedChatAttachment)
       : Array.isArray(existing.attachments)
         ? existing.attachments.map(normalizedChatAttachment)
+        : [],
+    reactions: Array.isArray(input.reactions)
+      ? input.reactions.map(normalizedChatReaction).filter((reaction) => reaction.userId && reaction.emoji)
+      : Array.isArray(existing.reactions)
+        ? existing.reactions.map(normalizedChatReaction).filter((reaction) => reaction.userId && reaction.emoji)
         : [],
     pinnedAt: input.pinnedAt === null ? null : normalizeString(input.pinnedAt, existing.pinnedAt || ""),
     pinnedByUserId: input.pinnedByUserId === null ? null : normalizeString(input.pinnedByUserId, existing.pinnedByUserId || ""),
@@ -2340,6 +2353,24 @@ export function updateChatMessage(conversationId, messageId, input = {}) {
     const nextPinned = Boolean(input.isPinned);
     message.pinnedAt = nextPinned ? input.pinnedAt || timestamp : "";
     message.pinnedByUserId = nextPinned ? normalizeString(input.pinnedByUserId, message.pinnedByUserId || "") : "";
+  }
+  if (Object.prototype.hasOwnProperty.call(input, "reactionEmoji")) {
+    const actorUserId = normalizeString(input.reactionUserId, "");
+    const reactionEmoji = normalizeString(input.reactionEmoji, "");
+    if (actorUserId) {
+      const existingReactions = Array.isArray(message.reactions) ? message.reactions : [];
+      const nextReactions = existingReactions.filter((reaction) => reaction.userId !== actorUserId);
+      if (reactionEmoji) {
+        nextReactions.push(
+          normalizedChatReaction({
+            userId: actorUserId,
+            emoji: reactionEmoji,
+            createdAt: timestamp,
+          }),
+        );
+      }
+      message.reactions = nextReactions;
+    }
   }
   message.updatedAt = timestamp;
   conversation.updatedAt = timestamp;

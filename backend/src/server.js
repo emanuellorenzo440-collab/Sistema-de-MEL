@@ -76,6 +76,7 @@ import {
   resetPasswordWithToken,
   signOutAuthSession,
   signInAuthUser,
+  updateOwnAuthUserPreferences,
   updateManagedAuthUser,
 } from "./data/auth-store.js";
 import { resolveAnalyticsScope, validateReportStatusChange } from "./domain/reporting-rules.js";
@@ -1406,6 +1407,12 @@ function decorateChatMessage(message, usersById) {
     ...message,
     senderName: usersById.get(message.senderUserId)?.fullName || message.senderUserId,
     pinnedByName: message.pinnedByUserId ? usersById.get(message.pinnedByUserId)?.fullName || message.pinnedByUserId : "",
+    reactions: Array.isArray(message.reactions)
+      ? message.reactions.map((reaction) => ({
+          ...reaction,
+          displayName: usersById.get(reaction.userId)?.fullName || reaction.userId,
+        }))
+      : [],
     readBy: Array.isArray(message.readBy)
       ? message.readBy.map((entry) => ({
           ...entry,
@@ -1674,22 +1681,34 @@ export async function handleChatMessageUpdate(request, response, conversationId,
       return;
     }
     const payload = await readJsonBody(request);
-    if (!Object.prototype.hasOwnProperty.call(payload, "isPinned")) {
+    if (!Object.prototype.hasOwnProperty.call(payload, "isPinned") && !Object.prototype.hasOwnProperty.call(payload, "reactionEmoji")) {
       sendJson(response, 400, { error: "No hay cambios validos para este mensaje." });
       return;
     }
     const updated = updateChatMessage(conversationId, messageId, {
-      isPinned: payload.isPinned === true,
-      pinnedAt: payload.isPinned === true ? nowIso() : null,
-      pinnedByUserId: payload.isPinned === true ? actor.id : null,
+      ...(Object.prototype.hasOwnProperty.call(payload, "isPinned")
+        ? {
+            isPinned: payload.isPinned === true,
+            pinnedAt: payload.isPinned === true ? nowIso() : null,
+            pinnedByUserId: payload.isPinned === true ? actor.id : null,
+          }
+        : {}),
+      ...(Object.prototype.hasOwnProperty.call(payload, "reactionEmoji")
+        ? {
+            reactionEmoji: payload.reactionEmoji,
+            reactionUserId: actor.id,
+          }
+        : {}),
     });
     if (!updated) {
       sendJson(response, 404, { error: "No encontre el mensaje solicitado." });
       return;
     }
     const usersById = chatUserDirectory(actor);
-    const pinVerb = payload.isPinned === true ? "fijo" : "quito del panel fijado";
-    postSystemChatMessage(conversation, actor, `${actor.fullName || actor.id} ${pinVerb} un mensaje importante.`);
+    if (Object.prototype.hasOwnProperty.call(payload, "isPinned")) {
+      const pinVerb = payload.isPinned === true ? "fijo" : "quito del panel fijado";
+      postSystemChatMessage(conversation, actor, `${actor.fullName || actor.id} ${pinVerb} un mensaje importante.`);
+    }
     sendJson(response, 200, { data: decorateChatMessage(updated, usersById) });
   } catch (error) {
     sendApiError(response, error);
@@ -2452,6 +2471,19 @@ export async function handleAuthUserDelete(request, response, userId) {
   }
 }
 
+export async function handleAuthPreferencesUpdate(request, response) {
+  try {
+    const actor = requireAuthenticatedUser(request, response);
+    if (!actor) return;
+    const payload = await readJsonBody(request);
+    sendJson(response, 200, {
+      user: updateOwnAuthUserPreferences(actor.id, payload),
+    });
+  } catch (error) {
+    sendApiError(response, error);
+  }
+}
+
 async function router(request, response) {
   if (request.method === "OPTIONS") {
     sendEmpty(response);
@@ -2499,6 +2531,11 @@ async function router(request, response) {
 
   if (request.method === "POST" && pathname === "/api/v1/auth/complete-password-change") {
     await handleAuthPasswordChange(request, response);
+    return;
+  }
+
+  if (request.method === "PATCH" && pathname === "/api/v1/auth/preferences") {
+    await handleAuthPreferencesUpdate(request, response);
     return;
   }
 

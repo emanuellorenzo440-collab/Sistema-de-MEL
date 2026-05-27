@@ -964,6 +964,45 @@ h3 {
   gap: 8px;
 }
 
+.chat-reaction-bar {
+  display: grid;
+  gap: 8px;
+}
+
+.chat-reaction-summary,
+.chat-reaction-picker-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chat-reaction-chip,
+.chat-reaction-picker {
+  align-items: center;
+  border-radius: 999px;
+  display: inline-flex;
+  gap: 6px;
+  min-height: 32px;
+  padding: 6px 10px;
+}
+
+.chat-reaction-chip {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+
+.chat-reaction-chip.active,
+.chat-reaction-picker.active {
+  border-color: var(--teal);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--teal) 25%, transparent);
+}
+
+.chat-reaction-chip small {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
 .chat-attachment-preview {
   background: var(--surface-2);
   border: 1px solid var(--line);

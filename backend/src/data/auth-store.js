@@ -175,6 +175,15 @@ function normalizeList(values, fallback = []) {
   return [...new Set(list.filter(Boolean))];
 }
 
+function normalizeChatAlertSettings(value = {}) {
+  const soundMode = String(value.soundMode || "").trim() === "muted-permanent" ? "muted-permanent" : "enabled";
+  const mutedUntil = value.mutedUntil ? String(value.mutedUntil) : null;
+  return {
+    soundMode,
+    mutedUntil,
+  };
+}
+
 function rolePermissions(role) {
   return DEFAULT_ROLE_PERMISSIONS[role] || DEFAULT_ROLE_PERMISSIONS[SYSTEM_ROLES.facilitator];
 }
@@ -250,6 +259,7 @@ function safeUser(user) {
     organizationId: publicUser.organizationId || DEFAULT_ORGANIZATION.id,
     organizationName: publicUser.organizationName || DEFAULT_ORGANIZATION.name,
     mustChangePassword: Boolean(publicUser.mustChangePassword),
+    chatAlertSettings: normalizeChatAlertSettings(publicUser.chatAlertSettings),
   };
 }
 
@@ -277,6 +287,7 @@ function normalizeUser(user) {
     updatedBy: user.updatedBy || user.createdBy || "system",
     lastLoginAt: user.lastLoginAt || null,
     passwordChangedAt: user.passwordChangedAt || null,
+    chatAlertSettings: normalizeChatAlertSettings(user.chatAlertSettings),
   };
 }
 
@@ -760,12 +771,34 @@ export function updateManagedAuthUser(id, updates, actorOrId) {
   if (typeof updates.mustChangePassword === "boolean") {
     user.mustChangePassword = updates.mustChangePassword;
   }
+  if (updates.chatAlertSettings && typeof updates.chatAlertSettings === "object") {
+    user.chatAlertSettings = normalizeChatAlertSettings({
+      ...user.chatAlertSettings,
+      ...updates.chatAlertSettings,
+    });
+  }
   user.updatedAt = nowIso();
   user.updatedBy = actor.id;
 
   audit("auth.userUpdated", { actorId: actor.id, userId: user.id, email: user.email });
   persist();
 
+  return safeUser(user);
+}
+
+export function updateOwnAuthUserPreferences(userId, updates = {}) {
+  const user = findUserById(userId);
+  if (!user) {
+    throw authError(404, "No encontre ese usuario.");
+  }
+  user.chatAlertSettings = normalizeChatAlertSettings({
+    ...user.chatAlertSettings,
+    ...(updates.chatAlertSettings || {}),
+  });
+  user.updatedAt = nowIso();
+  user.updatedBy = user.id;
+  audit("auth.userPreferencesUpdated", { userId: user.id, email: user.email });
+  persist();
   return safeUser(user);
 }
 
