@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260526m";
+import { $, $$, elements } from "../core/dom.js?v=20260527a";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260526m";
+} from "../services/auth-service.js?v=20260527a";
 import {
   apiFileUrl,
   addApiChatParticipants,
@@ -76,7 +76,7 @@ import {
   updateApiProgram,
   updateApiProgramCenter,
   uploadApiFile,
-} from "../services/mel-api.js?v=20260526m";
+} from "../services/mel-api.js?v=20260527a";
 import {
   currentMonth,
   escapeHtml,
@@ -119,6 +119,7 @@ let chatSyncIntervalId = null;
 let chatSyncInFlight = false;
 let chatPresenceIntervalId = null;
 let chatPresenceInFlight = false;
+let chatMessageSendInFlight = false;
 let chatAttachmentFiles = [];
 let chatSearchResults = null;
 let chatReplyMessageId = "";
@@ -3445,6 +3446,15 @@ function activeChatConversation() {
   );
 }
 
+function chatMessageStatusLabel(message, conversation = activeChatConversation()) {
+  if (!message || message.senderUserId !== currentUser?.id) return "";
+  if (Array.isArray(message.readBy) && message.readBy.length) {
+    return `Leido por ${message.readBy.length}`;
+  }
+  const otherParticipants = (conversation?.participants || []).filter((participant) => participant.userId !== currentUser?.id && !participant.leftAt);
+  return otherParticipants.length ? "Enviado" : "";
+}
+
 function activeChatPresenceSnapshot(conversation = activeChatConversation()) {
   if (!conversation?.id) return null;
   return state.chatPresenceByConversation?.[conversation.id] || null;
@@ -4311,10 +4321,7 @@ function renderChatWorkspace() {
           .map(
             (message) => {
               const replied = message.replyToMessageId ? chatReplyMessage(message.replyToMessageId, messages) : null;
-              const readSummary =
-                message.senderUserId === currentUser?.id && Array.isArray(message.readBy) && message.readBy.length
-                  ? `Leido por ${message.readBy.length}`
-                  : "";
+              const readSummary = chatMessageStatusLabel(message, activeConversation);
               const isSystemMessage = message.messageType === "system";
               const activeConversationSearchHits = searchInsights.messagesByConversationId.get(activeConversation.id) || [];
               const isSearchHit = activeConversationSearchHits.some((item) => item.id === message.id);
@@ -4833,6 +4840,7 @@ async function leaveActiveChatConversation() {
 }
 
 async function sendCurrentChatMessage() {
+  if (chatMessageSendInFlight) return;
   const activeConversation = activeChatConversation();
   const body = String(elements.chatComposerInput?.value || "").trim();
   const selectedFiles = Array.from(chatAttachmentFiles || []);
@@ -4844,24 +4852,37 @@ async function sendCurrentChatMessage() {
     showToast("Escribe un mensaje o adjunta un archivo.");
     return;
   }
-  const attachments = await attachmentsFromFiles(selectedFiles, currentUser?.email || activeRole(), "chat-attachments");
-  const inferredType =
-    attachments.length && attachments.every((attachment) => String(attachment.type || "").startsWith("image/")) ? "image" : attachments.length ? "file" : "text";
-  stopChatTyping({ conversationId: activeConversation.id });
-  await createApiChatMessage(activeConversation.id, {
-    messageType: inferredType,
-    body,
-    replyToMessageId: chatReplyMessageId || "",
-    attachments,
-  });
-  elements.chatComposerInput.value = "";
-  if (elements.chatAttachmentInput) {
-    elements.chatAttachmentInput.value = "";
+  chatMessageSendInFlight = true;
+  const submitButton = elements.chatComposerForm?.querySelector('button[type="submit"]');
+  if (submitButton) {
+    submitButton.disabled = true;
   }
-  setChatAttachmentFiles([]);
-  clearChatReplyTarget();
-  await refreshChatFromApi({ includeMessages: true });
-  renderChatWorkspace();
+  try {
+    const attachments = await attachmentsFromFiles(selectedFiles, currentUser?.email || activeRole(), "chat-attachments");
+    const inferredType =
+      attachments.length && attachments.every((attachment) => String(attachment.type || "").startsWith("image/")) ? "image" : attachments.length ? "file" : "text";
+    stopChatTyping({ conversationId: activeConversation.id });
+    await createApiChatMessage(activeConversation.id, {
+      messageType: inferredType,
+      body,
+      replyToMessageId: chatReplyMessageId || "",
+      attachments,
+    });
+    elements.chatComposerInput.value = "";
+    if (elements.chatAttachmentInput) {
+      elements.chatAttachmentInput.value = "";
+    }
+    setChatAttachmentFiles([]);
+    clearChatReplyTarget();
+    await refreshChatFromApi({ includeMessages: true });
+    renderChatWorkspace();
+    elements.chatComposerInput?.focus();
+  } finally {
+    chatMessageSendInFlight = false;
+    if (submitButton) {
+      submitButton.disabled = false;
+    }
+  }
 }
 
 async function addAttendanceParticipant(name) {
@@ -6451,6 +6472,15 @@ function bindEvents() {
 
   elements.chatComposerInput?.addEventListener("input", () => {
     handleChatComposerInputChange();
+  });
+
+  elements.chatComposerInput?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey || event.isComposing) {
+      return;
+    }
+    event.preventDefault();
+    if (chatMessageSendInFlight) return;
+    elements.chatComposerForm?.requestSubmit();
   });
 
   elements.chatAttachmentInput?.addEventListener("change", () => {
