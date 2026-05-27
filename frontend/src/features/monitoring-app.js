@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260527h";
+import { $, $$, elements } from "../core/dom.js?v=20260527i";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -21,7 +21,7 @@ import {
   listVisibleViews,
   updateCurrentUserChatAlertSettings,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260527h";
+} from "../services/auth-service.js?v=20260527i";
 import {
   apiFileUrl,
   addApiChatParticipants,
@@ -78,7 +78,7 @@ import {
   updateApiProgram,
   updateApiProgramCenter,
   uploadApiFile,
-} from "../services/mel-api.js?v=20260527h";
+} from "../services/mel-api.js?v=20260527i";
 import {
   currentMonth,
   escapeHtml,
@@ -123,6 +123,7 @@ let appRefreshInFlight = false;
 let eventsBound = false;
 let stateSyncListenerBound = false;
 let startupSyncPromise = null;
+let pendingInteractiveRender = false;
 let accessSyncIntervalId = null;
 let accessSyncInFlight = false;
 let chatSyncIntervalId = null;
@@ -3276,7 +3277,11 @@ async function refreshAccessStateFromRemote(options = {}) {
     const permissionsChanged = previousSignature !== nextSignature;
 
     if (permissionsChanged) {
-      renderAll();
+      if (viewNeedsInteractionProtection() && isInteractiveUiOpen()) {
+        requestDeferredInteractiveRender();
+      } else {
+        renderAll();
+      }
       if (showToastOnPermissionChange && permissionsChanged) {
         showToast("Accesos actualizados.");
       }
@@ -3375,6 +3380,35 @@ function switchView(viewName, options = {}) {
   }
   if (persist && state) {
     saveState();
+  }
+}
+
+function viewNeedsInteractionProtection(viewName = state?.activeView || activeViewName()) {
+  return ["chat", "access", "programs"].includes(viewName);
+}
+
+function isInteractiveUiOpen() {
+  const activeElement = document.activeElement;
+  const activeTag = String(activeElement?.tagName || "").toLowerCase();
+  const activeView = document.querySelector(`.view.active[data-view-panel="${state?.activeView || activeViewName()}"]`) || document.querySelector(".view.active");
+  const hasOpenDetails = Boolean(activeView?.querySelector("details[open]"));
+  const hasFocusedControl =
+    activeElement &&
+    ["select", "input", "textarea", "button"].includes(activeTag) &&
+    activeElement !== document.body &&
+    activeView?.contains(activeElement);
+  return Boolean(hasOpenDetails || hasFocusedControl);
+}
+
+function requestDeferredInteractiveRender() {
+  pendingInteractiveRender = true;
+}
+
+function flushDeferredInteractiveRender() {
+  if (!pendingInteractiveRender) return;
+  if (!viewNeedsInteractionProtection() || !isInteractiveUiOpen()) {
+    pendingInteractiveRender = false;
+    renderAll();
   }
 }
 
@@ -4705,8 +4739,10 @@ async function syncChatInbox(options = {}) {
       previousConversationSignature !== nextConversationSignature ||
       previousUnreadSignature !== nextUnreadSignature ||
       previousActiveMessagesSignature !== nextActiveMessagesSignature;
-    if (shouldRenderChat) {
+    if (shouldRenderChat && !(state?.activeView === "chat" && isInteractiveUiOpen())) {
       renderChatWorkspace();
+    } else if (shouldRenderChat && state?.activeView === "chat" && isInteractiveUiOpen()) {
+      requestDeferredInteractiveRender();
     }
     let shouldPlayAlert = false;
     if (state?.activeView === "chat" && state.chatActiveConversationId) {
@@ -7309,6 +7345,18 @@ function bindEvents() {
     );
   });
 
+  document.addEventListener("focusout", () => {
+    window.setTimeout(() => {
+      flushDeferredInteractiveRender();
+    }, 20);
+  });
+
+  document.addEventListener("toggle", () => {
+    window.setTimeout(() => {
+      flushDeferredInteractiveRender();
+    }, 20);
+  }, true);
+
   elements.chatReplyPreview?.addEventListener("click", (event) => {
     if (event.target.closest("[data-clear-chat-reply]")) {
       clearChatReplyTarget();
@@ -8341,7 +8389,11 @@ export function createMonitoringApp() {
       void (async () => {
         try {
           await syncAuthenticatedAccess();
-          renderAll();
+          if (viewNeedsInteractionProtection() && isInteractiveUiOpen()) {
+            requestDeferredInteractiveRender();
+          } else {
+            renderAll();
+          }
         } catch (error) {
           console.error("No pude rehidratar el acceso despues de sincronizar estado.", error);
           showToast("No pude refrescar todos los permisos. Vuelve a intentar.");
