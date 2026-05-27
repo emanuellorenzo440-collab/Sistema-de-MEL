@@ -1327,6 +1327,46 @@ textarea {
   font-weight: 700;
 }
 
+.chat-pdf-attachment {
+  background: #fff4e8;
+  border: 1px solid #f1c48a;
+  border-radius: 12px;
+  display: grid;
+  gap: 10px;
+  max-width: 320px;
+  overflow: hidden;
+  padding: 10px;
+}
+
+.chat-pdf-attachment iframe {
+  aspect-ratio: 4 / 3;
+  background: white;
+  border: 1px solid #f1c48a;
+  border-radius: 8px;
+  width: 100%;
+}
+
+.chat-pdf-attachment-meta {
+  display: grid;
+  gap: 4px;
+}
+
+.chat-pdf-attachment-meta strong {
+  font-size: 0.95rem;
+}
+
+.chat-pdf-attachment-meta small {
+  color: #8a4c05;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.chat-pdf-attachment-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .attachment-link small {
   color: var(--muted);
   font-size: 0.76rem;

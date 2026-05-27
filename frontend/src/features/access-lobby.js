@@ -10,7 +10,7 @@ import {
   signOutUser,
   signUpUser,
   verifyRegisteredUserByLink,
-} from "../services/auth-service.js?v=20260527a";
+} from "../services/auth-service.js?v=20260527b";
 
 const sections = ["signin", "signup", "forgot", "force-password", "reset-password"];
 const INACTIVITY_TIMEOUT_MS = 60 * 1000;

@@ -2406,12 +2406,32 @@ export function searchChat(filters = {}) {
     allowedConversationIds.add(participant.conversationId),
   );
   const messages = chatMessages
-    .filter((message) => {
+    .map((message) => {
       const scopedOrganizationId = organizationId || companyId;
-      if (scopedOrganizationId && (message.organizationId || message.companyId || DEFAULT_COMPANY_ID) !== scopedOrganizationId) return false;
-      if (!allowedConversationIds.has(message.conversationId)) return false;
-      return String(message.body || "").toLowerCase().includes(query);
+      if (scopedOrganizationId && (message.organizationId || message.companyId || DEFAULT_COMPANY_ID) !== scopedOrganizationId) return null;
+      if (!allowedConversationIds.has(message.conversationId)) return null;
+      const body = String(message.body || "");
+      const sender = String(message.senderName || "");
+      const attachmentNames = Array.isArray(message.attachments)
+        ? message.attachments
+            .map((attachment) => String(attachment.name || attachment.fileName || "").trim())
+            .filter(Boolean)
+        : [];
+      const lowerBody = body.toLowerCase();
+      const lowerSender = sender.toLowerCase();
+      const matchingAttachment = attachmentNames.find((name) => name.toLowerCase().includes(query)) || "";
+      const matchesBody = lowerBody.includes(query);
+      const matchesSender = lowerSender.includes(query);
+      if (!matchesBody && !matchesSender && !matchingAttachment) return null;
+      const matchSource = matchesBody ? "message" : matchingAttachment ? "attachment" : "sender";
+      const matchPreview = matchesBody ? body : matchingAttachment ? `Adjunto: ${matchingAttachment}` : `Usuario: ${sender}`;
+      return {
+        ...structuredClone(message),
+        matchSource,
+        matchPreview,
+      };
     })
+    .filter(Boolean)
     .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)))
     .slice(0, 50)
     .map((message) => structuredClone(message));

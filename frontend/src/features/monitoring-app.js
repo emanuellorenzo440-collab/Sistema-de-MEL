@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260527a";
+import { $, $$, elements } from "../core/dom.js?v=20260527b";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -20,7 +20,7 @@ import {
   listManagedUsers,
   listVisibleViews,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260527a";
+} from "../services/auth-service.js?v=20260527b";
 import {
   apiFileUrl,
   addApiChatParticipants,
@@ -76,7 +76,7 @@ import {
   updateApiProgram,
   updateApiProgramCenter,
   uploadApiFile,
-} from "../services/mel-api.js?v=20260527a";
+} from "../services/mel-api.js?v=20260527b";
 import {
   currentMonth,
   escapeHtml,
@@ -3601,7 +3601,7 @@ function renderChatSearchSummary(conversations = filteredChatConversations()) {
   if (!elements.chatSearchSummary) return;
   const query = String(state.chatSearch || "").trim();
   if (!query) {
-    elements.chatSearchSummary.innerHTML = `<p class="item-meta">Busca por nombre, mensaje o participante.</p>`;
+    elements.chatSearchSummary.innerHTML = `<p class="item-meta">Busca por nombre, mensaje, participante o nombre de adjunto.</p>`;
     return;
   }
   const insights = activeChatSearchInsights();
@@ -4263,7 +4263,7 @@ function renderChatWorkspace() {
             const hasMessageMatch = matchedMessages.length > 0;
             const searchBadge = normalizedQuery
               ? hasMessageMatch
-                ? `<span class="status-pill info">Coincide en mensaje</span>`
+                ? `<span class="status-pill info">${escapeHtml(chatSearchMatchLabel(matchedMessage) || "Coincide en mensaje")}</span>`
                 : hasConversationMatch
                   ? `<span class="status-pill neutral">Coincide en chat</span>`
                   : ""
@@ -4276,7 +4276,7 @@ function renderChatWorkspace() {
               </div>
               <p class="item-meta">${escapeHtml(chatConversationMeta(conversation))}</p>
               ${searchBadge}
-              <p>${escapeHtml(String(matchedMessage?.body || conversation.lastMessagePreview || "Sin mensajes todavia.").slice(0, 180))}</p>
+              <p>${escapeHtml(chatSearchPreviewText(matchedMessage, conversation.lastMessagePreview).slice(0, 180))}</p>
             </article>
           `;
           },
@@ -4325,6 +4325,7 @@ function renderChatWorkspace() {
               const isSystemMessage = message.messageType === "system";
               const activeConversationSearchHits = searchInsights.messagesByConversationId.get(activeConversation.id) || [];
               const isSearchHit = activeConversationSearchHits.some((item) => item.id === message.id);
+              const searchMatchLabel = isSearchHit ? chatSearchMatchLabel(activeConversationSearchHits.find((item) => item.id === message.id) || message) : "";
               return `
               <article class="chat-message-item ${message.senderUserId === currentUser?.id ? "mine" : ""} ${isSystemMessage ? "system" : ""} ${isSearchHit ? "search-hit" : ""}">
                 <div class="chat-message-item-head">
@@ -4337,7 +4338,7 @@ function renderChatWorkspace() {
                     : ""
                 }
                 <p>${escapeHtml(message.body || "(Sin texto)")}</p>
-                ${isSearchHit ? `<span class="status-pill info">Coincide con la busqueda</span>` : ""}
+                ${isSearchHit ? `<span class="status-pill info">${escapeHtml(searchMatchLabel || "Coincide con la busqueda")}</span>` : ""}
                 ${renderRichChatAttachmentLinks(message.attachments || [])}
                 <div class="chat-message-actions">
                   ${!isSystemMessage ? `<button class="ghost-action" type="button" data-chat-reply="${message.id}">Responder</button>` : ""}
@@ -4391,6 +4392,28 @@ function renderChatAttachmentLinks(attachments = []) {
   return `<div class="attachment-list">${items}</div>`;
 }
 
+function chatSearchMatchLabel(message) {
+  const source = String(message?.matchSource || "").trim().toLowerCase();
+  if (source === "attachment") return "Coincide en adjunto";
+  if (source === "sender") return "Coincide en remitente";
+  if (source === "message") return "Coincide en mensaje";
+  return "";
+}
+
+function chatSearchPreviewText(message, fallback = "") {
+  const explicitPreview = String(message?.matchPreview || "").trim();
+  if (explicitPreview) return explicitPreview;
+  const body = String(message?.body || "").trim();
+  if (body) return body;
+  return String(fallback || "").trim() || "Sin mensajes todavia.";
+}
+
+function chatPdfPreviewUrl(href) {
+  const normalized = String(href || "").trim();
+  if (!normalized) return "";
+  return normalized.includes("#") ? normalized : `${normalized}#view=FitH&toolbar=0&navpanes=0&scrollbar=0`;
+}
+
 function renderRichChatAttachmentLinks(attachments = []) {
   if (!Array.isArray(attachments) || !attachments.length) return "";
   const items = attachments
@@ -4412,7 +4435,19 @@ function renderRichChatAttachmentLinks(attachments = []) {
         `;
       }
       if (isPdfChatAttachment(attachment)) {
-        return `<a class="attachment-link pdf" href="${escapeHtml(href)}" target="_blank" rel="noreferrer">PDF: ${label}${meta ? ` <small>${escapeHtml(meta)}</small>` : ""}</a>`;
+        const previewUrl = chatPdfPreviewUrl(href);
+        return `
+          <article class="chat-pdf-attachment">
+            <iframe src="${escapeHtml(previewUrl)}" title="${label}" loading="lazy"></iframe>
+            <div class="chat-pdf-attachment-meta">
+              <strong>${label}</strong>
+              ${meta ? `<small>${escapeHtml(meta)}</small>` : ""}
+            </div>
+            <div class="chat-pdf-attachment-actions">
+              <a class="attachment-link pdf" href="${escapeHtml(href)}" target="_blank" rel="noreferrer">Abrir PDF</a>
+            </div>
+          </article>
+        `;
       }
       return `<a class="attachment-link" href="${escapeHtml(href)}" target="_blank" rel="noreferrer">Abrir ${label}${meta ? ` <small>${escapeHtml(meta)}</small>` : ""}</a>`;
     })
