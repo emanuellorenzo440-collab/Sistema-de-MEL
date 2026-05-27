@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260527j";
+import { $, $$, elements } from "../core/dom.js?v=20260527k";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -21,7 +21,7 @@ import {
   listVisibleViews,
   updateCurrentUserChatAlertSettings,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260527j";
+} from "../services/auth-service.js?v=20260527k";
 import {
   apiFileUrl,
   addApiChatParticipants,
@@ -78,7 +78,7 @@ import {
   updateApiProgram,
   updateApiProgramCenter,
   uploadApiFile,
-} from "../services/mel-api.js?v=20260527j";
+} from "../services/mel-api.js?v=20260527k";
 import {
   currentMonth,
   escapeHtml,
@@ -4318,6 +4318,12 @@ function closeChatActionMenus() {
   openChatOptionsMessageId = "";
 }
 
+function closeChatActionMenusAndRender() {
+  if (!openChatReactionMessageId && !openChatOptionsMessageId) return;
+  closeChatActionMenus();
+  renderChatWorkspace();
+}
+
 async function handleChatSearchQuery(query) {
   state.chatSearch = query;
   saveState();
@@ -7284,18 +7290,19 @@ function bindEvents() {
     }
     const replyId = event.target.closest("[data-chat-reply]")?.dataset.chatReply;
     if (replyId) {
-      closeChatActionMenus();
+      closeChatActionMenusAndRender();
       startReplyToChatMessage(replyId);
       return;
     }
     const editId = event.target.closest("[data-chat-edit]")?.dataset.chatEdit;
     if (editId) {
-      closeChatActionMenus();
+      closeChatActionMenusAndRender();
       startEditChatMessage(editId);
       return;
     }
     const deleteId = event.target.closest("[data-chat-delete]")?.dataset.chatDelete;
     if (deleteId) {
+      closeChatActionMenusAndRender();
       void (async () => {
         try {
           const activeConversation = activeChatConversation();
@@ -7313,7 +7320,6 @@ function bindEvents() {
             }
             setChatAttachmentFiles([]);
           }
-          closeChatActionMenus();
           await refreshChatFromApi({ includeMessages: true });
           renderChatWorkspace();
           showToast("Mensaje eliminado.");
@@ -7326,7 +7332,7 @@ function bindEvents() {
     }
     const pinButton = event.target.closest("[data-chat-pin]");
     if (pinButton) {
-      closeChatActionMenus();
+      closeChatActionMenusAndRender();
       const messageId = pinButton.dataset.chatPin;
       const nextPinned = pinButton.dataset.chatPinNext === "true";
       void (async () => {
@@ -7341,7 +7347,7 @@ function bindEvents() {
     }
     const reactionButton = event.target.closest("[data-chat-react]");
     if (reactionButton) {
-      closeChatActionMenus();
+      closeChatActionMenusAndRender();
       const messageId = reactionButton.dataset.chatReact;
       const emoji = reactionButton.dataset.chatReactEmoji;
       void (async () => {
@@ -7354,6 +7360,12 @@ function bindEvents() {
       })();
       return;
     }
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!(event.target instanceof Element)) return;
+    if (event.target.closest(".chat-message-menu, .chat-reaction-menu")) return;
+    closeChatActionMenusAndRender();
   });
 
   elements.chatPinnedMessages?.addEventListener("click", (event) => {
