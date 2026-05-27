@@ -1035,6 +1035,28 @@ h3 {
   gap: 8px;
 }
 
+.chat-reaction-menu {
+  display: grid;
+  gap: 8px;
+}
+
+.chat-reaction-menu summary {
+  color: var(--teal);
+  cursor: pointer;
+  font-size: 0.92rem;
+  font-weight: 700;
+  list-style: none;
+  width: fit-content;
+}
+
+.chat-reaction-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.chat-reaction-menu[open] summary {
+  color: var(--ink);
+}
+
 .chat-reaction-chip,
 .chat-reaction-picker {
   align-items: center;

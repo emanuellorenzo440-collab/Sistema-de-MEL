@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260527e";
+import { $, $$, elements } from "../core/dom.js?v=20260527f";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -21,7 +21,7 @@ import {
   listVisibleViews,
   updateCurrentUserChatAlertSettings,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260527e";
+} from "../services/auth-service.js?v=20260527f";
 import {
   apiFileUrl,
   addApiChatParticipants,
@@ -78,7 +78,7 @@ import {
   updateApiProgram,
   updateApiProgramCenter,
   uploadApiFile,
-} from "../services/mel-api.js?v=20260527e";
+} from "../services/mel-api.js?v=20260527f";
 import {
   currentMonth,
   escapeHtml,
@@ -3430,22 +3430,36 @@ function playChatAlertSound() {
   const context = ensureChatAudioContext();
   if (!context || context.state !== "running") return;
   const now = context.currentTime;
-  [
-    { start: 0, from: 980, to: 760, duration: 0.22 },
-    { start: 0.26, from: 980, to: 680, duration: 0.24 },
-  ].forEach((tone) => {
-    const oscillator = context.createOscillator();
-    const gain = context.createGain();
-    oscillator.type = "triangle";
-    oscillator.frequency.setValueAtTime(tone.from, now + tone.start);
-    oscillator.frequency.exponentialRampToValueAtTime(tone.to, now + tone.start + tone.duration);
-    gain.gain.setValueAtTime(0.0001, now + tone.start);
-    gain.gain.exponentialRampToValueAtTime(0.16, now + tone.start + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + tone.start + tone.duration);
-    oscillator.connect(gain);
-    gain.connect(context.destination);
-    oscillator.start(now + tone.start);
-    oscillator.stop(now + tone.start + tone.duration + 0.02);
+  const masterGain = context.createGain();
+  masterGain.gain.setValueAtTime(0.0001, now);
+  masterGain.gain.exponentialRampToValueAtTime(0.26, now + 0.02);
+  masterGain.gain.exponentialRampToValueAtTime(0.18, now + 0.34);
+  masterGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.72);
+  masterGain.connect(context.destination);
+
+  const tones = [
+    { start: 0, duration: 0.16, base: 1046, accent: 1567 },
+    { start: 0.2, duration: 0.17, base: 1318, accent: 1760 },
+    { start: 0.42, duration: 0.2, base: 987, accent: 1480 },
+  ];
+  tones.forEach((tone) => {
+    const baseOscillator = context.createOscillator();
+    const accentOscillator = context.createOscillator();
+    const toneGain = context.createGain();
+    baseOscillator.type = "square";
+    accentOscillator.type = "triangle";
+    baseOscillator.frequency.setValueAtTime(tone.base, now + tone.start);
+    accentOscillator.frequency.setValueAtTime(tone.accent, now + tone.start);
+    toneGain.gain.setValueAtTime(0.0001, now + tone.start);
+    toneGain.gain.exponentialRampToValueAtTime(0.36, now + tone.start + 0.02);
+    toneGain.gain.exponentialRampToValueAtTime(0.0001, now + tone.start + tone.duration);
+    baseOscillator.connect(toneGain);
+    accentOscillator.connect(toneGain);
+    toneGain.connect(masterGain);
+    baseOscillator.start(now + tone.start);
+    accentOscillator.start(now + tone.start);
+    baseOscillator.stop(now + tone.start + tone.duration + 0.02);
+    accentOscillator.stop(now + tone.start + tone.duration + 0.02);
   });
 }
 
@@ -3990,14 +4004,18 @@ function renderChatReactionBar(message = {}) {
       return `<span class="chat-reaction-chip ${active ? "active" : ""}" title="${escapeHtml(names)}">${escapeHtml(emoji)} <small>${escapeHtml(String(entries.length))}</small></span>`;
     })
     .join("");
+  const currentReaction = currentUserReactionForMessage(message);
   const picker = CHAT_REACTION_EMOJIS.map((emoji) => {
-    const active = currentUserReactionForMessage(message)?.emoji === emoji;
+    const active = currentReaction?.emoji === emoji;
     return `<button class="ghost-action chat-reaction-picker ${active ? "active" : ""}" type="button" data-chat-react="${escapeHtml(message.id)}" data-chat-react-emoji="${escapeHtml(emoji)}">${escapeHtml(emoji)}</button>`;
   }).join("");
   return `
     <div class="chat-reaction-bar">
       ${summary ? `<div class="chat-reaction-summary">${summary}</div>` : ""}
-      <div class="chat-reaction-picker-row">${picker}</div>
+      <details class="chat-reaction-menu">
+        <summary>${currentReaction ? `Cambiar reaccion ${currentReaction.emoji}` : "Reaccionar"}</summary>
+        <div class="chat-reaction-picker-row">${picker}</div>
+      </details>
     </div>
   `;
 }
