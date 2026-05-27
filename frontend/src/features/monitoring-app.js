@@ -383,6 +383,7 @@ function normalizeState(savedState) {
           totalUnreadMessages: Number(savedState.chatUnreadCount.totalUnreadMessages || 0),
         }
       : { totalUnreadConversations: 0, totalUnreadMessages: 0 };
+  nextState.chatSelectedDirectUserId = typeof savedState.chatSelectedDirectUserId === "string" ? savedState.chatSelectedDirectUserId : "";
   nextState.chatSearch = typeof savedState.chatSearch === "string" ? savedState.chatSearch : "";
   nextState.chatActiveConversationId = typeof savedState.chatActiveConversationId === "string" ? savedState.chatActiveConversationId : "";
   nextState.attendanceParticipants = Array.isArray(savedState.attendanceParticipants) ? savedState.attendanceParticipants.slice() : [];
@@ -3831,12 +3832,20 @@ async function handleChatSearchQuery(query) {
 function populateChatDirectoryChoices() {
   if (!elements.chatUserSelect) return;
   const users = state.chatDirectory || [];
+  const preferredUserId =
+    users.some((user) => user.id === state.chatSelectedDirectUserId)
+      ? state.chatSelectedDirectUserId
+      : users[0]?.id || "";
   elements.chatUserSelect.innerHTML = users
     .map(
       (user, index) =>
         `<option value="${escapeHtml(user.id)}" ${index === 0 ? "selected" : ""}>${escapeHtml(`${user.fullName} · ${user.primaryRole || "Usuario"}`)}</option>`,
     )
     .join("");
+  if (preferredUserId) {
+    elements.chatUserSelect.value = preferredUserId;
+  }
+  state.chatSelectedDirectUserId = preferredUserId;
 }
 
 function renderChatGroupMemberChecklist() {
@@ -4427,6 +4436,8 @@ function setChatAttachmentFiles(files = []) {
 }
 
 async function createDirectChat(userId) {
+  state.chatSelectedDirectUserId = String(userId || "").trim();
+  saveState();
   const selectedUser = (state.chatDirectory || []).find((user) => user.id === userId);
   if (!selectedUser) {
     showToast("Selecciona un usuario valido.");
@@ -6431,6 +6442,11 @@ function bindEvents() {
 
   elements.chatSearchInput?.addEventListener("input", () => {
     void handleChatSearchQuery(elements.chatSearchInput.value || "");
+  });
+
+  elements.chatUserSelect?.addEventListener("change", () => {
+    state.chatSelectedDirectUserId = String(elements.chatUserSelect?.value || "").trim();
+    saveState();
   });
 
   elements.chatComposerInput?.addEventListener("input", () => {
