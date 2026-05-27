@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260527f";
+import { $, $$, elements } from "../core/dom.js?v=20260527g";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -21,7 +21,7 @@ import {
   listVisibleViews,
   updateCurrentUserChatAlertSettings,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260527f";
+} from "../services/auth-service.js?v=20260527g";
 import {
   apiFileUrl,
   addApiChatParticipants,
@@ -78,7 +78,7 @@ import {
   updateApiProgram,
   updateApiProgramCenter,
   uploadApiFile,
-} from "../services/mel-api.js?v=20260527f";
+} from "../services/mel-api.js?v=20260527g";
 import {
   currentMonth,
   escapeHtml,
@@ -3428,19 +3428,23 @@ async function unlockChatAudio() {
 function playChatAlertSound() {
   if (!canPlayChatAlertSound()) return;
   const context = ensureChatAudioContext();
-  if (!context || context.state !== "running") return;
+  if (!context) return;
+  if (context.state === "suspended") {
+    void context.resume().catch(() => {});
+  }
+  if (context.state !== "running" && context.state !== "suspended") return;
   const now = context.currentTime;
   const masterGain = context.createGain();
   masterGain.gain.setValueAtTime(0.0001, now);
-  masterGain.gain.exponentialRampToValueAtTime(0.26, now + 0.02);
-  masterGain.gain.exponentialRampToValueAtTime(0.18, now + 0.34);
-  masterGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.72);
+  masterGain.gain.exponentialRampToValueAtTime(0.48, now + 0.02);
+  masterGain.gain.exponentialRampToValueAtTime(0.28, now + 0.4);
+  masterGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.88);
   masterGain.connect(context.destination);
 
   const tones = [
-    { start: 0, duration: 0.16, base: 1046, accent: 1567 },
-    { start: 0.2, duration: 0.17, base: 1318, accent: 1760 },
-    { start: 0.42, duration: 0.2, base: 987, accent: 1480 },
+    { start: 0, duration: 0.18, base: 1180, accent: 1760 },
+    { start: 0.24, duration: 0.18, base: 1480, accent: 2093 },
+    { start: 0.5, duration: 0.22, base: 1110, accent: 1661 },
   ];
   tones.forEach((tone) => {
     const baseOscillator = context.createOscillator();
@@ -3451,7 +3455,7 @@ function playChatAlertSound() {
     baseOscillator.frequency.setValueAtTime(tone.base, now + tone.start);
     accentOscillator.frequency.setValueAtTime(tone.accent, now + tone.start);
     toneGain.gain.setValueAtTime(0.0001, now + tone.start);
-    toneGain.gain.exponentialRampToValueAtTime(0.36, now + tone.start + 0.02);
+    toneGain.gain.exponentialRampToValueAtTime(0.56, now + tone.start + 0.02);
     toneGain.gain.exponentialRampToValueAtTime(0.0001, now + tone.start + tone.duration);
     baseOscillator.connect(toneGain);
     accentOscillator.connect(toneGain);
@@ -4017,6 +4021,34 @@ function renderChatReactionBar(message = {}) {
         <div class="chat-reaction-picker-row">${picker}</div>
       </details>
     </div>
+  `;
+}
+
+function renderChatMessageOptionsMenu(message, options = {}) {
+  const { canEdit = false, canDelete = false, canReply = false, canPin = false } = options;
+  const actions = [];
+  if (canReply) {
+    actions.push(`<button class="ghost-action" type="button" data-chat-reply="${escapeHtml(message.id)}">Responder</button>`);
+  }
+  if (canEdit) {
+    actions.push(`<button class="ghost-action" type="button" data-chat-edit="${escapeHtml(message.id)}">Editar</button>`);
+  }
+  if (canDelete) {
+    actions.push(`<button class="ghost-action danger-action" type="button" data-chat-delete="${escapeHtml(message.id)}">Eliminar</button>`);
+  }
+  if (canPin) {
+    actions.push(
+      `<button class="ghost-action" type="button" data-chat-pin="${escapeHtml(message.id)}" data-chat-pin-next="${message.pinnedAt ? "false" : "true"}">${message.pinnedAt ? "Quitar fijado" : "Fijar"}</button>`,
+    );
+  }
+  if (!actions.length) return "";
+  return `
+    <details class="chat-message-menu">
+      <summary>Opciones</summary>
+      <div class="chat-message-menu-panel">
+        ${actions.join("")}
+      </div>
+    </details>
   `;
 }
 
@@ -4600,9 +4632,8 @@ async function syncChatInbox(options = {}) {
   chatSyncInFlight = true;
   try {
     const previousActiveConversationId = state?.chatActiveConversationId || "";
-    const previousLastMessageId = previousActiveConversationId
-      ? activeChatLastMessageId(state?.chatMessagesByConversation?.[previousActiveConversationId] || [])
-      : "";
+    const previousActiveMessages = previousActiveConversationId ? state?.chatMessagesByConversation?.[previousActiveConversationId] || [] : [];
+    const previousLastMessageId = previousActiveConversationId ? activeChatLastMessageId(previousActiveMessages) : "";
     const previousConversations = Array.isArray(state?.chatConversations) ? state.chatConversations.map((item) => ({ ...item })) : [];
     const previousUnreadTotal = Number(state?.chatUnreadCount?.totalUnreadMessages || 0);
     await refreshChatFromApi({
@@ -4610,16 +4641,25 @@ async function syncChatInbox(options = {}) {
       includeDirectory: includeDirectory || !Array.isArray(state?.chatDirectory) || !state.chatDirectory.length,
     });
     renderChatWorkspace();
+    let shouldPlayAlert = false;
     if (state?.activeView === "chat" && state.chatActiveConversationId) {
-      const nextLastMessageId = activeChatLastMessageId(activeChatMessages());
+      const nextMessages = activeChatMessages();
+      const nextLastMessageId = activeChatLastMessageId(nextMessages);
       if (state.chatActiveConversationId === previousActiveConversationId && nextLastMessageId && nextLastMessageId !== previousLastMessageId) {
         scrollChatToLatest("smooth");
+        const lastMessage = nextMessages[nextMessages.length - 1] || null;
+        if (lastMessage && lastMessage.senderUserId !== currentUser?.id) {
+          shouldPlayAlert = true;
+        }
       }
     }
     renderNotifications();
     const nextUnreadTotal = Number(state?.chatUnreadCount?.totalUnreadMessages || 0);
     if (chatSyncPrimed && showToastOnNewMessages && nextUnreadTotal > previousUnreadTotal) {
       notifyNewChatMessage(selectNewestUnreadConversation(state.chatConversations || [], previousConversations));
+      shouldPlayAlert = true;
+    }
+    if (chatSyncPrimed && showToastOnNewMessages && shouldPlayAlert) {
       playChatAlertSound();
     }
     chatSyncPrimed = true;
@@ -4794,10 +4834,12 @@ function renderChatWorkspace() {
                 ${!isDeletedMessage ? renderRichChatAttachmentLinks(message.attachments || []) : ""}
                 ${!isSystemMessage && !isDeletedMessage ? renderChatReactionBar(message) : ""}
                 <div class="chat-message-actions">
-                  ${!isSystemMessage && !isDeletedMessage ? `<button class="ghost-action" type="button" data-chat-reply="${message.id}">Responder</button>` : ""}
-                  ${!isSystemMessage && !isDeletedMessage && canEditMessage ? `<button class="ghost-action" type="button" data-chat-edit="${message.id}">Editar</button>` : ""}
-                  ${!isSystemMessage && !isDeletedMessage && canDeleteMessage ? `<button class="ghost-action danger-action" type="button" data-chat-delete="${message.id}">Eliminar</button>` : ""}
-                  ${!isSystemMessage && !isDeletedMessage ? `<button class="ghost-action" type="button" data-chat-pin="${message.id}" data-chat-pin-next="${message.pinnedAt ? "false" : "true"}">${message.pinnedAt ? "Quitar fijado" : "Fijar"}</button>` : ""}
+                  ${!isSystemMessage && !isDeletedMessage ? renderChatMessageOptionsMenu(message, {
+                    canReply: true,
+                    canEdit: canEditMessage,
+                    canDelete: canDeleteMessage,
+                    canPin: true,
+                  }) : ""}
                   ${readSummary ? `<span class="item-meta">${escapeHtml(readSummary)}</span>` : ""}
                 </div>
               </article>
