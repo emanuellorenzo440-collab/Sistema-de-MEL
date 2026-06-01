@@ -1,19 +1,19 @@
 :root {
-  --bg: #f5f7f8;
+  --bg: #f4f6f9;
   --surface: #ffffff;
-  --surface-strong: #eef3f1;
-  --surface-muted: #f3f6f5;
-  --ink: #14201f;
-  --muted: #65716f;
-  --line: #dfe6e4;
-  --teal: #176c67;
-  --teal-dark: #0f4f4b;
+  --surface-strong: #eef2f7;
+  --surface-muted: #f8fafc;
+  --ink: #0f1a24;
+  --muted: #607080;
+  --line: #d8e0e8;
+  --teal: #c5332f;
+  --teal-dark: #972623;
   --green: #2f8a57;
   --amber: #b7791f;
-  --red: #be4b42;
-  --blue: #3c6e9f;
-  --violet: #6d5a9d;
-  --shadow: 0 18px 42px rgba(17, 32, 31, 0.08);
+  --red: #c5332f;
+  --blue: #2f85c7;
+  --violet: #5867a6;
+  --shadow: 0 22px 48px rgba(15, 26, 36, 0.1);
 }
 
 * {
@@ -61,8 +61,9 @@ button:disabled {
 .auth-shell {
   align-items: center;
   background:
-    linear-gradient(rgba(10, 19, 18, 0.52), rgba(10, 19, 18, 0.52)),
-    url("https://images.unsplash.com/photo-1518398046578-8cca57782e17?auto=format&fit=crop&w=1800&q=80")
+    linear-gradient(rgba(8, 17, 28, 0.66), rgba(8, 17, 28, 0.7)),
+    radial-gradient(circle at top right, rgba(47, 133, 199, 0.22), transparent 28%),
+    url("./assets/convoy-of-hope-hero.jpg")
       center/cover no-repeat;
   display: flex;
   justify-content: center;
@@ -77,8 +78,8 @@ button:disabled {
 }
 
 .auth-card {
-  background: rgba(20, 32, 31, 0.82);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(180deg, rgba(11, 22, 35, 0.84), rgba(11, 22, 35, 0.9));
+  border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 8px;
   box-shadow: var(--shadow);
   display: grid;
@@ -256,7 +257,9 @@ button:disabled {
 }
 
 .sidebar {
-  background: #112321;
+  background:
+    linear-gradient(180deg, rgba(11, 22, 35, 0.98), rgba(18, 28, 43, 0.99)),
+    linear-gradient(90deg, rgba(197, 51, 47, 0.18), transparent 28%);
   color: #f8fbfa;
   display: flex;
   flex-direction: column;
@@ -275,9 +278,10 @@ button:disabled {
 
 .brand-mark {
   align-items: center;
-  background: #e7b75f;
+  background: linear-gradient(135deg, #e5483f, #c5332f);
   border-radius: 8px;
-  color: #13201f;
+  box-shadow: 0 10px 24px rgba(197, 51, 47, 0.28);
+  color: #ffffff;
   display: inline-flex;
   font-weight: 800;
   height: 42px;
@@ -291,7 +295,7 @@ button:disabled {
 }
 
 .brand span {
-  color: #b8c9c6;
+  color: #b9c8da;
   font-size: 0.85rem;
   margin-top: 2px;
 }
@@ -320,7 +324,7 @@ button:disabled {
 }
 
 .nav-item span {
-  color: #e7b75f;
+  color: #8dd7ff;
   font-size: 1rem;
   width: 20px;
 }
@@ -340,8 +344,9 @@ button:disabled {
 
 .nav-item:hover,
 .nav-item.active {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(141, 215, 255, 0.26);
+  box-shadow: inset 3px 0 0 #c5332f;
   color: #ffffff;
 }
 
@@ -375,8 +380,8 @@ textarea {
 }
 
 .role-box select {
-  background: #203633;
-  border-color: #37514d;
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(141, 215, 255, 0.22);
   color: #ffffff;
 }
 
@@ -391,13 +396,21 @@ textarea:focus {
   display: grid;
   gap: 18px;
   padding: 28px;
+  background:
+    radial-gradient(circle at top right, rgba(47, 133, 199, 0.08), transparent 20%),
+    linear-gradient(180deg, #f5f7fb 0%, #f3f6fa 100%);
 }
 
 .topbar {
   align-items: center;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(216, 224, 232, 0.92);
+  border-radius: 8px;
+  box-shadow: 0 14px 30px rgba(15, 26, 36, 0.06);
   display: flex;
   justify-content: space-between;
   gap: 18px;
+  padding: 18px 20px;
 }
 
 .eyebrow {
