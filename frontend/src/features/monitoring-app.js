@@ -1166,8 +1166,7 @@ function buildEvidenceSummary(type, detail, attachments = []) {
   return pieces.join(" | ").trim();
 }
 
-function evidenceUploadAccept(type) {
-  if (type === "photo") return "image/*,.jpg,.jpeg,.png";
+function evidenceUploadAccept() {
   return ".csv,text/csv,.xlsx,.xls,.doc,.docx,.pdf,.txt,.jpg,.jpeg,.png,.zip";
 }
 
@@ -1184,7 +1183,6 @@ function selectedEvidenceDetail() {
 
 function renderReportAttachmentPreview() {
   const files = Array.from(elements.reportFormUploadInput?.files || []);
-  const type = String(elements.reportEvidenceType?.value || "note").trim();
   const oversizedFile = files.find((file) => file.size > MAX_REPORT_ATTACHMENT_BYTES);
   if (oversizedFile) {
     elements.reportUploadStatus.textContent = "Archivo grande";
@@ -1196,11 +1194,7 @@ function renderReportAttachmentPreview() {
   elements.reportUploadStatus.className = `status-pill ${files.length ? "info" : "neutral"}`;
   elements.reportUploadPreview.innerHTML = files.length
     ? `
-      <p class="item-meta">${
-        type === "photo"
-          ? "Las imagenes viajaran con el reporte para que quienes revisan y aprueban puedan abrirlas."
-          : "Los adjuntos viajaran con el reporte para que quienes revisan y aprueban puedan abrirlos."
-      }</p>
+      <p class="item-meta">Los documentos y soportes viajaran con el reporte para que quienes revisan y aprueban puedan abrirlos.</p>
       <ul class="item-meta">
         ${files.map((file) => `<li>${escapeHtml(file.name)}${file.size ? ` (${escapeHtml(formatFileSize(file.size))})` : ""}</li>`).join("")}
       </ul>
@@ -1218,12 +1212,36 @@ function setReportAttachmentFiles(files = []) {
   renderReportAttachmentPreview();
 }
 
+function mountReportDocumentSection() {
+  const documentSection = elements.reportDocumentSection;
+  const uploadGroup = elements.reportEvidenceUploadGroup;
+  const uploadPreview = elements.reportUploadPreview;
+  if (!documentSection || !uploadGroup || !uploadPreview) return;
+
+  uploadGroup.hidden = false;
+  uploadGroup.classList.add("report-document-upload");
+
+  if (!documentSection.dataset.initialized) {
+    documentSection.innerHTML = `
+      <span>Formulario o reporte final</span>
+      <span class="item-meta">Sube aqui el PDF, Word, Excel o los archivos del formulario para enviarlos junto con el reporte.</span>
+    `;
+    documentSection.dataset.initialized = "true";
+  }
+
+  if (uploadGroup.parentElement !== documentSection) {
+    documentSection.appendChild(uploadGroup);
+  }
+  if (uploadPreview.parentElement !== documentSection) {
+    documentSection.appendChild(uploadPreview);
+  }
+}
+
 function syncEvidenceInputMode() {
   if (!elements.reportEvidenceType) return;
   const type = String(elements.reportEvidenceType.value || "note").trim();
   if (elements.reportEvidenceNoteGroup) elements.reportEvidenceNoteGroup.hidden = type !== "note";
   if (elements.reportEvidenceLinkGroup) elements.reportEvidenceLinkGroup.hidden = type !== "link";
-  if (elements.reportEvidenceUploadGroup) elements.reportEvidenceUploadGroup.hidden = !(type === "photo" || type === "file");
   if (elements.reportEvidenceLinkInput) {
     elements.reportEvidenceLinkInput.placeholder = "https://...";
   }
@@ -1232,29 +1250,25 @@ function syncEvidenceInputMode() {
       type === "note" ? "Describe la evidencia o agrega una referencia breve" : elements.reportEvidenceNoteInput.placeholder;
   }
   if (elements.reportFormUploadInput) {
-    elements.reportFormUploadInput.accept = evidenceUploadAccept(type);
+    elements.reportFormUploadInput.accept = evidenceUploadAccept();
   }
   if (elements.reportEvidenceUploadLabel) {
-    elements.reportEvidenceUploadLabel.textContent = type === "photo" ? "Adjuntar imagenes" : "Adjuntar archivos";
+    elements.reportEvidenceUploadLabel.textContent = "Adjuntar documento del reporte";
   }
   if (elements.reportEvidenceUploadHint) {
-    elements.reportEvidenceUploadHint.textContent =
-      type === "photo"
-        ? "Arrastra imagenes aqui o selecciona una o varias desde tu computadora."
-        : "Arrastra archivos aqui o selecciona uno o varios desde tu computadora.";
+    elements.reportEvidenceUploadHint.textContent = "Arrastra aqui PDF, Word, Excel, imagenes u otros soportes del formulario.";
   }
   if (elements.reportEvidenceDropzoneTitle) {
-    elements.reportEvidenceDropzoneTitle.textContent = type === "photo" ? "Arrastra imagenes aqui" : "Arrastra archivos aqui";
+    elements.reportEvidenceDropzoneTitle.textContent = "Arrastra el formulario o reporte aqui";
   }
   if (elements.reportEvidenceDropzoneText) {
     elements.reportEvidenceDropzoneText.textContent =
-      type === "photo"
-        ? "o haz clic para seleccionar imagenes desde tu computadora"
-        : "o haz clic para seleccionar archivos desde tu computadora";
+      "o haz clic para seleccionar PDF, Word, Excel, imagenes u otros soportes";
   }
   if (elements.reportEvidenceDropzone) {
     elements.reportEvidenceDropzone.dataset.mode = type;
   }
+  mountReportDocumentSection();
   renderReportAttachmentPreview();
 }
 
@@ -3258,6 +3272,7 @@ function applyAccessControl() {
 }
 
 function renderAll() {
+  mountReportDocumentSection();
   recomputeIndicatorValues();
   renderFilters();
   updateRoleUi();
@@ -6415,7 +6430,7 @@ async function addReport(formData) {
       saveState();
     }
     renderAll();
-    showToast(attachedDocuments.length ? "Reporte y evidencias enviadas a revision." : "Reporte enviado a coordinacion para primera aprobacion.");
+    showToast(attachedDocuments.length ? "Reporte y documento enviados a revision." : "Reporte enviado a coordinacion para primera aprobacion.");
     return true;
   } catch (error) {
     console.error(error);
@@ -8111,22 +8126,9 @@ function bindEvents() {
     state.reportDrafts = [];
   });
   elements.reportEvidenceType?.addEventListener("change", () => {
-    if (elements.reportFormUploadInput) {
-      elements.reportFormUploadInput.value = "";
-    }
     syncEvidenceInputMode();
   });
   elements.reportFormUploadInput?.addEventListener("change", () => {
-    const selectedFiles = Array.from(elements.reportFormUploadInput.files || []);
-    const evidenceType = String(elements.reportEvidenceType?.value || "note").trim();
-    if (evidenceType === "photo") {
-      const imageFiles = selectedFiles.filter((file) => String(file.type || "").startsWith("image/"));
-      if (selectedFiles.length && imageFiles.length !== selectedFiles.length) {
-        showToast("Cuando la evidencia sea una imagen, selecciona solo archivos de imagen.");
-        setReportAttachmentFiles(imageFiles);
-        return;
-      }
-    }
     renderReportAttachmentPreview();
   });
   elements.reportEvidenceDropzone?.addEventListener("click", () => {
@@ -8147,14 +8149,7 @@ function bindEvents() {
     event.preventDefault();
     elements.reportEvidenceDropzone?.classList.remove("is-dragging");
     const droppedFiles = Array.from(event.dataTransfer?.files || []);
-    const evidenceType = String(elements.reportEvidenceType?.value || "note").trim();
-    const filteredFiles =
-      evidenceType === "photo" ? droppedFiles.filter((file) => String(file.type || "").startsWith("image/")) : droppedFiles;
-    if (evidenceType === "photo" && droppedFiles.length && !filteredFiles.length) {
-      showToast("Cuando la evidencia sea una imagen, arrastra archivos de imagen.");
-      return;
-    }
-    setReportAttachmentFiles(filteredFiles);
+    setReportAttachmentFiles(droppedFiles);
   });
 
   $("#exportButton").addEventListener("click", exportCsv);

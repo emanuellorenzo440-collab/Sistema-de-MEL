@@ -38,6 +38,7 @@ export const elements = {
   reportEvidenceLinkGroup: $("#reportEvidenceLinkGroup"),
   reportEvidenceLinkInput: $("#reportEvidenceLink"),
   reportEvidenceUploadGroup: $("#reportEvidenceUploadGroup"),
+  reportDocumentSection: $("#reportDocumentSection"),
   reportEvidenceUploadLabel: $("#reportEvidenceUploadLabel"),
   reportEvidenceUploadHint: $("#reportEvidenceUploadHint"),
   reportEvidenceDropzone: $("#reportEvidenceDropzone"),
