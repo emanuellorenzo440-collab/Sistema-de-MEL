@@ -1,5 +1,5 @@
 import { STORAGE_KEY } from "../core/config.js?v=20260514a";
-import { $, $$, elements } from "../core/dom.js?v=20260601b";
+import { $, $$, elements } from "../core/dom.js?v=20260601c";
 import { loadStoredState, saveStoredState } from "../core/storage.js?v=20260514a";
 import { seedState } from "../data/seed-state.js?v=20260521a";
 import {
@@ -1166,7 +1166,8 @@ function buildEvidenceSummary(type, detail, attachments = []) {
   return pieces.join(" | ").trim();
 }
 
-function evidenceUploadAccept() {
+function evidenceUploadAccept(type) {
+  if (type === "photo") return "image/*,.jpg,.jpeg,.png";
   return ".csv,text/csv,.xlsx,.xls,.doc,.docx,.pdf,.txt,.jpg,.jpeg,.png,.zip";
 }
 
@@ -1179,6 +1180,38 @@ function selectedEvidenceDetail() {
     return "";
   }
   return String(elements.reportEvidenceNoteInput?.value || "").trim();
+}
+
+function renderEvidenceAttachmentPreview() {
+  const files = Array.from(elements.reportEvidenceUploadInput?.files || []);
+  const type = String(elements.reportEvidenceType?.value || "note").trim();
+  const oversizedFile = files.find((file) => file.size > MAX_REPORT_ATTACHMENT_BYTES);
+  if (oversizedFile) {
+    elements.reportEvidenceUploadPreview.innerHTML = `<p class="item-meta">La evidencia supera ${formatFileSize(MAX_REPORT_ATTACHMENT_BYTES)}. Sube una version mas liviana.</p>`;
+    return;
+  }
+  elements.reportEvidenceUploadPreview.innerHTML = files.length
+    ? `
+      <p class="item-meta">${
+        type === "photo"
+          ? "Las imagenes viajaran como evidencia para que quienes revisan y aprueban puedan abrirlas."
+          : "Los archivos viajaran como evidencia para que quienes revisan y aprueban puedan abrirlos."
+      }</p>
+      <ul class="item-meta">
+        ${files.map((file) => `<li>${escapeHtml(file.name)}${file.size ? ` (${escapeHtml(formatFileSize(file.size))})` : ""}</li>`).join("")}
+      </ul>
+    `
+    : "";
+}
+
+function setEvidenceAttachmentFiles(files = []) {
+  if (!elements.reportEvidenceUploadInput) return;
+  const transfer = new DataTransfer();
+  Array.from(files || []).forEach((file) => {
+    if (file) transfer.items.add(file);
+  });
+  elements.reportEvidenceUploadInput.files = transfer.files;
+  renderEvidenceAttachmentPreview();
 }
 
 function renderReportAttachmentPreview() {
@@ -1212,36 +1245,12 @@ function setReportAttachmentFiles(files = []) {
   renderReportAttachmentPreview();
 }
 
-function mountReportDocumentSection() {
-  const documentSection = elements.reportDocumentSection;
-  const uploadGroup = elements.reportEvidenceUploadGroup;
-  const uploadPreview = elements.reportUploadPreview;
-  if (!documentSection || !uploadGroup || !uploadPreview) return;
-
-  uploadGroup.hidden = false;
-  uploadGroup.classList.add("report-document-upload");
-
-  if (!documentSection.dataset.initialized) {
-    documentSection.innerHTML = `
-      <span>Formulario o reporte final</span>
-      <span class="item-meta">Sube aqui el PDF, Word, Excel o los archivos del formulario para enviarlos junto con el reporte.</span>
-    `;
-    documentSection.dataset.initialized = "true";
-  }
-
-  if (uploadGroup.parentElement !== documentSection) {
-    documentSection.appendChild(uploadGroup);
-  }
-  if (uploadPreview.parentElement !== documentSection) {
-    documentSection.appendChild(uploadPreview);
-  }
-}
-
 function syncEvidenceInputMode() {
   if (!elements.reportEvidenceType) return;
   const type = String(elements.reportEvidenceType.value || "note").trim();
   if (elements.reportEvidenceNoteGroup) elements.reportEvidenceNoteGroup.hidden = type !== "note";
   if (elements.reportEvidenceLinkGroup) elements.reportEvidenceLinkGroup.hidden = type !== "link";
+  if (elements.reportEvidenceUploadGroup) elements.reportEvidenceUploadGroup.hidden = !(type === "photo" || type === "file");
   if (elements.reportEvidenceLinkInput) {
     elements.reportEvidenceLinkInput.placeholder = "https://...";
   }
@@ -1249,26 +1258,31 @@ function syncEvidenceInputMode() {
     elements.reportEvidenceNoteInput.placeholder =
       type === "note" ? "Describe la evidencia o agrega una referencia breve" : elements.reportEvidenceNoteInput.placeholder;
   }
-  if (elements.reportFormUploadInput) {
-    elements.reportFormUploadInput.accept = evidenceUploadAccept();
+  if (elements.reportEvidenceUploadInput) {
+    elements.reportEvidenceUploadInput.accept = evidenceUploadAccept(type);
   }
   if (elements.reportEvidenceUploadLabel) {
-    elements.reportEvidenceUploadLabel.textContent = "Adjuntar documento del reporte";
+    elements.reportEvidenceUploadLabel.textContent = type === "photo" ? "Adjuntar imagenes" : "Adjuntar archivos";
   }
   if (elements.reportEvidenceUploadHint) {
-    elements.reportEvidenceUploadHint.textContent = "Arrastra aqui PDF, Word, Excel, imagenes u otros soportes del formulario.";
+    elements.reportEvidenceUploadHint.textContent =
+      type === "photo"
+        ? "Arrastra imagenes aqui o selecciona una o varias desde tu computadora."
+        : "Arrastra archivos aqui o selecciona uno o varios desde tu computadora.";
   }
   if (elements.reportEvidenceDropzoneTitle) {
-    elements.reportEvidenceDropzoneTitle.textContent = "Arrastra el formulario o reporte aqui";
+    elements.reportEvidenceDropzoneTitle.textContent = type === "photo" ? "Arrastra imagenes aqui" : "Arrastra archivos aqui";
   }
   if (elements.reportEvidenceDropzoneText) {
     elements.reportEvidenceDropzoneText.textContent =
-      "o haz clic para seleccionar PDF, Word, Excel, imagenes u otros soportes";
+      type === "photo"
+        ? "o haz clic para seleccionar imagenes desde tu computadora"
+        : "o haz clic para seleccionar archivos desde tu computadora";
   }
   if (elements.reportEvidenceDropzone) {
     elements.reportEvidenceDropzone.dataset.mode = type;
   }
-  mountReportDocumentSection();
+  renderEvidenceAttachmentPreview();
   renderReportAttachmentPreview();
 }
 
@@ -3272,7 +3286,6 @@ function applyAccessControl() {
 }
 
 function renderAll() {
-  mountReportDocumentSection();
   recomputeIndicatorValues();
   renderFilters();
   updateRoleUi();
@@ -6141,7 +6154,9 @@ function applyDraftToReportForm(draft) {
   if (elements.reportEvidenceType) elements.reportEvidenceType.value = "note";
   if (elements.reportEvidenceNoteInput) elements.reportEvidenceNoteInput.value = draft.evidence || "";
   if (elements.reportEvidenceLinkInput) elements.reportEvidenceLinkInput.value = "";
+  if (elements.reportEvidenceUploadInput) elements.reportEvidenceUploadInput.value = "";
   if (elements.reportFormUploadInput) elements.reportFormUploadInput.value = "";
+  if (elements.reportEvidenceUploadPreview) elements.reportEvidenceUploadPreview.innerHTML = "";
   document.querySelector("#reportNotes").value = draft.botSummary || draft.notes || "";
   syncReportParticipantInputs(draft.program);
   syncEvidenceInputMode();
@@ -6377,10 +6392,15 @@ async function addReport(formData) {
     },
     formData.get("program"),
   );
+  const evidenceFiles = Array.from(elements.reportEvidenceUploadInput?.files || []);
   const attachedFiles = Array.from(elements.reportFormUploadInput.files || []);
+  let evidenceAttachments = [];
   let attachedDocuments = [];
   try {
-    attachedDocuments = await attachmentsFromFiles(attachedFiles, formData.get("owner"));
+    if (evidenceType === "photo" || evidenceType === "file") {
+      evidenceAttachments = await attachmentsFromFiles(evidenceFiles, formData.get("owner"), "report-evidence");
+    }
+    attachedDocuments = await attachmentsFromFiles(attachedFiles, formData.get("owner"), "report-attachments");
   } catch (error) {
     showToast(error.message || "No pude adjuntar el documento.");
     return false;
@@ -6389,7 +6409,7 @@ async function addReport(formData) {
     showToast("Cuando la evidencia sea un enlace, pega una URL valida que empiece con http:// o https://.");
     return false;
   }
-  if ((evidenceType === "photo" || evidenceType === "file") && !attachedDocuments.length) {
+  if ((evidenceType === "photo" || evidenceType === "file") && !evidenceAttachments.length) {
     showToast("Adjunta al menos un archivo cuando la evidencia sea foto o archivo.");
     return false;
   }
@@ -6415,9 +6435,11 @@ async function addReport(formData) {
     owner: formData.get("owner"),
     ownerUserId: currentUser?.id || null,
     ownerEmail: currentUser?.email || "",
-    evidence: buildEvidenceSummary(evidenceType, evidenceDetail, attachedDocuments),
+    evidence: buildEvidenceSummary(evidenceType, evidenceDetail, evidenceAttachments),
     notes: formData.get("notes"),
-    attachments: attachedDocuments,
+    evidenceAttachments,
+    reportDocuments: attachedDocuments,
+    attachments: [...evidenceAttachments, ...attachedDocuments],
     status: REPORT_STATUSES.PENDING_COORDINATION,
   };
 
@@ -6430,7 +6452,7 @@ async function addReport(formData) {
       saveState();
     }
     renderAll();
-    showToast(attachedDocuments.length ? "Reporte y documento enviados a revision." : "Reporte enviado a coordinacion para primera aprobacion.");
+    showToast(evidenceAttachments.length || attachedDocuments.length ? "Reporte y documentos enviados a revision." : "Reporte enviado a coordinacion para primera aprobacion.");
     return true;
   } catch (error) {
     console.error(error);
@@ -8118,8 +8140,10 @@ function bindEvents() {
     if (elements.reportEvidenceType) elements.reportEvidenceType.value = "note";
     if (elements.reportEvidenceNoteInput) elements.reportEvidenceNoteInput.value = "";
     if (elements.reportEvidenceLinkInput) elements.reportEvidenceLinkInput.value = "";
+    if (elements.reportEvidenceUploadInput) elements.reportEvidenceUploadInput.value = "";
     if (elements.reportFormUploadInput) elements.reportFormUploadInput.value = "";
     syncEvidenceInputMode();
+    if (elements.reportEvidenceUploadPreview) elements.reportEvidenceUploadPreview.innerHTML = "";
     elements.reportUploadStatus.textContent = "Sin archivo";
     elements.reportUploadStatus.className = "status-pill neutral";
     elements.reportUploadPreview.innerHTML = "";
@@ -8128,11 +8152,24 @@ function bindEvents() {
   elements.reportEvidenceType?.addEventListener("change", () => {
     syncEvidenceInputMode();
   });
+  elements.reportEvidenceUploadInput?.addEventListener("change", () => {
+    const selectedFiles = Array.from(elements.reportEvidenceUploadInput.files || []);
+    const evidenceType = String(elements.reportEvidenceType?.value || "note").trim();
+    if (evidenceType === "photo") {
+      const imageFiles = selectedFiles.filter((file) => String(file.type || "").startsWith("image/"));
+      if (selectedFiles.length && imageFiles.length !== selectedFiles.length) {
+        showToast("Cuando la evidencia sea una imagen, selecciona solo archivos de imagen.");
+        setEvidenceAttachmentFiles(imageFiles);
+        return;
+      }
+    }
+    renderEvidenceAttachmentPreview();
+  });
   elements.reportFormUploadInput?.addEventListener("change", () => {
     renderReportAttachmentPreview();
   });
   elements.reportEvidenceDropzone?.addEventListener("click", () => {
-    elements.reportFormUploadInput?.click();
+    elements.reportEvidenceUploadInput?.click();
   });
   ["dragenter", "dragover"].forEach((eventName) => {
     elements.reportEvidenceDropzone?.addEventListener(eventName, (event) => {
@@ -8148,6 +8185,33 @@ function bindEvents() {
   elements.reportEvidenceDropzone?.addEventListener("drop", (event) => {
     event.preventDefault();
     elements.reportEvidenceDropzone?.classList.remove("is-dragging");
+    const droppedFiles = Array.from(event.dataTransfer?.files || []);
+    const evidenceType = String(elements.reportEvidenceType?.value || "note").trim();
+    const filteredFiles =
+      evidenceType === "photo" ? droppedFiles.filter((file) => String(file.type || "").startsWith("image/")) : droppedFiles;
+    if (evidenceType === "photo" && droppedFiles.length && !filteredFiles.length) {
+      showToast("Cuando la evidencia sea una imagen, arrastra archivos de imagen.");
+      return;
+    }
+    setEvidenceAttachmentFiles(filteredFiles);
+  });
+  elements.reportDocumentDropzone?.addEventListener("click", () => {
+    elements.reportFormUploadInput?.click();
+  });
+  ["dragenter", "dragover"].forEach((eventName) => {
+    elements.reportDocumentDropzone?.addEventListener(eventName, (event) => {
+      event.preventDefault();
+      elements.reportDocumentDropzone?.classList.add("is-dragging");
+    });
+  });
+  ["dragleave", "dragend"].forEach((eventName) => {
+    elements.reportDocumentDropzone?.addEventListener(eventName, () => {
+      elements.reportDocumentDropzone?.classList.remove("is-dragging");
+    });
+  });
+  elements.reportDocumentDropzone?.addEventListener("drop", (event) => {
+    event.preventDefault();
+    elements.reportDocumentDropzone?.classList.remove("is-dragging");
     const droppedFiles = Array.from(event.dataTransfer?.files || []);
     setReportAttachmentFiles(droppedFiles);
   });
@@ -8569,8 +8633,10 @@ function bindEvents() {
       if (elements.reportEvidenceType) elements.reportEvidenceType.value = "note";
       if (elements.reportEvidenceNoteInput) elements.reportEvidenceNoteInput.value = "";
       if (elements.reportEvidenceLinkInput) elements.reportEvidenceLinkInput.value = "";
+      if (elements.reportEvidenceUploadInput) elements.reportEvidenceUploadInput.value = "";
       if (elements.reportFormUploadInput) elements.reportFormUploadInput.value = "";
       syncEvidenceInputMode();
+      if (elements.reportEvidenceUploadPreview) elements.reportEvidenceUploadPreview.innerHTML = "";
       elements.reportUploadStatus.textContent = "Sin archivo";
       elements.reportUploadStatus.className = "status-pill neutral";
       elements.reportUploadPreview.innerHTML = "";

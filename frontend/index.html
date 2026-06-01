@@ -429,12 +429,13 @@
                         <span id="reportEvidenceDropzoneText">o haz clic para seleccionarlos desde tu computadora</span>
                       </button>
                       <input
-                        id="reportFormUploadInput"
+                        id="reportEvidenceUploadInput"
                         type="file"
                         accept=".csv,text/csv,.xlsx,.xls,.doc,.docx,.pdf,.txt,.jpg,.jpeg,.png"
                         multiple
                         hidden
                       />
+                      <div class="upload-preview" id="reportEvidenceUploadPreview"></div>
                     </div>
                   </div>
                 </label>
@@ -442,7 +443,26 @@
                   Observaciones
                   <textarea id="reportNotes" name="notes" rows="4" placeholder="Hallazgos, retos, acuerdos o alertas"></textarea>
                 </label>
-                <div class="span-2 evidence-field" id="reportDocumentSection"></div>
+                <div class="span-2 evidence-field" id="reportDocumentSection">
+                  <span>Formulario o reporte final</span>
+                  <span class="item-meta">Sube aquÃ­ el PDF, Word, Excel o los archivos del formulario para enviarlos junto con el reporte.</span>
+                  <div class="evidence-upload-head">
+                    <span>Adjuntar reporte final</span>
+                    <span class="item-meta">Arrastra archivos aquÃ­ o selecciÃ³nalos desde tu computadora.</span>
+                  </div>
+                  <button class="evidence-dropzone" id="reportDocumentDropzone" type="button">
+                    <span class="evidence-dropzone-icon" aria-hidden="true">â†‘</span>
+                    <strong id="reportDocumentDropzoneTitle">Arrastra el formulario o reporte aquÃ­</strong>
+                    <span id="reportDocumentDropzoneText">o haz clic para seleccionar PDF, Word, Excel, imagen u otros soportes</span>
+                  </button>
+                  <input
+                    id="reportFormUploadInput"
+                    type="file"
+                    accept=".csv,text/csv,.xlsx,.xls,.doc,.docx,.pdf,.txt,.jpg,.jpeg,.png,.zip"
+                    multiple
+                    hidden
+                  />
+                </div>
               </div>
               <div class="upload-preview" id="reportUploadPreview"></div>
               <div class="form-actions">
@@ -1042,7 +1062,7 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="src/main.js?v=20260601e"></script>
+    <script type="module" src="src/main.js?v=20260601f"></script>
   </body>
 </html>
 
