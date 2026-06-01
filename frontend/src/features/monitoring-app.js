@@ -4591,6 +4591,7 @@ async function loadChatConversation(conversationId, options = {}) {
       await markApiChatConversationRead(conversationId, { lastReadMessageId: lastUnread.id });
       state.chatUnreadCount = await fetchApiChatUnreadCount();
       state.chatConversations = await fetchApiChatConversations();
+      updateAppDocumentTitle();
     } catch (error) {
       console.error("No pude marcar el chat como leido.", error);
     }
@@ -4759,10 +4760,7 @@ function latestUnreadChatConversation() {
 
 function updateAppDocumentTitle() {
   const unreadMessages = Number(state?.chatUnreadCount?.totalUnreadMessages || 0);
-  const reportAlerts = Number(inboxReportsForRole(activeRole()).length || 0);
-  const operationalAlerts = Number(notificationsForActiveRole().length || 0);
-  const totalAlerts = unreadMessages + reportAlerts + operationalAlerts;
-  document.title = totalAlerts > 0 ? `(${totalAlerts}) ${BASE_DOCUMENT_TITLE}` : BASE_DOCUMENT_TITLE;
+  document.title = unreadMessages > 0 ? `(${unreadMessages}) ${BASE_DOCUMENT_TITLE}` : BASE_DOCUMENT_TITLE;
 }
 
 function renderChatNotificationCard(conversation) {
