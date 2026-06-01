@@ -22,6 +22,8 @@ export const DEFAULT_ORGANIZATION_BRANDING = {
   },
 };
 
+const ORGANIZATION_QUERY_KEYS = ["organizationId", "org", "organizationSlug", "orgSlug"];
+
 function trimTrailingSlash(value) {
   return String(value || "").replace(/\/+$/, "");
 }
@@ -32,6 +34,20 @@ function resolveAssetPath(assetPath = "") {
   if (/^(https?:)?\/\//i.test(normalized) || normalized.startsWith("/")) return normalized;
   const relativePath = normalized.replace(/^\.\//, "");
   return new URL(`../../${relativePath}`, import.meta.url).href;
+}
+
+function currentUrl() {
+  return new URL(window.location.href);
+}
+
+export function readRequestedOrganizationContext() {
+  const url = currentUrl();
+  const organizationId = url.searchParams.get("organizationId") || url.searchParams.get("org") || "";
+  const organizationSlug = url.searchParams.get("organizationSlug") || url.searchParams.get("orgSlug") || "";
+  return {
+    organizationId: String(organizationId || "").trim(),
+    organizationSlug: String(organizationSlug || "").trim(),
+  };
 }
 
 export function normalizeOrganizationBranding(payload = {}) {
@@ -86,6 +102,9 @@ export function applyOrganizationBranding(payload = DEFAULT_ORGANIZATION_BRANDIN
   rootStyle.setProperty("--brand-primary-dark", branding.primaryDarkColor);
   rootStyle.setProperty("--brand-accent", branding.accentColor);
   rootStyle.setProperty("--brand-hero-image", `url("${resolveAssetPath(branding.loginHeroPath)}")`);
+  document.documentElement.dataset.organizationId = organization.id;
+  document.documentElement.dataset.organizationSlug = organization.slug;
+  document.documentElement.dataset.organizationName = organization.name;
 
   document.title = branding.productName;
 
@@ -122,10 +141,12 @@ export async function loadPublicOrganizationBranding(organizationId = "") {
   }
 
   try {
-    const url = new URL(`${trimTrailingSlash(apiBaseUrl)}/organization/branding`);
-    if (organizationId) {
-      url.searchParams.set("organizationId", organizationId);
-    }
+    const selector = readRequestedOrganizationContext();
+    const url = new URL(`${trimTrailingSlash(apiBaseUrl)}/${organizationId ? "organization/branding" : "organization/current"}`);
+    const effectiveOrganizationId = String(organizationId || selector.organizationId || "").trim();
+    const effectiveOrganizationSlug = String(selector.organizationSlug || "").trim();
+    if (effectiveOrganizationId) url.searchParams.set("organizationId", effectiveOrganizationId);
+    if (effectiveOrganizationSlug) url.searchParams.set("organizationSlug", effectiveOrganizationSlug);
     const response = await fetch(url.toString());
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {

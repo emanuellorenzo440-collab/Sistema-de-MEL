@@ -70,7 +70,9 @@ import {
   completeRequiredPasswordChange,
   createManagedAuthUser,
   deleteManagedAuthUser,
+  getCurrentOrganization,
   getOrganizationBranding,
+  listOrganizations,
   listAuthUsers,
   requestPasswordResetLink,
   restoreAuthSession,
@@ -2267,6 +2269,7 @@ function apiIndex() {
     resources: [
       "organization/branding",
       "organization/current",
+      "organization/list",
       "programs",
       "program-centers",
       "indicators",
@@ -2322,6 +2325,26 @@ function actorRoleFrom(request, payload = {}) {
 
 function sessionTokenFrom(request) {
   return String(request.headers["x-mel-session-token"] || "").trim();
+}
+
+function organizationSelectorFrom(request, payload = {}) {
+  const host = request.headers["x-forwarded-host"] || request.headers.host || "";
+  return {
+    organizationId:
+      request.headers["x-mel-organization-id"] ||
+      payload.organizationId ||
+      payload.orgId ||
+      new URL(request.url || "/", "http://localhost").searchParams.get("organizationId") ||
+      new URL(request.url || "/", "http://localhost").searchParams.get("org") ||
+      "",
+    organizationSlug:
+      payload.organizationSlug ||
+      payload.orgSlug ||
+      new URL(request.url || "/", "http://localhost").searchParams.get("organizationSlug") ||
+      new URL(request.url || "/", "http://localhost").searchParams.get("orgSlug") ||
+      "",
+    host,
+  };
 }
 
 function actorScopeFilters(request, filters = {}) {
@@ -2431,7 +2454,7 @@ async function deliverAuthEmail(emailRecord) {
 export async function handleAuthSignIn(request, response) {
   try {
     const payload = await readJsonBody(request);
-    sendJson(response, 200, signInAuthUser(payload));
+    sendJson(response, 200, signInAuthUser({ ...payload, ...organizationSelectorFrom(request, payload) }));
   } catch (error) {
     sendApiError(response, error);
   }
@@ -2467,13 +2490,15 @@ export async function handleAuthSignOut(request, response) {
 
 export async function handleOrganizationBranding(request, response, url) {
   const organizationId = url.searchParams.get("organizationId") || url.searchParams.get("org") || "";
-  sendJson(response, 200, { data: getOrganizationBranding(organizationId) });
+  sendJson(response, 200, { data: organizationId ? getOrganizationBranding(organizationId) : getCurrentOrganization(organizationSelectorFrom(request)) });
 }
 
 export async function handleCurrentOrganization(request, response) {
-  const actor = requireAuthenticatedUser(request, response);
-  if (!actor) return;
-  sendJson(response, 200, { data: getOrganizationBranding(actor.organizationId) });
+  sendJson(response, 200, { data: getCurrentOrganization(organizationSelectorFrom(request)) });
+}
+
+export async function handleOrganizationList(_request, response) {
+  sendJson(response, 200, { data: listOrganizations() });
 }
 
 export async function handleAuthPasswordResetRequest(request, response) {
@@ -2590,6 +2615,11 @@ async function router(request, response) {
 
   if (request.method === "GET" && pathname === "/api/v1/organization/branding") {
     await handleOrganizationBranding(request, response, url);
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/v1/organization/list") {
+    await handleOrganizationList(request, response);
     return;
   }
 

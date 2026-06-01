@@ -1,5 +1,5 @@
 import { getApiBaseUrl } from "./mel-api.js?v=20260601a";
-import { DEFAULT_ORGANIZATION_BRANDING, normalizeOrganizationBranding } from "./organization-branding.js?v=20260601a";
+import { DEFAULT_ORGANIZATION_BRANDING, normalizeOrganizationBranding, readRequestedOrganizationContext } from "./organization-branding.js?v=20260601b";
 
 const AUTH_STORAGE_KEY = "pulso-me-auth-v1";
 const AUTH_SESSION_KEY = "pulso-me-session-v1";
@@ -1160,11 +1160,17 @@ export async function signInUser(payload = {}) {
   const state = await ensureAuthState();
   const email = normalizeEmail(payload.email);
   const password = String(payload.password || "");
+  const organizationContext = readRequestedOrganizationContext();
 
   try {
     const response = await requestAuthApi("sign-in", {
       method: "POST",
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({
+        email,
+        password,
+        organizationId: organizationContext.organizationId || document.documentElement.dataset.organizationId || DEFAULT_ORGANIZATION.id,
+        organizationSlug: organizationContext.organizationSlug || document.documentElement.dataset.organizationSlug || "",
+      }),
     });
     if (response.passwordChangeRequired) {
       return clone({

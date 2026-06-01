@@ -13,6 +13,7 @@ const DEFAULT_ORGANIZATION = {
   id: "org-convoy-of-hope",
   name: "Convoy of Hope",
   slug: "convoy-of-hope",
+  hostnames: [],
   settings: {
     productName: DEFAULT_PRODUCT_NAME,
     organizationName: "Convoy of Hope",
@@ -242,6 +243,9 @@ function normalizeOrganization(organization = {}) {
     id,
     name,
     slug: String(organization.slug || slugify(name) || DEFAULT_ORGANIZATION.slug).trim() || DEFAULT_ORGANIZATION.slug,
+    hostnames: Array.isArray(organization.hostnames)
+      ? [...new Set(organization.hostnames.map((item) => String(item || "").trim().toLowerCase()).filter(Boolean))]
+      : [],
     settings: normalizeOrganizationSettings(organization.settings || {}, name),
   };
 }
@@ -309,6 +313,39 @@ function findOrganizationById(organizationId, state = getState()) {
     return normalizeOrganization(DEFAULT_ORGANIZATION);
   }
   return state.organizations.find((organization) => organization.id === normalizedId) || null;
+}
+
+function findOrganizationBySlug(slug, state = getState()) {
+  const normalizedSlug = String(slug || "").trim().toLowerCase();
+  if (!normalizedSlug) return null;
+  return state.organizations.find((organization) => String(organization.slug || "").trim().toLowerCase() === normalizedSlug) || null;
+}
+
+function normalizeHostname(value = "") {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/:\d+$/, "");
+}
+
+function findOrganizationByHostname(hostname, state = getState()) {
+  const normalizedHost = normalizeHostname(hostname);
+  if (!normalizedHost) return null;
+  return (
+    state.organizations.find((organization) =>
+      Array.isArray(organization.hostnames) && organization.hostnames.some((entry) => normalizeHostname(entry) === normalizedHost),
+    ) || null
+  );
+}
+
+function resolveOrganizationContext(selector = {}, state = getState()) {
+  const direct =
+    findOrganizationById(selector.organizationId, state) ||
+    findOrganizationBySlug(selector.slug || selector.organizationSlug, state) ||
+    findOrganizationByHostname(selector.host || selector.hostname, state);
+
+  if (direct) return normalizeOrganization(direct);
+  return state.organizations.length ? normalizeOrganization(state.organizations[0]) : normalizeOrganization(DEFAULT_ORGANIZATION);
 }
 
 function resolveOrganizationForUser(user, state = getState()) {
@@ -613,10 +650,7 @@ export function listAuthUsers(actor = null) {
 }
 
 export function getOrganizationBranding(organizationId = "") {
-  const state = getState();
-  const organization =
-    findOrganizationById(organizationId, state) ||
-    (state.organizations.length ? normalizeOrganization(state.organizations[0]) : normalizeOrganization(DEFAULT_ORGANIZATION));
+  const organization = resolveOrganizationContext({ organizationId });
   return {
     organization: {
       id: organization.id,
@@ -627,10 +661,40 @@ export function getOrganizationBranding(organizationId = "") {
   };
 }
 
-export function signInAuthUser({ email, password }) {
+export function getCurrentOrganization(selector = {}) {
+  const organization = resolveOrganizationContext(selector);
+  return {
+    organization: {
+      id: organization.id,
+      name: organization.name,
+      slug: organization.slug,
+      hostnames: Array.isArray(organization.hostnames) ? organization.hostnames.slice() : [],
+    },
+    branding: structuredClone(organization.settings),
+  };
+}
+
+export function listOrganizations() {
+  return getState().organizations.map((organization) => ({
+    id: organization.id,
+    name: organization.name,
+    slug: organization.slug,
+    hostnames: Array.isArray(organization.hostnames) ? organization.hostnames.slice() : [],
+  }));
+}
+
+export function signInAuthUser({ email, password, organizationId, organizationSlug, host }) {
   const user = findUserByEmail(email);
   if (!user) {
     throw authError(404, "No encontre una cuenta con ese correo.");
+  }
+  const resolvedOrganization = resolveOrganizationContext({
+    organizationId,
+    slug: organizationSlug,
+    host,
+  });
+  if (resolvedOrganization?.id && user.organizationId && resolvedOrganization.id !== user.organizationId) {
+    throw authError(403, "Este usuario pertenece a otra organizacion.");
   }
   if (user.status !== "active") {
     throw authError(403, "Esta cuenta esta suspendida o eliminada.");
