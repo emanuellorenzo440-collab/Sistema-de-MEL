@@ -1,4 +1,5 @@
 import { getApiBaseUrl } from "./mel-api.js?v=20260601a";
+import { DEFAULT_ORGANIZATION_BRANDING, normalizeOrganizationBranding } from "./organization-branding.js?v=20260601a";
 
 const AUTH_STORAGE_KEY = "pulso-me-auth-v1";
 const AUTH_SESSION_KEY = "pulso-me-session-v1";
@@ -553,6 +554,13 @@ function normalizeUser(user = {}) {
     user.viewPermissions?.length ? user.viewPermissions : defaultPermissionsForRole(systemRole),
   );
 
+  const organizationBranding = normalizeOrganizationBranding({
+    organization: user.organization,
+    organizationId: user.organizationId,
+    organizationName: user.organizationName,
+    branding: user.organizationSettings || user.organization?.settings || DEFAULT_ORGANIZATION_BRANDING.branding,
+  });
+
   return {
     id: user.id || `usr-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
     fullName: String(user.fullName || "Usuario").trim(),
@@ -576,8 +584,10 @@ function normalizeUser(user = {}) {
     lastLoginAt: user.lastLoginAt || null,
     accessNote: user.accessNote || "",
     chatAlertSettings: normalizeChatAlertSettings(user.chatAlertSettings),
-    organizationId: String(user.organizationId || DEFAULT_ORGANIZATION.id),
-    organizationName: String(user.organizationName || DEFAULT_ORGANIZATION.name),
+    organizationId: String(user.organizationId || organizationBranding.organization.id || DEFAULT_ORGANIZATION.id),
+    organizationName: String(user.organizationName || organizationBranding.organization.name || DEFAULT_ORGANIZATION.name),
+    organization: organizationBranding.organization,
+    organizationSettings: organizationBranding.branding,
     createdAt: user.createdAt || nowIso(),
     updatedAt: user.updatedAt || nowIso(),
   };

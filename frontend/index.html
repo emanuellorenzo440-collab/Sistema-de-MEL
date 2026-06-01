@@ -9,23 +9,23 @@
         display: none !important;
       }
     </style>
-    <link rel="stylesheet" href="styles.css?v=20260601i" />
+    <link rel="stylesheet" href="styles.css?v=20260601j" />
   </head>
   <body>
     <section class="auth-shell" id="authShell">
       <section class="auth-card auth-card-centered">
         <div class="brand brand-large auth-brand">
           <span class="brand-mark brand-mark-logo" aria-label="Convoy of Hope">
-            <img src="./assets/convoy-of-hope-logo.jpg" alt="Convoy of Hope" />
+            <img id="authBrandLogo" src="./assets/convoy-of-hope-logo.jpg" alt="Convoy of Hope" />
           </span>
           <div>
-            <strong>Nexora</strong>
-            <span>Plataforma operacional personalizada para Convoy of Hope</span>
+            <strong id="authBrandProductName">Nexora</strong>
+            <span id="authBrandSubtitle">Plataforma operacional personalizada para Convoy of Hope</span>
           </div>
         </div>
 
         <div class="auth-section" data-auth-section="signin">
-          <p class="auth-lead">Entra con tus credenciales institucionales para continuar con reportes, aprobaciones y seguimiento operativo de Convoy of Hope.</p>
+          <p class="auth-lead" id="authLead">Entra con tus credenciales institucionales para continuar con reportes, aprobaciones y seguimiento operativo de Convoy of Hope.</p>
           <form class="auth-form" id="signinForm">
             <label>
               Correo electrónico
@@ -160,11 +160,11 @@
       <aside class="sidebar" aria-label="Navegacion principal">
         <div class="brand">
           <span class="brand-mark brand-mark-logo" aria-label="Convoy of Hope">
-            <img src="./assets/convoy-of-hope-logo.jpg" alt="Convoy of Hope" />
+            <img id="sidebarBrandLogo" src="./assets/convoy-of-hope-logo.jpg" alt="Convoy of Hope" />
           </span>
           <div>
-            <strong>Nexora</strong>
-            <span>Convoy of Hope</span>
+            <strong id="sidebarBrandProductName">Nexora</strong>
+            <span id="sidebarBrandOrganization">Convoy of Hope</span>
           </div>
         </div>
 
@@ -234,7 +234,7 @@
       <main class="workspace">
         <header class="topbar">
           <div>
-            <p class="eyebrow">Nexora | Convoy of Hope</p>
+            <p class="eyebrow" id="topbarEyebrow">Nexora | Convoy of Hope</p>
             <h1 id="pageTitle">Resumen ejecutivo</h1>
           </div>
           <div class="top-actions">
@@ -1066,7 +1066,7 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="src/main.js?v=20260601g"></script>
+    <script type="module" src="src/main.js?v=20260601h"></script>
   </body>
 </html>
 

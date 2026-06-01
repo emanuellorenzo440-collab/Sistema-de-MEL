@@ -1,4 +1,8 @@
 :root {
+  --brand-primary: #c5332f;
+  --brand-primary-dark: #972623;
+  --brand-accent: #2f85c7;
+  --brand-hero-image: url("./assets/convoy-of-hope-hero.jpg");
   --bg: #f4f6f9;
   --surface: #ffffff;
   --surface-strong: #eef2f7;
@@ -6,12 +10,12 @@
   --ink: #0f1a24;
   --muted: #607080;
   --line: #d8e0e8;
-  --teal: #c5332f;
-  --teal-dark: #972623;
+  --teal: var(--brand-primary);
+  --teal-dark: var(--brand-primary-dark);
   --green: #2f8a57;
   --amber: #b7791f;
-  --red: #c5332f;
-  --blue: #2f85c7;
+  --red: var(--brand-primary);
+  --blue: var(--brand-accent);
   --violet: #5867a6;
   --shadow: 0 22px 48px rgba(15, 26, 36, 0.1);
 }
@@ -63,7 +67,7 @@ button:disabled {
   background:
     linear-gradient(rgba(8, 17, 28, 0.66), rgba(8, 17, 28, 0.7)),
     radial-gradient(circle at top right, rgba(47, 133, 199, 0.22), transparent 28%),
-    url("./assets/convoy-of-hope-hero.jpg")
+    var(--brand-hero-image)
       center/cover no-repeat;
   display: flex;
   justify-content: center;

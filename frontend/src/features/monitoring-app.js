@@ -21,7 +21,7 @@ import {
   listVisibleViews,
   updateCurrentUserChatAlertSettings,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260601a";
+} from "../services/auth-service.js?v=20260601b";
 import {
   apiFileUrl,
   addApiChatParticipants,
@@ -79,6 +79,7 @@ import {
   updateApiProgramCenter,
   uploadApiFile,
 } from "../services/mel-api.js?v=20260601a";
+import { applyOrganizationBranding, brandingFromUser } from "../services/organization-branding.js?v=20260601b";
 import {
   currentMonth,
   escapeHtml,
@@ -347,6 +348,7 @@ function saveRolePreference(role) {
 
 async function syncAuthenticatedAccess(authenticatedUser = null) {
   currentUser = authenticatedUser || (await getCurrentUser());
+  applyOrganizationBranding(brandingFromUser(currentUser));
   currentUserRoles = currentUser ? currentUser.allowedRoles || (await getAllowedRoles()) : SYSTEM_ROLES.slice();
   currentUserViews = currentUser
     ? currentUser.viewPermissions || (await listVisibleViews())

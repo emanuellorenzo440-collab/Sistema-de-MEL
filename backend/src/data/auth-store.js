@@ -8,9 +8,25 @@ const PRESET_ACCOUNT_VERSION = 4;
 const PASSWORD_HASH_VERSION = "pbkdf2-sha512";
 const PASSWORD_ITERATIONS = 120000;
 const SESSION_DURATION_MS = 12 * 60 * 60 * 1000;
+const DEFAULT_PRODUCT_NAME = "Nexora";
 const DEFAULT_ORGANIZATION = {
   id: "org-convoy-of-hope",
   name: "Convoy of Hope",
+  slug: "convoy-of-hope",
+  settings: {
+    productName: DEFAULT_PRODUCT_NAME,
+    organizationName: "Convoy of Hope",
+    loginTagline: "Plataforma operacional personalizada para Convoy of Hope",
+    loginLead:
+      "Entra con tus credenciales institucionales para continuar con reportes, aprobaciones y seguimiento operativo de Convoy of Hope.",
+    sidebarCaption: "Convoy of Hope",
+    topbarEyebrow: "Nexora | Convoy of Hope",
+    brandLogoPath: "assets/convoy-of-hope-logo.jpg",
+    loginHeroPath: "assets/convoy-of-hope-hero.jpg",
+    primaryColor: "#c5332f",
+    primaryDarkColor: "#972623",
+    accentColor: "#2f85c7",
+  },
 };
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -188,6 +204,48 @@ function rolePermissions(role) {
   return DEFAULT_ROLE_PERMISSIONS[role] || DEFAULT_ROLE_PERMISSIONS[SYSTEM_ROLES.facilitator];
 }
 
+function slugify(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function normalizeOrganizationSettings(settings = {}, fallbackName = DEFAULT_ORGANIZATION.name) {
+  const organizationName = String(settings.organizationName || fallbackName || DEFAULT_ORGANIZATION.name).trim() || DEFAULT_ORGANIZATION.name;
+  const productName = String(settings.productName || DEFAULT_PRODUCT_NAME).trim() || DEFAULT_PRODUCT_NAME;
+  return {
+    productName,
+    organizationName,
+    loginTagline:
+      String(settings.loginTagline || "").trim() ||
+      `Plataforma operacional personalizada para ${organizationName}`,
+    loginLead:
+      String(settings.loginLead || "").trim() ||
+      `Entra con tus credenciales institucionales para continuar con reportes, aprobaciones y seguimiento operativo de ${organizationName}.`,
+    sidebarCaption: String(settings.sidebarCaption || "").trim() || organizationName,
+    topbarEyebrow: String(settings.topbarEyebrow || "").trim() || `${productName} | ${organizationName}`,
+    brandLogoPath: String(settings.brandLogoPath || DEFAULT_ORGANIZATION.settings.brandLogoPath).trim(),
+    loginHeroPath: String(settings.loginHeroPath || DEFAULT_ORGANIZATION.settings.loginHeroPath).trim(),
+    primaryColor: String(settings.primaryColor || DEFAULT_ORGANIZATION.settings.primaryColor).trim(),
+    primaryDarkColor: String(settings.primaryDarkColor || DEFAULT_ORGANIZATION.settings.primaryDarkColor).trim(),
+    accentColor: String(settings.accentColor || DEFAULT_ORGANIZATION.settings.accentColor).trim(),
+  };
+}
+
+function normalizeOrganization(organization = {}) {
+  const id = String(organization.id || DEFAULT_ORGANIZATION.id).trim() || DEFAULT_ORGANIZATION.id;
+  const name = String(organization.name || DEFAULT_ORGANIZATION.name).trim() || DEFAULT_ORGANIZATION.name;
+  return {
+    id,
+    name,
+    slug: String(organization.slug || slugify(name) || DEFAULT_ORGANIZATION.slug).trim() || DEFAULT_ORGANIZATION.slug,
+    settings: normalizeOrganizationSettings(organization.settings || {}, name),
+  };
+}
+
 function createSeedUser(account) {
   const createdAt = nowIso();
   const permissions = rolePermissions(account.primaryRole);
@@ -215,7 +273,7 @@ function buildInitialState() {
   return {
     authDataVersion: CURRENT_AUTH_DATA_VERSION,
     presetAccountVersion: PRESET_ACCOUNT_VERSION,
-    organizations: [structuredClone(DEFAULT_ORGANIZATION)],
+    organizations: [normalizeOrganization(DEFAULT_ORGANIZATION)],
     users: SEEDED_ACCOUNTS.map(createSeedUser),
     activeSessions: [],
     deletedUserRegistry: [],
@@ -245,19 +303,40 @@ function writeStateToDisk(state) {
   fs.writeFileSync(authDbPath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
 }
 
-function safeUser(user) {
+function findOrganizationById(organizationId, state = getState()) {
+  const normalizedId = String(organizationId || "").trim();
+  if (!normalizedId) {
+    return normalizeOrganization(DEFAULT_ORGANIZATION);
+  }
+  return state.organizations.find((organization) => organization.id === normalizedId) || null;
+}
+
+function resolveOrganizationForUser(user, state = getState()) {
+  const existing = findOrganizationById(user?.organizationId, state);
+  if (existing) return normalizeOrganization(existing);
+  return normalizeOrganization({
+    ...DEFAULT_ORGANIZATION,
+    id: String(user?.organizationId || DEFAULT_ORGANIZATION.id).trim() || DEFAULT_ORGANIZATION.id,
+    name: String(user?.organizationName || DEFAULT_ORGANIZATION.name).trim() || DEFAULT_ORGANIZATION.name,
+  });
+}
+
+function safeUser(user, state = getState()) {
   if (!user) {
     return null;
   }
 
   const { passwordHash, resetTokenHash, ...publicUser } = user;
+  const organization = resolveOrganizationForUser(publicUser, state);
   return {
     ...publicUser,
     email: normalizeEmail(publicUser.email),
     enabledProfiles: normalizeList(publicUser.enabledProfiles, [publicUser.primaryRole]),
     viewPermissions: normalizeList(publicUser.viewPermissions, rolePermissions(publicUser.primaryRole)),
-    organizationId: publicUser.organizationId || DEFAULT_ORGANIZATION.id,
-    organizationName: publicUser.organizationName || DEFAULT_ORGANIZATION.name,
+    organizationId: organization.id,
+    organizationName: organization.name,
+    organization,
+    organizationSettings: structuredClone(organization.settings),
     mustChangePassword: Boolean(publicUser.mustChangePassword),
     chatAlertSettings: normalizeChatAlertSettings(publicUser.chatAlertSettings),
   };
@@ -311,16 +390,18 @@ function migrateState(state) {
     deletedUserRegistry: Array.isArray(state?.deletedUserRegistry) ? state.deletedUserRegistry : [],
     emailOutbox: Array.isArray(state?.emailOutbox) ? state.emailOutbox : [],
     auditLog: Array.isArray(state?.auditLog) ? state.auditLog : [],
-    organizations: Array.isArray(state?.organizations) && state.organizations.length
-      ? state.organizations.map((organization) => ({
-          id: String(organization.id || DEFAULT_ORGANIZATION.id),
-          name: String(organization.name || DEFAULT_ORGANIZATION.name),
-        }))
-      : [structuredClone(DEFAULT_ORGANIZATION)],
+    organizations:
+      Array.isArray(state?.organizations) && state.organizations.length
+        ? state.organizations.map((organization) => normalizeOrganization(organization))
+        : [normalizeOrganization(DEFAULT_ORGANIZATION)],
     activeSessions: Array.isArray(state?.activeSessions) ? state.activeSessions.map(normalizeSession) : [],
     authDataVersion: CURRENT_AUTH_DATA_VERSION,
     presetAccountVersion: Number(state?.presetAccountVersion || 0),
   };
+
+  if (!next.organizations.some((organization) => organization.id === DEFAULT_ORGANIZATION.id)) {
+    next.organizations.unshift(normalizeOrganization(DEFAULT_ORGANIZATION));
+  }
 
   for (const seed of SEEDED_ACCOUNTS) {
     const email = normalizeEmail(seed.email);
@@ -528,7 +609,22 @@ export function listAuthUsers(actor = null) {
   const scopedUsers = actor?.organizationId
     ? getState().users.filter((user) => user.organizationId === actor.organizationId)
     : getState().users;
-  return scopedUsers.map(safeUser);
+  return scopedUsers.map((user) => safeUser(user));
+}
+
+export function getOrganizationBranding(organizationId = "") {
+  const state = getState();
+  const organization =
+    findOrganizationById(organizationId, state) ||
+    (state.organizations.length ? normalizeOrganization(state.organizations[0]) : normalizeOrganization(DEFAULT_ORGANIZATION));
+  return {
+    organization: {
+      id: organization.id,
+      name: organization.name,
+      slug: organization.slug,
+    },
+    branding: structuredClone(organization.settings),
+  };
 }
 
 export function signInAuthUser({ email, password }) {

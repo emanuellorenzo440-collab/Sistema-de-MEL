@@ -70,6 +70,7 @@ import {
   completeRequiredPasswordChange,
   createManagedAuthUser,
   deleteManagedAuthUser,
+  getOrganizationBranding,
   listAuthUsers,
   requestPasswordResetLink,
   restoreAuthSession,
@@ -2185,7 +2186,12 @@ export async function handleReportStatusHistory(_request, response, reportId) {
 export async function handleAnalyticsConfig(_request, response) {
   const actor = requireAuthenticatedUser(_request, response);
   if (!actor) return;
-  sendJson(response, 200, { data: buildAnalyticsConfig() });
+  sendJson(response, 200, {
+    data: {
+      ...buildAnalyticsConfig(),
+      ...getOrganizationBranding(actor.organizationId),
+    },
+  });
 }
 
 export async function handleAnalyticsOverview(_request, response, url) {
@@ -2259,6 +2265,8 @@ function apiIndex() {
     name: "Sistema de MEL API",
     version: "v1",
     resources: [
+      "organization/branding",
+      "organization/current",
       "programs",
       "program-centers",
       "indicators",
@@ -2457,6 +2465,17 @@ export async function handleAuthSignOut(request, response) {
   sendEmpty(response, 204);
 }
 
+export async function handleOrganizationBranding(request, response, url) {
+  const organizationId = url.searchParams.get("organizationId") || url.searchParams.get("org") || "";
+  sendJson(response, 200, { data: getOrganizationBranding(organizationId) });
+}
+
+export async function handleCurrentOrganization(request, response) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
+  sendJson(response, 200, { data: getOrganizationBranding(actor.organizationId) });
+}
+
 export async function handleAuthPasswordResetRequest(request, response) {
   try {
     const payload = await readJsonBody(request);
@@ -2569,6 +2588,11 @@ async function router(request, response) {
     return;
   }
 
+  if (request.method === "GET" && pathname === "/api/v1/organization/branding") {
+    await handleOrganizationBranding(request, response, url);
+    return;
+  }
+
   if (request.method === "POST" && pathname === "/api/v1/auth/sign-in") {
     await handleAuthSignIn(request, response);
     return;
@@ -2576,6 +2600,11 @@ async function router(request, response) {
 
   if (request.method === "GET" && pathname === "/api/v1/auth/session") {
     await handleAuthSession(request, response);
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/v1/organization/current") {
+    await handleCurrentOrganization(request, response);
     return;
   }
 

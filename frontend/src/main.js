@@ -1,8 +1,10 @@
-import { initializeAccessLobby } from "./features/access-lobby.js?v=20260601a";
+import { initializeAccessLobby } from "./features/access-lobby.js?v=20260601b";
+import { applyOrganizationBranding, brandingFromUser, loadPublicOrganizationBranding } from "./services/organization-branding.js?v=20260601b";
 
 let monitoringApp = null;
 let monitoringAppPromise = null;
 let runtimeBridgeStarted = false;
+const publicBranding = await loadPublicOrganizationBranding();
 
 if ("scrollRestoration" in window.history) {
   window.history.scrollRestoration = "manual";
@@ -14,7 +16,7 @@ async function loadMonitoringApp(authenticatedUser = null) {
 
   monitoringAppPromise = (async () => {
     const [{ createMonitoringApp }, { bootstrapApiBridge, startRuntimeBridge }] = await Promise.all([
-      import("./features/monitoring-app.js?v=20260601g"),
+      import("./features/monitoring-app.js?v=20260601h"),
       import("./services/mel-runtime-bridge.js?v=20260601b"),
     ]);
 
@@ -40,6 +42,7 @@ async function loadMonitoringApp(authenticatedUser = null) {
 
 await initializeAccessLobby({
   onAuthenticated: async (currentUser) => {
+    applyOrganizationBranding(brandingFromUser(currentUser, publicBranding));
     const isFreshBoot = !monitoringApp && !monitoringAppPromise;
     const app = await loadMonitoringApp(currentUser);
     if (!isFreshBoot) {
@@ -47,6 +50,7 @@ await initializeAccessLobby({
     }
   },
   onSignedOut: () => {
+    applyOrganizationBranding(publicBranding);
     monitoringApp?.lock();
   },
 });
