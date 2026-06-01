@@ -810,6 +810,10 @@ export function startRuntimeBridge() {
     scheduleAnalyticsRefresh(50);
   });
 
+  window.addEventListener("mel:charts-refresh", () => {
+    scheduleAnalyticsRefresh(50);
+  });
+
   window.addEventListener("focus", () => {
     void runSyncPass();
   });

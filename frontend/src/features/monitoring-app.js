@@ -3048,6 +3048,18 @@ function renderSeriesByType(series, type, emptyMessage) {
 }
 
 function renderCharts() {
+  if (isApiConfigured()) {
+    if (elements.indicatorChartTypeSelect) {
+      elements.indicatorChartTypeSelect.value = state.chartPreferences?.indicatorType || "bars";
+    }
+    if (elements.periodChartTypeSelect) {
+      elements.periodChartTypeSelect.value = state.chartPreferences?.periodType || "donut";
+    }
+    if (elements.chartDataScopeSelect) {
+      elements.chartDataScopeSelect.value = getChartDataScope();
+    }
+    return;
+  }
   const visibleReports = getFilteredReports();
   const reports = getAnalyticsReports();
   const chartScope = getChartDataScope();
@@ -3381,6 +3393,9 @@ function switchView(viewName, options = {}) {
     void sendChatPresenceHeartbeat({ activeConversationId: state?.chatActiveConversationId || "", activeView: "chat" }).catch((error) =>
       console.error("No pude actualizar la presencia al abrir el chat.", error),
     );
+  }
+  if (viewName === "charts" && isApiConfigured()) {
+    window.dispatchEvent(new CustomEvent("mel:charts-refresh"));
   }
   if (persist && state) {
     saveState();
