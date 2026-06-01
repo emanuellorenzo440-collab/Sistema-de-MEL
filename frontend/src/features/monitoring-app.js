@@ -113,6 +113,24 @@ const CHAT_COMPOSER_EMOJIS = [
   "🎉", "🥳", "✅", "❗", "❓", "⚠️", "📌", "📣", "📢", "💡", "📝", "📊", "📈", "📎", "📁", "🗂️",
   "📄", "📅", "⏰", "⌛", "🚀", "🎯", "🏆", "🤲", "🙇", "🙂", "😇", "😌", "🤩", "😴", "😬", "😓",
 ];
+const REMOTE_AUTHORITATIVE_STATE_KEYS = [
+  "programs",
+  "indicators",
+  "conceptPapers",
+  "programManuals",
+  "programCenters",
+  "reports",
+  "notifications",
+  "formSubmissions",
+  "chatConversations",
+  "chatDirectory",
+  "chatMessagesByConversation",
+  "chatPresenceByConversation",
+  "chatUnreadCount",
+  "attendanceParticipants",
+  "attendanceSessions",
+  "attendanceArchive",
+];
 let currentUserRoles = SYSTEM_ROLES.slice();
 let currentUserViews = VIEW_DEFINITIONS.map((view) => view.id);
 let accessRenderRequest = 0;
@@ -155,6 +173,14 @@ const INSTITUTIONAL_CHAT_AREAS = [
 
 function loadState() {
   return loadStoredState(STORAGE_KEY, seedState, normalizeState);
+}
+
+function cloneRemoteAuthoritativeSlices(source = {}) {
+  return REMOTE_AUTHORITATIVE_STATE_KEYS.reduce((snapshot, key) => {
+    if (!(key in source)) return snapshot;
+    snapshot[key] = structuredClone(source[key]);
+    return snapshot;
+  }, {});
 }
 
 function normalizeChatMessageFilters(filters = {}) {
@@ -448,44 +474,20 @@ function normalizeState(savedState) {
 
 function saveState(options = {}) {
   const preserveAttendanceSnapshot = Boolean(options.preserveAttendanceSnapshot);
+  const persistRemoteSlices = Boolean(options.persistRemoteSlices);
   const latest = loadState();
-  const nextState = normalizeState({
+  const draftState = {
     ...state,
-    reports:
-      Array.isArray(state?.reports) && state.reports.length === 0 && Array.isArray(latest?.reports) && latest.reports.length
-        ? latest.reports
-        : state.reports,
-    notifications:
-      Array.isArray(state?.notifications) &&
-      state.notifications.length === 0 &&
-      Array.isArray(latest?.notifications) &&
-      latest.notifications.length
-        ? latest.notifications
-        : state.notifications,
-    formSubmissions:
-      Array.isArray(state?.formSubmissions) &&
-      state.formSubmissions.length === 0 &&
-      Array.isArray(latest?.formSubmissions) &&
-      latest.formSubmissions.length
-        ? latest.formSubmissions
-        : state.formSubmissions,
-    attendanceParticipants:
-      !preserveAttendanceSnapshot &&
-      Array.isArray(state?.attendanceParticipants) &&
-      state.attendanceParticipants.length === 0 &&
-      Array.isArray(latest?.attendanceParticipants) &&
-      latest.attendanceParticipants.length
-        ? latest.attendanceParticipants
-        : state.attendanceParticipants,
-    attendanceSessions:
-      !preserveAttendanceSnapshot &&
-      Array.isArray(state?.attendanceSessions) &&
-      state.attendanceSessions.length === 0 &&
-      Array.isArray(latest?.attendanceSessions) &&
-      latest.attendanceSessions.length
-        ? latest.attendanceSessions
-        : state.attendanceSessions,
-  });
+  };
+  if (isApiConfigured() && !persistRemoteSlices) {
+    Object.assign(draftState, cloneRemoteAuthoritativeSlices(latest));
+    if (preserveAttendanceSnapshot) {
+      draftState.attendanceParticipants = structuredClone(state?.attendanceParticipants || []);
+      draftState.attendanceSessions = structuredClone(state?.attendanceSessions || []);
+      draftState.attendanceArchive = structuredClone(state?.attendanceArchive || []);
+    }
+  }
+  const nextState = normalizeState(draftState);
   state = nextState;
   saveStoredState(STORAGE_KEY, state);
 }
@@ -1348,20 +1350,20 @@ async function refreshConceptPapersFromApi() {
   if (!state.conceptPapers.some((paper) => paper.id === state.selectedConceptPaper)) {
     state.selectedConceptPaper = state.conceptPapers[0]?.id || null;
   }
-  saveState();
+  saveState({ persistRemoteSlices: true });
 }
 
 async function refreshProgramManualsFromApi() {
   if (!isApiConfigured()) return;
   state.programManuals = await fetchApiProgramManuals();
-  saveState();
+  saveState({ persistRemoteSlices: true });
 }
 
 async function refreshProgramCentersFromApi() {
   if (!isApiConfigured()) return;
   const remoteCenters = await fetchApiProgramCenters();
   state.programCenters = remoteCenters;
-  saveState();
+  saveState({ persistRemoteSlices: true });
 }
 
 function renderIndicators() {
@@ -3624,7 +3626,7 @@ async function refreshReportsAndNotificationsFromApi() {
   state.notifications = remoteNotifications;
   state.formSubmissions = remoteFormSubmissions;
   recomputeIndicatorValues();
-  saveState();
+  saveState({ persistRemoteSlices: true });
 }
 
 async function refreshAttendanceFromApi() {
@@ -3635,7 +3637,7 @@ async function refreshAttendanceFromApi() {
   ]);
   state.attendanceParticipants = participants;
   state.attendanceSessions = sessions;
-  saveState({ preserveAttendanceSnapshot: true });
+  saveState({ preserveAttendanceSnapshot: true, persistRemoteSlices: true });
 }
 
 function activeChatConversation() {
@@ -4551,7 +4553,7 @@ async function loadChatConversation(conversationId, options = {}) {
     }
   }
 
-  saveState();
+  saveState({ persistRemoteSlices: true });
   try {
     await sendChatPresenceHeartbeat({ activeConversationId: conversationId, activeView: state?.activeView || "chat" });
     await refreshActiveChatPresence({ conversationId, render: false });
@@ -4602,7 +4604,7 @@ async function refreshChatFromApi(options = {}) {
   if (includeMessages && state.chatActiveConversationId) {
     await loadChatConversation(state.chatActiveConversationId, { markRead: true });
   }
-  saveState();
+  saveState({ persistRemoteSlices: true });
 }
 
 async function refreshActiveChatPresence(options = {}) {
@@ -4616,7 +4618,7 @@ async function refreshActiveChatPresence(options = {}) {
     ...(state.chatPresenceByConversation || {}),
     [conversationId]: snapshot,
   };
-  saveState();
+  saveState({ persistRemoteSlices: true });
   if (render && previousSignature !== chatPresenceSignature(snapshot)) {
     renderChatWorkspace();
   }
