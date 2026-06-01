@@ -5205,6 +5205,16 @@ async function sendAutomatedChatMessage(conversationId, body, options = {}) {
   });
 }
 
+async function safelyRecordChatActivity(task, label = "actividad operativa") {
+  if (!isApiConfigured()) return null;
+  try {
+    return await task();
+  } catch (error) {
+    console.error(`No pude registrar ${label} en chat.`, error);
+    return null;
+  }
+}
+
 async function ensureContextChatConversation({
   title,
   description = "",
@@ -5233,7 +5243,43 @@ async function ensureContextChatConversation({
   return created;
 }
 
-async function openProgramChat(programIdOrName, options = {}) {
+async function ensureAreaConversationRecord(areaId) {
+  const area = INSTITUTIONAL_CHAT_AREAS.find((item) => item.id === areaId);
+  if (!area) throw new Error("No encontre el canal institucional solicitado.");
+  return ensureContextChatConversation({
+    title: `Canal Â· ${area.title}`,
+    description: area.description,
+    contextType: "area",
+    contextId: `area-${area.id}`,
+    participantUserIds: activeOrganizationParticipantIds(),
+  });
+}
+
+async function ensureProgramConversationRecord(programIdOrName) {
+  const program = (state.programs || []).find((item) => item.id === programIdOrName || item.name === programIdOrName);
+  if (!program) throw new Error("No encontre el programa para registrar actividad.");
+  return ensureContextChatConversation({
+    title: `Programa Â· ${program.name}`,
+    description: `Chat institucional del programa ${program.name}.`,
+    contextType: "program",
+    contextId: program.id || `program-${slugify(program.name)}`,
+    participantUserIds: activeOrganizationParticipantIds(),
+  });
+}
+
+async function ensureAttendanceConversationRecord(programName) {
+  const normalizedProgram = String(programName || "").trim();
+  if (!normalizedProgram) throw new Error("No encontre el programa de asistencia.");
+  return ensureContextChatConversation({
+    title: `Asistencia Â· ${normalizedProgram}`,
+    description: `Seguimiento operativo de asistencia para ${normalizedProgram}.`,
+    contextType: "attendance",
+    contextId: `attendance-${slugify(normalizedProgram)}`,
+    participantUserIds: activeOrganizationParticipantIds(),
+  });
+}
+
+const openProgramChatLegacy = async function (programIdOrName, options = {}) {
   const { openView = true } = options;
   const program = (state.programs || []).find(
     (item) => item.id === programIdOrName || item.name === programIdOrName,
@@ -5250,9 +5296,9 @@ async function openProgramChat(programIdOrName, options = {}) {
     participantUserIds: activeOrganizationParticipantIds(),
   });
   await openChatConversationById(conversation.id, { switchToChat: openView, markRead: true });
-}
+};
 
-async function openAttendanceChat(options = {}) {
+const openAttendanceChatLegacy = async function (options = {}) {
   const { openView = true } = options;
   const programName = String(state.attendanceProgram || "").trim();
   if (!programName) {
@@ -5268,9 +5314,9 @@ async function openAttendanceChat(options = {}) {
     participantUserIds: activeOrganizationParticipantIds(),
   });
   await openChatConversationById(conversation.id, { switchToChat: openView, markRead: true });
-}
+};
 
-async function openAreaChat(areaId, options = {}) {
+const openAreaChatLegacy = async function (areaId, options = {}) {
   const { openView = true } = options;
   const area = INSTITUTIONAL_CHAT_AREAS.find((item) => item.id === areaId);
   if (!area) {
@@ -5285,6 +5331,102 @@ async function openAreaChat(areaId, options = {}) {
     contextId: `area-${area.id}`,
     participantUserIds: activeOrganizationParticipantIds(),
   });
+  await openChatConversationById(conversation.id, { switchToChat: openView, markRead: true });
+};
+
+async function ensureReportConversationRecord(report) {
+  if (!report || !isApiConfigured()) return null;
+  const existing = await fetchApiChatConversations({
+    contextType: "report",
+    contextId: report.id,
+  });
+
+  let conversation = existing[0] || null;
+  if (!conversation) {
+    const directory = await ensureChatDirectoryLoaded();
+    const participantIds = new Set([currentUser?.id].filter(Boolean));
+    const ownerUser = findReportOwnerUser(report, directory);
+    if (ownerUser?.id) participantIds.add(ownerUser.id);
+    directory.forEach((user) => {
+      if (["Coordinador de programa", "Program Manager", "Supervision M&E", "Director Nacional"].includes(user.primaryRole)) {
+        participantIds.add(user.id);
+      }
+    });
+    conversation = await createApiChatConversation({
+      type: "group",
+      title: reportChatTitle(report),
+      contextType: "report",
+      contextId: report.id,
+      participantUserIds: [...participantIds],
+    });
+    await refreshChatFromApi({ includeMessages: false, includeDirectory: false });
+  }
+  return conversation;
+}
+
+async function sendAreaChatActivity(areaId, body, options = {}) {
+  return safelyRecordChatActivity(async () => {
+    const conversation = await ensureAreaConversationRecord(areaId);
+    return sendAutomatedChatMessage(conversation.id, body, options);
+  }, `actividad del canal ${areaId}`);
+}
+
+async function sendProgramChatActivity(programIdOrName, body, options = {}) {
+  return safelyRecordChatActivity(async () => {
+    const conversation = await ensureProgramConversationRecord(programIdOrName);
+    return sendAutomatedChatMessage(conversation.id, body, options);
+  }, `actividad del programa ${programIdOrName}`);
+}
+
+async function sendAttendanceChatActivity(programName, body, options = {}) {
+  return safelyRecordChatActivity(async () => {
+    const conversation = await ensureAttendanceConversationRecord(programName);
+    return sendAutomatedChatMessage(conversation.id, body, options);
+  }, `actividad de asistencia ${programName}`);
+}
+
+async function sendReportChatActivity(report, body, options = {}) {
+  return safelyRecordChatActivity(async () => {
+    const conversation = await ensureReportConversationRecord(report);
+    if (!conversation) return null;
+    return sendAutomatedChatMessage(conversation.id, body, options);
+  }, `actividad del reporte ${report?.id || ""}`);
+}
+
+async function openProgramChat(programIdOrName, options = {}) {
+  const { openView = true } = options;
+  const program = (state.programs || []).find(
+    (item) => item.id === programIdOrName || item.name === programIdOrName,
+  );
+  if (!program) {
+    showToast("No encontre el programa para abrir su chat.");
+    return;
+  }
+  const conversation = await ensureProgramConversationRecord(program.id || program.name);
+  await openChatConversationById(conversation.id, { switchToChat: openView, markRead: true });
+}
+
+async function openAttendanceChat(options = {}) {
+  const { openView = true } = options;
+  const programName = String(state.attendanceProgram || "").trim();
+  if (!programName) {
+    showToast("Selecciona un programa para abrir el chat de asistencia.");
+    return;
+  }
+  await ensureChatDirectoryLoaded();
+  const conversation = await ensureAttendanceConversationRecord(programName);
+  await openChatConversationById(conversation.id, { switchToChat: openView, markRead: true });
+}
+
+async function openAreaChat(areaId, options = {}) {
+  const { openView = true } = options;
+  const area = INSTITUTIONAL_CHAT_AREAS.find((item) => item.id === areaId);
+  if (!area) {
+    showToast("No encontre el canal institucional solicitado.");
+    return;
+  }
+  await ensureChatDirectoryLoaded();
+  const conversation = await ensureAreaConversationRecord(area.id);
   await openChatConversationById(conversation.id, { switchToChat: openView, markRead: true });
 }
 
@@ -7012,6 +7154,10 @@ async function deleteConceptPaperFromUi(conceptPaperId) {
     } else {
       saveState();
     }
+    await sendProgramChatActivity(
+      paper.program,
+      `${currentUser?.fullName || activeRole()} elimino el Concept Paper "${paper.title}" de ${paper.program}.`,
+    );
     renderAll();
     showToast("Concept Paper eliminado de la plataforma.");
   } catch (error) {
@@ -7061,6 +7207,10 @@ async function deleteProgramManualFromUi(manualId) {
     } else {
       saveState();
     }
+    await sendProgramChatActivity(
+      manual.program,
+      `${currentUser?.fullName || activeRole()} elimino el manual "${manual.title || manual.fileName}" de ${manual.program}.`,
+    );
     renderAll();
     showToast("Manual eliminado de la plataforma.");
   } catch (error) {
@@ -7128,6 +7278,376 @@ async function saveProgramCenterFromForm(formData) {
     showToast(error.message || "No pude guardar el centro.");
   }
 }
+
+function reportActivityMessage(report, nextStatus, note = "") {
+  if (nextStatus === REPORT_STATUSES.NEEDS_CORRECTION) {
+    return `${currentUser?.fullName || activeRole()} solicito correccion para ${report?.correctionForRole || "Facilitador"}: ${String(note || "").trim()}.`;
+  }
+  if (nextStatus === REPORT_STATUSES.APPROVED) {
+    return `${currentUser?.fullName || activeRole()} aprobo definitivamente el reporte de ${report?.program || "programa sin nombre"}.`;
+  }
+  return `${currentUser?.fullName || activeRole()} aprobo el reporte y lo envio a ${reviewRoleForStatus(nextStatus)}.`;
+}
+
+saveProgramFromForm = async function (formData) {
+  const programId = formData.get("id");
+  const selectedProvinces = formData.getAll("provinces").map((item) => String(item || "").trim()).filter(Boolean);
+  const centers = parseProgramCentersInput(formData.get("centers"));
+  const payload = {
+    id: programId || undefined,
+    name: formData.get("name"),
+    lead: formData.get("lead"),
+    beneficiaries: Number(formData.get("beneficiaries") || 0),
+    budget: formData.get("budget"),
+    coordinatorEmail: formData.get("coordinatorEmail"),
+    programManagerEmail: formData.get("programManagerEmail"),
+    melSupervisorEmail: formData.get("melSupervisorEmail"),
+    provinces: selectedProvinces,
+    focus: formData.get("focus"),
+    primaryPopulation: formData.get("primaryPopulation"),
+    centers,
+    expectedResults: programId ? state.programs.find((program) => program.id === programId)?.expectedResults || [] : [],
+    ...actorPayload(),
+  };
+
+  if (!payload.provinces.length) {
+    showToast("Selecciona al menos una provincia para el programa.");
+    return;
+  }
+
+  try {
+    const previous = state.programs.find((program) => program.id === programId);
+    const saved = isApiConfigured()
+      ? programId
+        ? await updateApiProgram(programId, payload)
+        : await createApiProgram(payload)
+      : {
+          ...payload,
+          id: programId || `prog-${slugify(payload.name)}-${Date.now()}`,
+          centers: centers.map((center, index) => ({
+            id: `center-${slugify(payload.name)}-${slugify(center.province)}-${Date.now()}-${index}`,
+            program: payload.name,
+            programId: programId || null,
+            province: center.province,
+            name: center.name,
+          })),
+        };
+    upsertById(state.programs, saved);
+    if (previous && previous.name !== saved.name) {
+      state.indicators = state.indicators.map((indicator) =>
+        indicator.program === previous.name ? { ...indicator, program: saved.name, programId: saved.id } : indicator,
+      );
+      state.reports = state.reports.map((report) =>
+        report.program === previous.name ? { ...report, program: saved.name, programId: saved.id } : report,
+      );
+      state.programCenters = (state.programCenters || []).map((center) =>
+        center.program === previous.name ? { ...center, program: saved.name, programId: saved.id } : center,
+      );
+    }
+    if (Array.isArray(saved.centers)) {
+      state.programCenters = [
+        ...(state.programCenters || []).filter((center) => center.programId !== saved.id && center.program !== saved.name),
+        ...saved.centers,
+      ];
+    }
+    saveState();
+    renderAll();
+    await sendProgramChatActivity(
+      saved.id || saved.name,
+      `${currentUser?.fullName || activeRole()} ${programId ? "actualizo" : "registro"} el programa ${saved.name}. Provincias: ${(saved.provinces || []).join(", ") || "Sin provincias"}.`,
+    );
+    resetProgramForm();
+    showToast(programId ? "Programa actualizado." : "Programa creado.");
+  } catch (error) {
+    console.error(error);
+    showToast(error.message || "No pude guardar el programa.");
+  }
+};
+
+saveProgramCenterFromForm = async function (formData) {
+  if (!canManageProgramCenters()) {
+    showToast("No tienes permiso para administrar centros.");
+    return;
+  }
+
+  const centerId = String(formData.get("id") || "").trim();
+  const payload = {
+    id: centerId || undefined,
+    program: String(formData.get("program") || "").trim(),
+    province: String(formData.get("province") || "").trim(),
+    name: String(formData.get("name") || "").trim(),
+    ...actorPayload(),
+  };
+
+  if (!payload.program || !payload.province || !payload.name) {
+    showToast("Completa programa, provincia y centro.");
+    return;
+  }
+
+  try {
+    const saved = isApiConfigured()
+      ? centerId
+        ? await updateApiProgramCenter(centerId, payload)
+        : await createApiProgramCenter(payload)
+      : { ...payload, id: centerId || `center-${slugify(payload.program)}-${slugify(payload.province)}-${Date.now()}` };
+    upsertById(state.programCenters, saved);
+    saveState();
+    resetProgramCenterForm();
+    renderAll();
+    await sendProgramChatActivity(
+      saved.programId || saved.program,
+      `${currentUser?.fullName || activeRole()} ${centerId ? "actualizo" : "agrego"} el centro ${saved.name} en ${saved.province} para ${saved.program}.`,
+    );
+    showToast("Centro guardado.");
+  } catch (error) {
+    console.error(error);
+    showToast(error.message || "No pude guardar el centro.");
+  }
+};
+
+saveCurrentAttendance = async function () {
+  const entries = attendanceEntriesFromChecklist().map((entry) => ({
+    participantId: entry.participantId,
+    name: entry.name,
+    status: attendanceEntryStatus(entry),
+    present: attendanceEntryStatus(entry) === "present",
+  }));
+  const session = {
+    id: `atts-${slugify(state.attendanceProgram)}-${slugify(attendanceCenterValue())}-${attendancePeriodValue()}-${state.attendanceWeek}`,
+    program: state.attendanceProgram,
+    weekStart: state.attendanceWeek,
+    center: attendanceCenterValue(),
+    period: attendancePeriodValue(),
+    entries,
+    notes: elements.attendanceNotes.value,
+    recordedBy: currentUser?.email || currentUser?.fullName || activeRole(),
+    actorId: currentUser?.id || currentUser?.email || `local-${slugify(activeRole())}`,
+    actorRole: activeRole(),
+  };
+  const saved = isApiConfigured() ? await saveApiAttendanceSession(session) : session;
+  upsertAttendanceSession({ ...saved, locked: saved.locked ?? true });
+  const presentCount = entries.filter((entry) => entry.status === "present").length;
+  const excusedCount = entries.filter((entry) => entry.status === "excused").length;
+  const absentCount = entries.filter((entry) => entry.status === "absent").length;
+  await sendAttendanceChatActivity(
+    state.attendanceProgram,
+    `${currentUser?.fullName || activeRole()} actualizo asistencia de ${state.attendanceProgram} para ${state.attendanceWeek} en ${attendanceCenterValue()}: ${presentCount} presentes, ${excusedCount} excusas y ${absentCount} ausentes.`,
+  );
+  renderAttendance();
+};
+
+deleteAttendanceParticipantById = async function (participantId) {
+  if (!isSystemAdminRole()) {
+    showToast("Solo Supervision M&E puede eliminar participantes.");
+    return;
+  }
+  if (isApiConfigured()) {
+    await deleteApiAttendanceParticipant(participantId, attendanceAdminPayload());
+  }
+  const participant = (state.attendanceParticipants || []).find((item) => item.id === participantId);
+  const affectedSessions = (state.attendanceSessions || [])
+    .map((session) => ({ ...session, entries: (session.entries || []).filter((entry) => entry.participantId === participantId) }))
+    .filter((session) => session.entries.length);
+  archiveAttendanceLocally("participant", { participant, affectedSessions }, "Eliminado desde la interfaz de asistencia.");
+  state.attendanceParticipants = (state.attendanceParticipants || []).filter((participantItem) => participantItem.id !== participantId);
+  state.attendanceSessions = (state.attendanceSessions || []).map((session) => ({
+    ...session,
+    entries: (session.entries || []).filter((entry) => entry.participantId !== participantId),
+  }));
+  saveState({ preserveAttendanceSnapshot: true });
+  await sendAttendanceChatActivity(
+    participant?.program || state.attendanceProgram,
+    `${currentUser?.fullName || activeRole()} elimino al participante ${participant?.name || "sin nombre"} de asistencia en ${participant?.program || state.attendanceProgram}.`,
+  );
+  renderAttendance();
+};
+
+clearAttendanceParticipantsForCurrentProgram = async function () {
+  if (!isSystemAdminRole()) {
+    showToast("Solo Supervision M&E puede eliminar participantes.");
+    return;
+  }
+  const program = state.attendanceProgram;
+  if (isApiConfigured()) {
+    await deleteApiAttendanceParticipants({ program }, { ...attendanceAdminPayload(), program });
+  }
+  const deletedParticipants = (state.attendanceParticipants || []).filter((participant) => participant.program === program);
+  const affectedSessions = (state.attendanceSessions || []).filter(
+    (session) => session.program === program && (session.entries || []).some((entry) => deletedParticipants.some((participant) => participant.id === entry.participantId)),
+  );
+  archiveAttendanceLocally("program-participants", { program, participants: deletedParticipants, affectedSessions }, "Nombres del programa eliminados.");
+  const deletedIds = new Set(deletedParticipants.map((participant) => participant.id));
+  state.attendanceParticipants = (state.attendanceParticipants || []).filter((participant) => participant.program !== program);
+  state.attendanceSessions = (state.attendanceSessions || []).map((session) =>
+    session.program === program
+      ? { ...session, entries: (session.entries || []).filter((entry) => !deletedIds.has(entry.participantId)) }
+      : session,
+  );
+  saveState({ preserveAttendanceSnapshot: true });
+  await sendAttendanceChatActivity(
+    program,
+    `${currentUser?.fullName || activeRole()} elimino todos los nombres de asistencia del programa ${program}.`,
+  );
+  renderAttendance();
+};
+
+deleteCurrentAttendanceSession = async function () {
+  if (!isSystemAdminRole()) {
+    showToast("Solo Supervision M&E puede eliminar sesiones.");
+    return;
+  }
+  const filters = {
+    program: state.attendanceProgram,
+    weekStart: state.attendanceWeek,
+    center: attendanceCenterValue(),
+    period: attendancePeriodValue(),
+  };
+  if (isApiConfigured()) {
+    await deleteApiAttendanceSession(filters, attendanceAdminPayload());
+  }
+  const sessionToDelete = attendanceSessionFor(filters.program, filters.weekStart, filters.center, filters.period);
+  archiveAttendanceLocally("session", sessionToDelete, "Sesion eliminada desde la interfaz de asistencia.");
+  state.attendanceSessions = (state.attendanceSessions || []).filter(
+    (session) =>
+      !(
+        session.program === filters.program &&
+        session.weekStart === filters.weekStart &&
+        (session.center || "General") === filters.center &&
+        (session.period || session.weekStart?.slice(0, 7)) === filters.period
+      ),
+  );
+  saveState({ preserveAttendanceSnapshot: true });
+  await sendAttendanceChatActivity(
+    filters.program,
+    `${currentUser?.fullName || activeRole()} elimino la sesion de asistencia del ${filters.weekStart} en ${filters.center}.`,
+  );
+  renderAttendance();
+};
+
+resetCurrentAttendanceProgram = async function () {
+  if (!isSystemAdminRole()) {
+    showToast("Solo Supervision M&E puede reiniciar asistencia.");
+    return;
+  }
+  const program = state.attendanceProgram;
+  if (isApiConfigured()) {
+    await resetApiAttendanceProgram({ program }, { ...attendanceAdminPayload(), program, reason: "Reinicio operativo del programa." });
+  }
+  const deletedParticipants = (state.attendanceParticipants || []).filter((participant) => participant.program === program);
+  const deletedSessions = (state.attendanceSessions || []).filter((session) => session.program === program);
+  archiveAttendanceLocally(
+    "program-reset",
+    { program, participants: deletedParticipants, sessions: deletedSessions },
+    "Reinicio operativo del programa.",
+  );
+  state.attendanceParticipants = (state.attendanceParticipants || []).filter((participant) => participant.program !== program);
+  state.attendanceSessions = (state.attendanceSessions || []).filter((session) => session.program !== program);
+  saveState({ preserveAttendanceSnapshot: true });
+  await sendAttendanceChatActivity(
+    program,
+    `${currentUser?.fullName || activeRole()} reinicio toda la asistencia operativa del programa ${program}.`,
+  );
+  renderAttendance();
+};
+
+saveReviewDecision = async function (report, nextStatus, note = "") {
+  const payload = {
+    status: nextStatus,
+    actorId: currentUser?.id || currentUser?.email || `local-${slugify(activeRole())}`,
+    actorRole: activeRole(),
+    note,
+  };
+
+  if (isApiConfigured()) {
+    const previousStatus = report.status;
+    await updateApiReportStatus(report.id, payload);
+    await refreshReportsAndNotificationsFromApi();
+    const refreshedReport =
+      (state.reports || []).find((item) => item.id === report.id) ||
+      {
+        ...report,
+        status: nextStatus,
+        correctionForRole: nextStatus === REPORT_STATUSES.NEEDS_CORRECTION ? correctionRoleForReport({ status: previousStatus }) : null,
+      };
+    await sendReportChatActivity(refreshedReport, reportActivityMessage(refreshedReport, nextStatus, note));
+    return;
+  }
+
+  const previousStatus = report.status;
+  report.status = nextStatus;
+  report.reviewNote = note || null;
+  report.correctionForRole =
+    nextStatus === REPORT_STATUSES.NEEDS_CORRECTION ? correctionRoleForReport({ status: previousStatus }) : null;
+  state.notifications = (state.notifications || []).filter((notification) => notification.reportId !== report.id);
+  state.notifications =
+    nextStatus === REPORT_STATUSES.NEEDS_CORRECTION
+      ? [
+          {
+            id: `notif-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+            reportId: report.id,
+            program: report.program,
+            recipientRole: report.correctionForRole,
+            title: `Correccion solicitada: ${report.program}`,
+            message: note,
+            status: "unread",
+            priority: "high",
+            createdAt: new Date().toISOString(),
+          },
+          ...state.notifications,
+        ]
+      : [...createLocalReviewNotifications(report), ...state.notifications];
+  saveState();
+};
+
+deleteReportFromUi = async function (reportId) {
+  const report = state.reports.find((item) => item.id === reportId);
+  if (!report) {
+    showToast("No encontre el reporte.");
+    return;
+  }
+  if (!canDeleteReport(report)) {
+    showToast("No tienes permiso para eliminar este reporte.");
+    return;
+  }
+
+  const supervisorDelete = isSystemAdminRole();
+  const confirmed = window.confirm(
+    supervisorDelete
+      ? report.status === REPORT_STATUSES.APPROVED
+        ? "Este reporte aprobado se eliminara de la lista activa, quedara registrado en auditoria y recalculara el cumplimiento del programa. Deseas continuar?"
+        : "Este reporte se eliminara de la lista activa y quedara registrado en auditoria. Deseas continuar?"
+      : "Este reporte se eliminara para que puedas subirlo nuevamente corregido. Deseas continuar?",
+  );
+  if (!confirmed) return;
+  const deletionNote = supervisorDelete
+    ? "Reporte eliminado por supervision desde la administracion."
+    : "Reporte eliminado para subir una version corregida.";
+
+  try {
+    if (isApiConfigured()) {
+      await deleteApiReport(reportId, {
+        actorId: currentUser?.id || currentUser?.email || `local-${slugify(activeRole())}`,
+        actorRole: activeRole(),
+        note: deletionNote,
+      });
+      await refreshReportsAndNotificationsFromApi();
+      await sendReportChatActivity(
+        report,
+        `${currentUser?.fullName || activeRole()} elimino el reporte de ${report.program}. Motivo: ${deletionNote}`,
+      );
+    } else {
+      state.reports = state.reports.filter((item) => item.id !== reportId);
+      state.notifications = (state.notifications || []).filter((notification) => notification.reportId !== reportId);
+      saveState();
+    }
+    activeStatusReportId = null;
+    renderAll();
+    showToast(supervisorDelete ? "Reporte eliminado y registrado en auditoria." : "Reporte eliminado. Ya puedes subirlo nuevamente corregido.");
+  } catch (error) {
+    console.error(error);
+    showToast(error.message || "No pude eliminar el reporte.");
+  }
+};
 
 function bindEvents() {
   window.addEventListener("focus", () => {
@@ -8079,11 +8599,6 @@ function bindEvents() {
             return;
           }
           await saveReviewDecision(report, REPORT_STATUSES.NEEDS_CORRECTION, note.trim());
-          const latestReport = state.reports.find((item) => item.id === report.id) || report;
-          await ensureReportConversation(latestReport, {
-            openView: false,
-            seedMessage: `${currentUser?.fullName || activeRole()} solicito correccion para ${latestReport.correctionForRole || "Facilitador"}: ${note.trim()}`,
-          });
           activeStatusReportId = report.id;
           showToast("Correccion solicitada con nota.");
         }
@@ -8165,6 +8680,10 @@ function bindEvents() {
           removeById(state.programs, targetProgram.id);
           saveState();
           renderAll();
+          await sendProgramChatActivity(
+            targetProgram.id || targetProgram.name,
+            `${currentUser?.fullName || activeRole()} elimino el programa ${targetProgram.name} del catalogo operativo.`,
+          );
           showToast("Programa eliminado.");
         } catch (error) {
           console.error(error);
@@ -8216,6 +8735,10 @@ function bindEvents() {
           }
           window.dispatchEvent(new CustomEvent("mel:manual-refresh"));
           renderAll();
+          await sendProgramChatActivity(
+            deleteProgram,
+            `${currentUser?.fullName || activeRole()} elimino el centro ${deleteName} en ${deleteProvince} para ${deleteProgram}.`,
+          );
           showToast("Centro eliminado.");
         } catch (error) {
           if (error.status === 404) {
@@ -8264,6 +8787,10 @@ function bindEvents() {
           saveState();
           form.reset();
           await refreshConceptPapersFromApi();
+          await sendProgramChatActivity(
+            savedPaper.program,
+            `${currentUser?.fullName || activeRole()} cargo el Concept Paper "${savedPaper.title}" (${savedPaper.year || "sin ano"}) para ${savedPaper.program}.`,
+          );
           accessLibraryUploadInFlight = false;
           renderAll();
           showToast("Concept Paper cargado y disponible para todos.");
@@ -8291,6 +8818,10 @@ function bindEvents() {
           saveState();
           form.reset();
           await refreshProgramManualsFromApi();
+          await sendProgramChatActivity(
+            savedManual.program,
+            `${currentUser?.fullName || activeRole()} cargo el manual "${savedManual.title}" (${savedManual.version || "sin version"}) para ${savedManual.program}.`,
+          );
           accessLibraryUploadInFlight = false;
           renderAll();
           showToast("Manual cargado y disponible para todos.");
@@ -8310,7 +8841,7 @@ function bindEvents() {
       void (async () => {
         try {
           const systemRole = String(formData.get("systemRole") || "Facilitador");
-          await createManagedUser({
+          const createdUser = await createManagedUser({
             fullName: formData.get("fullName"),
             email: formData.get("email"),
             password: formData.get("password"),
@@ -8320,6 +8851,10 @@ function bindEvents() {
             mustChangePassword: formData.get("mustChangePassword") === "on",
             accessNote: formData.get("accessNote"),
           });
+          await sendAreaChatActivity(
+            "access",
+            `${currentUser?.fullName || activeRole()} creo el acceso de ${createdUser.fullName} (${createdUser.systemRole}) con estado ${createdUser.status || formData.get("status") || "active"}.`,
+          );
           event.target.reset();
           renderAccessWorkspace();
           showToast("Usuario creado.");
@@ -8342,7 +8877,7 @@ function bindEvents() {
 
     void (async () => {
       try {
-        await updateManagedUserAccess(userId, {
+        const updatedUser = await updateManagedUserAccess(userId, {
           fullName: formData.get("fullName"),
           email: formData.get("email"),
           password: String(formData.get("password") || "").trim() || undefined,
@@ -8353,6 +8888,10 @@ function bindEvents() {
           mustChangePassword: formData.get("mustChangePassword") === "on",
           accessNote: formData.get("accessNote"),
         });
+        await sendAreaChatActivity(
+          "access",
+          `${currentUser?.fullName || activeRole()} actualizo el acceso de ${updatedUser.fullName} (${updatedUser.systemRole}) con estado ${updatedUser.status}.`,
+        );
         await syncAuthenticatedAccess();
         renderAll();
         showToast("Acceso actualizado.");
@@ -8379,7 +8918,11 @@ function bindEvents() {
         userCard?.remove();
         deleteButton.disabled = true;
         deleteButton.textContent = "Eliminando...";
-        await deleteManagedUser(userId);
+        const deletedUser = await deleteManagedUser(userId);
+        await sendAreaChatActivity(
+          "access",
+          `${currentUser?.fullName || activeRole()} elimino definitivamente el acceso de ${deletedUser.fullName || deletedUser.email}.`,
+        );
         await syncAuthenticatedAccess();
         renderAccessWorkspace();
         showToast("Usuario eliminado definitivamente.");
