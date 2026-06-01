@@ -756,9 +756,15 @@ export function updateOrganization(organizationId, payload = {}, actorOrId) {
 
   if (
     state.organizations.some(
-      (organization) =>
-        organization.id !== current.id &&
-        (organization.slug === next.slug || normalizeHostname(organization.hostnames?.[0]) === normalizeHostname(next.hostnames?.[0])),
+      (organization) => {
+        if (organization.id === current.id) return false;
+        const nextPrimaryHostname = normalizeHostname(next.hostnames?.[0]);
+        const candidatePrimaryHostname = normalizeHostname(organization.hostnames?.[0]);
+        return (
+          organization.slug === next.slug ||
+          (nextPrimaryHostname && candidatePrimaryHostname && candidatePrimaryHostname === nextPrimaryHostname)
+        );
+      },
     )
   ) {
     throw authError(409, "Otra organizacion ya usa ese slug u hostname principal.");

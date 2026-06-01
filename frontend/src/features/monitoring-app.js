@@ -28,6 +28,7 @@ import {
   createApiChatConversation,
   createApiChatMessage,
   createApiConceptPaper,
+  createApiOrganization,
   createApiAttendanceParticipant,
   createApiFormSubmission,
   createApiIndicator,
@@ -53,6 +54,7 @@ import {
   fetchApiChatMessages,
   fetchApiChatUnreadCount,
   fetchApiConceptPapers,
+  fetchApiOrganizations,
   fetchApiAttendanceParticipants,
   fetchApiAttendanceSessions,
   fetchApiFormSubmissions,
@@ -73,6 +75,7 @@ import {
   updateApiChatParticipant,
   updateApiChatMessage,
   updateApiChatConversation,
+  updateApiOrganization,
   updateApiReportStatus,
   updateApiIndicator,
   updateApiProgram,
@@ -2370,15 +2373,19 @@ function hasPendingAccessLibraryFileSelection() {
 function captureAccessWorkspaceDraft() {
   if (!elements.accessUserGrid) return null;
   const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const organizationForm = elements.accessUserGrid.querySelector("#createOrganizationForm");
   const createForm = elements.accessUserGrid.querySelector("#createManagedUserForm");
   const conceptForm = elements.accessUserGrid.querySelector("#createConceptPaperForm");
   const manualForm = elements.accessUserGrid.querySelector("#createProgramManualForm");
   const editForms = Array.from(elements.accessUserGrid.querySelectorAll("[data-user-access-form]"));
+  const organizationEditForms = Array.from(elements.accessUserGrid.querySelectorAll("[data-organization-form]"));
   const activeForm = activeElement?.closest?.("form");
 
   return {
     activeFormId:
-      activeForm?.id === "createManagedUserForm"
+      activeForm?.id === "createOrganizationForm"
+        ? "organization-create"
+        : activeForm?.id === "createManagedUserForm"
         ? "create"
         : activeForm?.id === "createConceptPaperForm"
           ? "concept"
@@ -2386,13 +2393,20 @@ function captureAccessWorkspaceDraft() {
             ? "manual"
         : activeForm?.dataset?.userAccessForm
           ? `edit:${activeForm.dataset.userAccessForm}`
+        : activeForm?.dataset?.organizationForm
+          ? `organization:${activeForm.dataset.organizationForm}`
           : null,
     activeFieldName: activeElement?.name || null,
     selectionStart: typeof activeElement?.selectionStart === "number" ? activeElement.selectionStart : null,
     selectionEnd: typeof activeElement?.selectionEnd === "number" ? activeElement.selectionEnd : null,
+    organization: captureFormValues(organizationForm),
     create: captureFormValues(createForm),
     concept: captureFormValues(conceptForm),
     manual: captureFormValues(manualForm),
+    organizationEdits: organizationEditForms.map((form) => ({
+      id: form.dataset.organizationForm,
+      values: captureFormValues(form),
+    })),
     edits: editForms.map((form) => ({
       id: form.dataset.userAccessForm,
       values: captureFormValues(form),
@@ -2402,20 +2416,28 @@ function captureAccessWorkspaceDraft() {
 
 function restoreAccessWorkspaceDraft(snapshot) {
   if (!snapshot || !elements.accessUserGrid) return;
+  restoreFormValues(elements.accessUserGrid.querySelector("#createOrganizationForm"), snapshot.organization);
   restoreFormValues(elements.accessUserGrid.querySelector("#createManagedUserForm"), snapshot.create);
   restoreFormValues(elements.accessUserGrid.querySelector("#createConceptPaperForm"), snapshot.concept);
   restoreFormValues(elements.accessUserGrid.querySelector("#createProgramManualForm"), snapshot.manual);
+  snapshot.organizationEdits?.forEach((entry) => {
+    restoreFormValues(elements.accessUserGrid.querySelector(`[data-organization-form="${entry.id}"]`), entry.values);
+  });
   snapshot.edits?.forEach((entry) => {
     restoreFormValues(elements.accessUserGrid.querySelector(`[data-user-access-form="${entry.id}"]`), entry.values);
   });
 
   const activeForm =
-    snapshot.activeFormId === "create"
+    snapshot.activeFormId === "organization-create"
+      ? elements.accessUserGrid.querySelector("#createOrganizationForm")
+    : snapshot.activeFormId === "create"
       ? elements.accessUserGrid.querySelector("#createManagedUserForm")
       : snapshot.activeFormId === "concept"
         ? elements.accessUserGrid.querySelector("#createConceptPaperForm")
       : snapshot.activeFormId === "manual"
         ? elements.accessUserGrid.querySelector("#createProgramManualForm")
+      : snapshot.activeFormId?.startsWith("organization:")
+        ? elements.accessUserGrid.querySelector(`[data-organization-form="${snapshot.activeFormId.slice(13)}"]`)
       : snapshot.activeFormId?.startsWith("edit:")
         ? elements.accessUserGrid.querySelector(`[data-user-access-form="${snapshot.activeFormId.slice(5)}"]`)
         : null;
@@ -2442,7 +2464,13 @@ function renderAccessWorkspace(options = {}) {
   const renderRequest = ++accessRenderRequest;
 
   void (async () => {
-    const users = (await listManagedUsers()).filter((user) => !deletedAccessUserIds.has(user.id));
+    const [users, organizations] = await Promise.all([
+      listManagedUsers().then((items) => items.filter((user) => !deletedAccessUserIds.has(user.id))),
+      isSystemAdminRole() ? fetchApiOrganizations().catch((error) => {
+        console.error("No pude cargar organizaciones.", error);
+        return [];
+      }) : Promise.resolve([]),
+    ]);
     if (renderRequest !== accessRenderRequest) return;
     const groups = [
       { key: "pending_verification", label: "Solicitudes nuevas", empty: "No hay usuarios pendientes de verificacion." },
@@ -2456,6 +2484,117 @@ function renderAccessWorkspace(options = {}) {
     const suspendedUsers = users.filter((user) => user.status === "suspended").length;
     elements.accessRequestCount.textContent = `${pendingCount} pendiente${pendingCount === 1 ? "" : "s"}`;
     elements.accessRequestCount.className = `status-pill ${pendingCount ? "warning" : "good"}`;
+
+  const organizationMarkup = isSystemAdminRole()
+    ? `
+      <form class="user-access-card concept-upload-card" id="createOrganizationForm">
+        <div class="user-access-top">
+          <div>
+            <p class="eyebrow">Organizaciones</p>
+            <h3>Registrar nueva organizacion</h3>
+          </div>
+          <span class="status-pill info">${organizations.length} registradas</span>
+        </div>
+        <div class="access-card-grid">
+          <label>
+            Nombre
+            <input name="name" type="text" placeholder="Ej. Acme Relief" required />
+          </label>
+          <label>
+            Slug
+            <input name="slug" type="text" placeholder="ej. acme-relief" />
+          </label>
+          <label>
+            URL principal
+            <input name="hostname" type="text" placeholder="ej. acme.nexora.app" />
+          </label>
+          <label>
+            Nombre del producto
+            <input name="productName" type="text" value="Nexora" />
+          </label>
+          <label>
+            Color principal
+            <input name="primaryColor" type="text" value="#c5332f" />
+          </label>
+          <label>
+            Color secundario
+            <input name="accentColor" type="text" value="#2f85c7" />
+          </label>
+          <label class="span-2">
+            Texto del login
+            <textarea name="loginTagline" rows="2" placeholder="Texto breve de bienvenida para la organizacion."></textarea>
+          </label>
+        </div>
+        <div class="item-actions">
+          <button class="primary-action" type="submit">Crear organizacion</button>
+        </div>
+      </form>
+      ${
+        organizations.length
+          ? `<section class="access-group">
+              <div class="panel-header">
+                <div>
+                  <p class="eyebrow">Configuracion por organizacion</p>
+                  <h2>${organizations.length} organizacion${organizations.length === 1 ? "" : "es"}</h2>
+                </div>
+              </div>
+              <div class="user-access-group-grid">
+                ${organizations
+                  .map(
+                    (organization) => `
+                      <form class="user-access-card" data-organization-form="${escapeHtml(organization.id)}">
+                        <div class="user-access-top">
+                          <div>
+                            <h3>${escapeHtml(organization.name)}</h3>
+                            <p class="item-meta">${escapeHtml(organization.slug || organization.id)}</p>
+                          </div>
+                          <span class="status-pill ${organization.id === currentUser?.organizationId ? "good" : "info"}">${
+                            organization.id === currentUser?.organizationId ? "Activa ahora" : "Registrada"
+                          }</span>
+                        </div>
+                        <div class="access-card-grid">
+                          <label>
+                            Nombre
+                            <input name="name" type="text" value="${escapeHtml(organization.name || "")}" required />
+                          </label>
+                          <label>
+                            Slug
+                            <input name="slug" type="text" value="${escapeHtml(organization.slug || "")}" required />
+                          </label>
+                          <label>
+                            URL principal
+                            <input name="hostname" type="text" value="${escapeHtml(organization.hostnames?.[0] || "")}" />
+                          </label>
+                          <label>
+                            Caption lateral
+                            <input name="sidebarCaption" type="text" value="${escapeHtml(organization.settings?.sidebarCaption || organization.name || "")}" />
+                          </label>
+                          <label>
+                            Color principal
+                            <input name="primaryColor" type="text" value="${escapeHtml(organization.settings?.primaryColor || "#c5332f")}" />
+                          </label>
+                          <label>
+                            Color secundario
+                            <input name="accentColor" type="text" value="${escapeHtml(organization.settings?.accentColor || "#2f85c7")}" />
+                          </label>
+                          <label class="span-2">
+                            Texto del login
+                            <textarea name="loginTagline" rows="2">${escapeHtml(organization.settings?.loginTagline || "")}</textarea>
+                          </label>
+                        </div>
+                        <div class="item-actions">
+                          <button class="primary-action" type="submit">Guardar organizacion</button>
+                        </div>
+                      </form>
+                    `,
+                  )
+                  .join("")}
+              </div>
+            </section>`
+          : ""
+      }
+    `
+    : "";
 
   const manualUploadMarkup = isSystemAdminRole()
     ? `
@@ -2502,8 +2641,8 @@ function renderAccessWorkspace(options = {}) {
     `
     : "";
 
-  const summaryMarkup = `
-
+    const summaryMarkup = `
+          ${organizationMarkup}
           <form class="user-access-card create-user-card" id="createManagedUserForm">
             <div class="user-access-top">
               <div>
@@ -8850,6 +8989,36 @@ function bindEvents() {
   });
 
   elements.accessUserGrid?.addEventListener("submit", (event) => {
+    if (event.target.id === "createOrganizationForm") {
+      event.preventDefault();
+      const form = event.target;
+      const formData = new FormData(form);
+      void (async () => {
+        try {
+          const createdOrganization = await createApiOrganization({
+            name: String(formData.get("name") || "").trim(),
+            slug: String(formData.get("slug") || "").trim() || undefined,
+            hostnames: String(formData.get("hostname") || "").trim() ? [String(formData.get("hostname") || "").trim()] : [],
+            settings: {
+              productName: String(formData.get("productName") || "Nexora").trim(),
+              organizationName: String(formData.get("name") || "").trim(),
+              loginTagline: String(formData.get("loginTagline") || "").trim(),
+              sidebarCaption: String(formData.get("name") || "").trim(),
+              primaryColor: String(formData.get("primaryColor") || "").trim(),
+              accentColor: String(formData.get("accentColor") || "").trim(),
+            },
+          });
+          form.reset();
+          renderAccessWorkspace({ force: true });
+          showToast(`Organizacion ${createdOrganization.organization.name} creada.`);
+        } catch (error) {
+          console.error(error);
+          showToast(error.message || "No pude crear la organizacion.");
+        }
+      })();
+      return;
+    }
+
     if (event.target.id === "createConceptPaperForm") {
       event.preventDefault();
       const form = event.target;
@@ -8939,6 +9108,38 @@ function bindEvents() {
         } catch (error) {
           console.error(error);
           showToast(error.message || "No pude crear el usuario.");
+        }
+      })();
+      return;
+    }
+
+    const organizationForm = event.target.closest("[data-organization-form]");
+    if (organizationForm) {
+      event.preventDefault();
+      const organizationId = organizationForm.dataset.organizationForm;
+      const formData = new FormData(organizationForm);
+      void (async () => {
+        try {
+          const updatedOrganization = await updateApiOrganization(organizationId, {
+            name: String(formData.get("name") || "").trim(),
+            slug: String(formData.get("slug") || "").trim(),
+            hostnames: String(formData.get("hostname") || "").trim() ? [String(formData.get("hostname") || "").trim()] : [],
+            settings: {
+              organizationName: String(formData.get("name") || "").trim(),
+              sidebarCaption: String(formData.get("sidebarCaption") || "").trim(),
+              loginTagline: String(formData.get("loginTagline") || "").trim(),
+              primaryColor: String(formData.get("primaryColor") || "").trim(),
+              accentColor: String(formData.get("accentColor") || "").trim(),
+            },
+          });
+          if (updatedOrganization.organization.id === currentUser?.organizationId) {
+            applyOrganizationBranding(updatedOrganization);
+          }
+          renderAccessWorkspace({ force: true });
+          showToast(`Organizacion ${updatedOrganization.organization.name} actualizada.`);
+        } catch (error) {
+          console.error(error);
+          showToast(error.message || "No pude actualizar la organizacion.");
         }
       })();
       return;
