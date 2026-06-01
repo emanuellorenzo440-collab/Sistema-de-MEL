@@ -143,6 +143,32 @@ export async function fetchApiConfig() {
   return response.data;
 }
 
+export async function fetchApiOrganizationCurrent() {
+  const response = await requestJson("organization/current");
+  return response.data;
+}
+
+export async function fetchApiOrganizations() {
+  const response = await requestJson("organization/list");
+  return response.data || [];
+}
+
+export async function createApiOrganization(payload) {
+  const response = await requestJson("organization/list", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function updateApiOrganization(organizationId, payload) {
+  const response = await requestJson(`organization/${encodeURIComponent(organizationId)}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
 export async function fetchApiPrograms() {
   const response = await requestJson("programs");
   return response.data || [];

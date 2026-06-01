@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const CURRENT_AUTH_DATA_VERSION = 1;
+const CURRENT_AUTH_DATA_VERSION = 2;
 const PRESET_ACCOUNT_VERSION = 4;
 const PASSWORD_HASH_VERSION = "pbkdf2-sha512";
 const PASSWORD_ITERATIONS = 120000;
@@ -616,6 +616,14 @@ function requireAccessAdmin(actorOrId) {
   return actor;
 }
 
+function requireSupervisionAdmin(actorOrId) {
+  const actor = requireAccessAdmin(actorOrId);
+  if (String(actor.primaryRole || "").trim() !== SYSTEM_ROLES.supervision) {
+    throw authError(403, "Solo Supervision M&E puede administrar organizaciones.");
+  }
+  return actor;
+}
+
 function clearDeletionMarkersForEmail(email) {
   const normalizedEmail = normalizeEmail(email);
   const state = getState();
@@ -680,7 +688,93 @@ export function listOrganizations() {
     name: organization.name,
     slug: organization.slug,
     hostnames: Array.isArray(organization.hostnames) ? organization.hostnames.slice() : [],
+    settings: structuredClone(organization.settings),
   }));
+}
+
+export function createOrganization(payload = {}, actorOrId) {
+  const actor = requireSupervisionAdmin(actorOrId);
+  const state = getState();
+  const name = String(payload.name || "").trim();
+  if (!name) {
+    throw authError(400, "El nombre de la organizacion es obligatorio.");
+  }
+  const slug = String(payload.slug || slugify(name)).trim().toLowerCase();
+  if (!slug) {
+    throw authError(400, "El slug de la organizacion es obligatorio.");
+  }
+  if (state.organizations.some((organization) => organization.id === payload.id || organization.slug === slug)) {
+    throw authError(409, "Ya existe una organizacion con ese identificador o slug.");
+  }
+
+  const organization = normalizeOrganization({
+    id: String(payload.id || `org-${slug}`).trim(),
+    name,
+    slug,
+    hostnames: payload.hostnames,
+    settings: payload.settings || {
+      organizationName: name,
+      productName: payload.productName || DEFAULT_PRODUCT_NAME,
+      loginTagline: payload.loginTagline,
+      loginLead: payload.loginLead,
+      sidebarCaption: payload.sidebarCaption,
+      topbarEyebrow: payload.topbarEyebrow,
+      brandLogoPath: payload.brandLogoPath,
+      loginHeroPath: payload.loginHeroPath,
+      primaryColor: payload.primaryColor,
+      primaryDarkColor: payload.primaryDarkColor,
+      accentColor: payload.accentColor,
+    },
+  });
+  if (state.organizations.some((candidate) => candidate.id === organization.id || candidate.slug === organization.slug)) {
+    throw authError(409, "Ya existe una organizacion con ese identificador o slug.");
+  }
+  state.organizations.push(organization);
+  audit("auth.organizationCreated", { actorId: actor.id, organizationId: organization.id, slug: organization.slug });
+  persist();
+  return getCurrentOrganization({ organizationId: organization.id });
+}
+
+export function updateOrganization(organizationId, payload = {}, actorOrId) {
+  const actor = requireSupervisionAdmin(actorOrId);
+  const state = getState();
+  const current = state.organizations.find((organization) => organization.id === organizationId);
+  if (!current) {
+    throw authError(404, "No encontre la organizacion solicitada.");
+  }
+
+  const next = normalizeOrganization({
+    ...current,
+    ...payload,
+    id: current.id,
+    settings: {
+      ...(current.settings || {}),
+      ...(payload.settings || {}),
+      organizationName: payload.name || payload.settings?.organizationName || current.name,
+    },
+  });
+
+  if (
+    state.organizations.some(
+      (organization) =>
+        organization.id !== current.id &&
+        (organization.slug === next.slug || normalizeHostname(organization.hostnames?.[0]) === normalizeHostname(next.hostnames?.[0])),
+    )
+  ) {
+    throw authError(409, "Otra organizacion ya usa ese slug u hostname principal.");
+  }
+
+  Object.assign(current, next);
+  state.users.forEach((user) => {
+    if (user.organizationId === current.id) {
+      user.organizationName = current.name;
+      user.updatedAt = nowIso();
+      user.updatedBy = actor.id;
+    }
+  });
+  audit("auth.organizationUpdated", { actorId: actor.id, organizationId: current.id });
+  persist();
+  return getCurrentOrganization({ organizationId: current.id });
 }
 
 export function signInAuthUser({ email, password, organizationId, organizationSlug, host }) {

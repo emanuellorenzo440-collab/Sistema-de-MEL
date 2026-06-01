@@ -68,6 +68,7 @@ import {
 } from "./data/mock-store.js";
 import {
   completeRequiredPasswordChange,
+  createOrganization,
   createManagedAuthUser,
   deleteManagedAuthUser,
   getCurrentOrganization,
@@ -79,6 +80,7 @@ import {
   resetPasswordWithToken,
   signOutAuthSession,
   signInAuthUser,
+  updateOrganization,
   updateOwnAuthUserPreferences,
   updateManagedAuthUser,
 } from "./data/auth-store.js";
@@ -392,9 +394,23 @@ function safeFileName(value = "archivo") {
   return baseName || "archivo";
 }
 
-function uploadStoragePath(kind = "general", fileName = "archivo") {
+function safeSegment(value = "general") {
+  return String(value || "general")
+    .trim()
+    .toLowerCase()
+    .replace(/[^\w.\-]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "general";
+}
+
+function uploadStoragePath(kind = "general", fileName = "archivo", organizationId = "shared") {
   const date = new Date();
-  const folder = [String(date.getFullYear()), String(date.getMonth() + 1).padStart(2, "0"), safeFileName(kind)].join("/");
+  const folder = [
+    "organizations",
+    safeSegment(organizationId),
+    String(date.getFullYear()),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    safeSegment(kind),
+  ].join("/");
   const id = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
   return `${folder}/${id}-${safeFileName(fileName)}`;
 }
@@ -409,8 +425,8 @@ function resolveUploadPath(storagePath = "") {
   return absolutePath;
 }
 
-async function streamRequestToUpload(request, { kind = "general", fileName = "archivo" } = {}) {
-  const storagePath = uploadStoragePath(kind, fileName);
+async function streamRequestToUpload(request, { kind = "general", fileName = "archivo", organizationId = "shared" } = {}) {
+  const storagePath = uploadStoragePath(kind, fileName, organizationId);
   const absolutePath = resolveUploadPath(storagePath);
   if (!absolutePath) {
     const error = new Error("Ruta de archivo invalida.");
@@ -453,6 +469,21 @@ async function streamRequestToUpload(request, { kind = "general", fileName = "ar
     mimeType: request.headers["content-type"] || "application/octet-stream",
     size: totalBytes,
   };
+}
+
+function uploadPathOrganizationId(storagePath = "") {
+  const normalizedPath = String(storagePath || "").replace(/\\/g, "/");
+  const match = normalizedPath.match(/^organizations\/([^/]+)\//i);
+  return match ? String(match[1] || "").trim().toLowerCase() : "";
+}
+
+function canAccessUploadPath(actor, storagePath = "") {
+  if (!actor?.organizationId) return false;
+  const scopedOrganizationId = uploadPathOrganizationId(storagePath);
+  if (scopedOrganizationId) {
+    return scopedOrganizationId === safeSegment(actor.organizationId);
+  }
+  return safeSegment(actor.organizationId) === safeSegment("org-convoy-of-hope");
 }
 
 function dataUrlToFile(dataUrl = "") {
@@ -978,7 +1009,7 @@ export async function handleUploadCreate(request, response, url) {
   const kind = url.searchParams.get("kind") || "general";
   const fileName = url.searchParams.get("fileName") || "archivo";
   try {
-    const uploaded = await streamRequestToUpload(request, { kind, fileName });
+    const uploaded = await streamRequestToUpload(request, { kind, fileName, organizationId: actor.organizationId });
     sendJson(response, 201, { data: uploaded });
   } catch (error) {
     sendJson(response, error.status || 500, {
@@ -988,10 +1019,16 @@ export async function handleUploadCreate(request, response, url) {
   }
 }
 
-export async function handleUploadFile(_request, response, url) {
+export async function handleUploadFile(request, response, url) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
   const storagePath = url.searchParams.get("path") || "";
   if (isLibraryDocumentPathDeleted(storagePath)) {
     sendJson(response, 404, { error: "Este documento fue eliminado de la biblioteca." });
+    return;
+  }
+  if (!canAccessUploadPath(actor, storagePath)) {
+    sendJson(response, 403, { error: "No tienes permiso para abrir este archivo." });
     return;
   }
   const fileName = url.searchParams.get("fileName") || path.basename(storagePath);
@@ -2270,6 +2307,8 @@ function apiIndex() {
       "organization/branding",
       "organization/current",
       "organization/list",
+      "POST organization/list",
+      "PUT organization/:id",
       "programs",
       "program-centers",
       "indicators",
@@ -2501,6 +2540,28 @@ export async function handleOrganizationList(_request, response) {
   sendJson(response, 200, { data: listOrganizations() });
 }
 
+export async function handleOrganizationCreate(request, response) {
+  try {
+    const actor = requireAuthenticatedUser(request, response);
+    if (!actor) return;
+    const payload = await readJsonBody(request);
+    sendJson(response, 201, { data: createOrganization(payload, actor) });
+  } catch (error) {
+    sendApiError(response, error);
+  }
+}
+
+export async function handleOrganizationUpdate(request, response, organizationId) {
+  try {
+    const actor = requireAuthenticatedUser(request, response);
+    if (!actor) return;
+    const payload = await readJsonBody(request);
+    sendJson(response, 200, { data: updateOrganization(organizationId, payload, actor) });
+  } catch (error) {
+    sendApiError(response, error);
+  }
+}
+
 export async function handleAuthPasswordResetRequest(request, response) {
   try {
     const payload = await readJsonBody(request);
@@ -2623,6 +2684,11 @@ async function router(request, response) {
     return;
   }
 
+  if (request.method === "POST" && pathname === "/api/v1/organization/list") {
+    await handleOrganizationCreate(request, response);
+    return;
+  }
+
   if (request.method === "POST" && pathname === "/api/v1/auth/sign-in") {
     await handleAuthSignIn(request, response);
     return;
@@ -2635,6 +2701,12 @@ async function router(request, response) {
 
   if (request.method === "GET" && pathname === "/api/v1/organization/current") {
     await handleCurrentOrganization(request, response);
+    return;
+  }
+
+  const organizationMatch = pathname.match(/^\/api\/v1\/organization\/([^/]+)$/);
+  if (request.method === "PUT" && organizationMatch) {
+    await handleOrganizationUpdate(request, response, decodeURIComponent(organizationMatch[1]));
     return;
   }
 
