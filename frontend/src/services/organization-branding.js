@@ -58,6 +58,10 @@ export function normalizeOrganizationBranding(payload = {}) {
       String(payload.organization?.name || payload.branding?.organizationName || payload.organizationName || fallback.organization.name).trim() ||
       fallback.organization.name,
     slug: String(payload.organization?.slug || fallback.organization.slug).trim() || fallback.organization.slug,
+    hostnames: Array.isArray(payload.organization?.hostnames) ? payload.organization.hostnames.slice() : [],
+    primaryHostname: String(payload.organization?.primaryHostname || "").trim(),
+    primaryPortalUrl: String(payload.organization?.primaryPortalUrl || "").trim(),
+    fallbackPortalQuery: String(payload.organization?.fallbackPortalQuery || "").trim(),
   };
 
   const productName = String(payload.branding?.productName || fallback.branding.productName).trim() || fallback.branding.productName;

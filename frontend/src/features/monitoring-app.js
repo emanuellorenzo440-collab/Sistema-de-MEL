@@ -21,7 +21,7 @@ import {
   listVisibleViews,
   updateCurrentUserChatAlertSettings,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260601b";
+} from "../services/auth-service.js?v=20260601c";
 import {
   apiFileUrl,
   addApiChatParticipants,
@@ -82,7 +82,7 @@ import {
   updateApiProgramCenter,
   uploadApiFile,
 } from "../services/mel-api.js?v=20260601a";
-import { applyOrganizationBranding, brandingFromUser } from "../services/organization-branding.js?v=20260601b";
+import { applyOrganizationBranding, brandingFromUser } from "../services/organization-branding.js?v=20260601c";
 import {
   currentMonth,
   escapeHtml,
@@ -255,6 +255,39 @@ function reportParticipantFieldsForProgram(programName = "") {
   if (normalized === "programa cfi" || normalized === "cfi") return ["adolescents", "children"];
   if (normalized === "agricultura") return ["adolescents", "women", "men"];
   return ["women", "men", "adolescents"];
+}
+
+function parseOrganizationHostnames(value = "") {
+  return unique(
+    String(value || "")
+      .split(/[\n,]+/g)
+      .map((item) =>
+        String(item || "")
+          .trim()
+          .toLowerCase()
+          .replace(/^[a-z]+:\/\//i, "")
+          .replace(/\/.*$/, "")
+          .replace(/:\d+$/, ""),
+      )
+      .filter(Boolean),
+  );
+}
+
+function organizationPortalPreviewMarkup(organization = {}) {
+  const primaryPortalUrl = String(organization.primaryPortalUrl || "").trim();
+  const aliasUrls = Array.isArray(organization.hostnamePortalUrls) ? organization.hostnamePortalUrls.slice(1) : [];
+  const fallbackPortalQuery = String(organization.fallbackPortalQuery || `?organizationSlug=${organization.slug || ""}`).trim();
+  return `
+    <div class="organization-portal-preview">
+      <p class="item-meta"><strong>Portal principal:</strong> ${escapeHtml(primaryPortalUrl || "Se resolvera por slug mientras no se asigne un dominio.")}</p>
+      ${
+        aliasUrls.length
+          ? `<p class="item-meta"><strong>Aliases:</strong> ${escapeHtml(aliasUrls.join(" · "))}</p>`
+          : `<p class="item-meta"><strong>Aliases:</strong> Todavia no hay aliases registrados.</p>`
+      }
+      <p class="item-meta"><strong>Fallback:</strong> ${escapeHtml(fallbackPortalQuery)}</p>
+    </div>
+  `;
 }
 
 function reportParticipantValue(report = {}, fieldKey = "") {
@@ -2505,8 +2538,9 @@ function renderAccessWorkspace(options = {}) {
             <input name="slug" type="text" placeholder="ej. acme-relief" />
           </label>
           <label>
-            URL principal
-            <input name="hostname" type="text" placeholder="ej. acme.nexora.app" />
+            Dominios y subdominios
+            <textarea name="hostnames" rows="3" placeholder="ej. acme.nexora.app&#10;portal.acme.org"></textarea>
+            <p class="item-meta">Uno por linea o separados por coma. El primero queda como dominio principal.</p>
           </label>
           <label>
             Nombre del producto
@@ -2552,6 +2586,7 @@ function renderAccessWorkspace(options = {}) {
                             organization.id === currentUser?.organizationId ? "Activa ahora" : "Registrada"
                           }</span>
                         </div>
+                        ${organizationPortalPreviewMarkup(organization)}
                         <div class="access-card-grid">
                           <label>
                             Nombre
@@ -2562,8 +2597,9 @@ function renderAccessWorkspace(options = {}) {
                             <input name="slug" type="text" value="${escapeHtml(organization.slug || "")}" required />
                           </label>
                           <label>
-                            URL principal
-                            <input name="hostname" type="text" value="${escapeHtml(organization.hostnames?.[0] || "")}" />
+                            Dominios y subdominios
+                            <textarea name="hostnames" rows="3">${escapeHtml((organization.hostnames || []).join("\n"))}</textarea>
+                            <p class="item-meta">Uno por linea o separados por coma. El primero queda como dominio principal.</p>
                           </label>
                           <label>
                             Caption lateral
@@ -8995,10 +9031,11 @@ function bindEvents() {
       const formData = new FormData(form);
       void (async () => {
         try {
+          const hostnames = parseOrganizationHostnames(formData.get("hostnames") || "");
           const createdOrganization = await createApiOrganization({
             name: String(formData.get("name") || "").trim(),
             slug: String(formData.get("slug") || "").trim() || undefined,
-            hostnames: String(formData.get("hostname") || "").trim() ? [String(formData.get("hostname") || "").trim()] : [],
+            hostnames,
             settings: {
               productName: String(formData.get("productName") || "Nexora").trim(),
               organizationName: String(formData.get("name") || "").trim(),
@@ -9120,10 +9157,11 @@ function bindEvents() {
       const formData = new FormData(organizationForm);
       void (async () => {
         try {
+          const hostnames = parseOrganizationHostnames(formData.get("hostnames") || "");
           const updatedOrganization = await updateApiOrganization(organizationId, {
             name: String(formData.get("name") || "").trim(),
             slug: String(formData.get("slug") || "").trim(),
-            hostnames: String(formData.get("hostname") || "").trim() ? [String(formData.get("hostname") || "").trim()] : [],
+            hostnames,
             settings: {
               organizationName: String(formData.get("name") || "").trim(),
               sidebarCaption: String(formData.get("sidebarCaption") || "").trim(),

@@ -2367,7 +2367,9 @@ function sessionTokenFrom(request) {
 }
 
 function organizationSelectorFrom(request, payload = {}) {
-  const host = request.headers["x-forwarded-host"] || request.headers.host || "";
+  const host = String(request.headers["x-forwarded-host"] || request.headers.host || "")
+    .split(",")[0]
+    .trim();
   return {
     organizationId:
       request.headers["x-mel-organization-id"] ||
@@ -2537,6 +2539,9 @@ export async function handleCurrentOrganization(request, response) {
 }
 
 export async function handleOrganizationList(_request, response) {
+  const actor = requireAuthenticatedUser(_request, response);
+  if (!actor) return;
+  if (!requireActorViewPermission(response, actor, "access", "ver organizaciones")) return;
   sendJson(response, 200, { data: listOrganizations() });
 }
 

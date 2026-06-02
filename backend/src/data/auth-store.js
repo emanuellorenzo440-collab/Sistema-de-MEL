@@ -214,6 +214,24 @@ function slugify(value) {
     .replace(/^-+|-+$/g, "");
 }
 
+function normalizeHostname(value = "") {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^[a-z]+:\/\//i, "")
+    .replace(/\/.*$/, "")
+    .replace(/:\d+$/, "");
+}
+
+function normalizeHostnameList(values = []) {
+  const list = Array.isArray(values)
+    ? values
+    : String(values || "")
+        .split(/[\n,]+/g)
+        .map((item) => item.trim());
+  return [...new Set(list.map((item) => normalizeHostname(item)).filter(Boolean))];
+}
+
 function normalizeOrganizationSettings(settings = {}, fallbackName = DEFAULT_ORGANIZATION.name) {
   const organizationName = String(settings.organizationName || fallbackName || DEFAULT_ORGANIZATION.name).trim() || DEFAULT_ORGANIZATION.name;
   const productName = String(settings.productName || DEFAULT_PRODUCT_NAME).trim() || DEFAULT_PRODUCT_NAME;
@@ -239,13 +257,12 @@ function normalizeOrganizationSettings(settings = {}, fallbackName = DEFAULT_ORG
 function normalizeOrganization(organization = {}) {
   const id = String(organization.id || DEFAULT_ORGANIZATION.id).trim() || DEFAULT_ORGANIZATION.id;
   const name = String(organization.name || DEFAULT_ORGANIZATION.name).trim() || DEFAULT_ORGANIZATION.name;
+  const hostnames = normalizeHostnameList(organization.hostnames);
   return {
     id,
     name,
     slug: String(organization.slug || slugify(name) || DEFAULT_ORGANIZATION.slug).trim() || DEFAULT_ORGANIZATION.slug,
-    hostnames: Array.isArray(organization.hostnames)
-      ? [...new Set(organization.hostnames.map((item) => String(item || "").trim().toLowerCase()).filter(Boolean))]
-      : [],
+    hostnames,
     settings: normalizeOrganizationSettings(organization.settings || {}, name),
   };
 }
@@ -309,9 +326,7 @@ function writeStateToDisk(state) {
 
 function findOrganizationById(organizationId, state = getState()) {
   const normalizedId = String(organizationId || "").trim();
-  if (!normalizedId) {
-    return normalizeOrganization(DEFAULT_ORGANIZATION);
-  }
+  if (!normalizedId) return null;
   return state.organizations.find((organization) => organization.id === normalizedId) || null;
 }
 
@@ -319,13 +334,6 @@ function findOrganizationBySlug(slug, state = getState()) {
   const normalizedSlug = String(slug || "").trim().toLowerCase();
   if (!normalizedSlug) return null;
   return state.organizations.find((organization) => String(organization.slug || "").trim().toLowerCase() === normalizedSlug) || null;
-}
-
-function normalizeHostname(value = "") {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/:\d+$/, "");
 }
 
 function findOrganizationByHostname(hostname, state = getState()) {
@@ -346,6 +354,49 @@ function resolveOrganizationContext(selector = {}, state = getState()) {
 
   if (direct) return normalizeOrganization(direct);
   return state.organizations.length ? normalizeOrganization(state.organizations[0]) : normalizeOrganization(DEFAULT_ORGANIZATION);
+}
+
+function portalUrlForHostname(hostname = "") {
+  const normalizedHost = normalizeHostname(hostname);
+  if (!normalizedHost) return "";
+  const protocol = normalizedHost.includes("localhost") || /^\d{1,3}(\.\d{1,3}){3}$/.test(normalizedHost) ? "http" : "https";
+  return `${protocol}://${normalizedHost}`;
+}
+
+function buildOrganizationPortalLinks(organization = {}) {
+  const normalized = normalizeOrganization(organization);
+  const primaryHostname = normalized.hostnames[0] || "";
+  const aliases = normalized.hostnames.slice(1);
+  return {
+    primaryHostname,
+    primaryPortalUrl: portalUrlForHostname(primaryHostname),
+    hostnameAliases: aliases,
+    hostnamePortalUrls: normalized.hostnames.map((hostname) => portalUrlForHostname(hostname)).filter(Boolean),
+    fallbackPortalQuery: `?organizationSlug=${encodeURIComponent(normalized.slug)}`,
+  };
+}
+
+function publicOrganizationRecord(organization = {}) {
+  const normalized = normalizeOrganization(organization);
+  return {
+    id: normalized.id,
+    name: normalized.name,
+    slug: normalized.slug,
+    hostnames: normalized.hostnames.slice(),
+    settings: structuredClone(normalized.settings),
+    ...buildOrganizationPortalLinks(normalized),
+  };
+}
+
+function organizationConflicts(candidateOrganization, existingOrganizations = [], excludeId = "") {
+  const next = normalizeOrganization(candidateOrganization);
+  const nextHostnames = new Set(next.hostnames.map((hostname) => normalizeHostname(hostname)));
+  return existingOrganizations.find((organization) => {
+    if (excludeId && organization.id === excludeId) return false;
+    if (organization.slug === next.slug) return true;
+    const candidateHostnames = normalizeHostnameList(organization.hostnames);
+    return candidateHostnames.some((hostname) => nextHostnames.has(hostname));
+  });
 }
 
 function resolveOrganizationForUser(user, state = getState()) {
@@ -672,24 +723,13 @@ export function getOrganizationBranding(organizationId = "") {
 export function getCurrentOrganization(selector = {}) {
   const organization = resolveOrganizationContext(selector);
   return {
-    organization: {
-      id: organization.id,
-      name: organization.name,
-      slug: organization.slug,
-      hostnames: Array.isArray(organization.hostnames) ? organization.hostnames.slice() : [],
-    },
+    organization: publicOrganizationRecord(organization),
     branding: structuredClone(organization.settings),
   };
 }
 
 export function listOrganizations() {
-  return getState().organizations.map((organization) => ({
-    id: organization.id,
-    name: organization.name,
-    slug: organization.slug,
-    hostnames: Array.isArray(organization.hostnames) ? organization.hostnames.slice() : [],
-    settings: structuredClone(organization.settings),
-  }));
+  return getState().organizations.map((organization) => publicOrganizationRecord(organization));
 }
 
 export function createOrganization(payload = {}, actorOrId) {
@@ -729,6 +769,9 @@ export function createOrganization(payload = {}, actorOrId) {
   if (state.organizations.some((candidate) => candidate.id === organization.id || candidate.slug === organization.slug)) {
     throw authError(409, "Ya existe una organizacion con ese identificador o slug.");
   }
+  if (organizationConflicts(organization, state.organizations)) {
+    throw authError(409, "Otra organizacion ya usa ese slug o uno de esos hostnames.");
+  }
   state.organizations.push(organization);
   audit("auth.organizationCreated", { actorId: actor.id, organizationId: organization.id, slug: organization.slug });
   persist();
@@ -754,20 +797,8 @@ export function updateOrganization(organizationId, payload = {}, actorOrId) {
     },
   });
 
-  if (
-    state.organizations.some(
-      (organization) => {
-        if (organization.id === current.id) return false;
-        const nextPrimaryHostname = normalizeHostname(next.hostnames?.[0]);
-        const candidatePrimaryHostname = normalizeHostname(organization.hostnames?.[0]);
-        return (
-          organization.slug === next.slug ||
-          (nextPrimaryHostname && candidatePrimaryHostname && candidatePrimaryHostname === nextPrimaryHostname)
-        );
-      },
-    )
-  ) {
-    throw authError(409, "Otra organizacion ya usa ese slug u hostname principal.");
+  if (organizationConflicts(next, state.organizations, current.id)) {
+    throw authError(409, "Otra organizacion ya usa ese slug o uno de esos hostnames.");
   }
 
   Object.assign(current, next);
