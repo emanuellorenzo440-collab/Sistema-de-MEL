@@ -1033,6 +1033,10 @@ export function createManagedAuthUser(payload, actorOrId) {
   const fullName = String(payload.fullName || "").trim();
   const temporaryPassword = String(payload.temporaryPassword || payload.password || "");
   const primaryRole = payload.primaryRole || SYSTEM_ROLES.facilitator;
+  const targetOrganization =
+    actor.globalAdmin && payload.organizationId
+      ? findOrganizationById(payload.organizationId) || null
+      : resolveOrganizationForUser(actor);
 
   if (!fullName) {
     throw authError(400, "El nombre completo es obligatorio.");
@@ -1047,6 +1051,10 @@ export function createManagedAuthUser(payload, actorOrId) {
     throw authError(400, "La contraseña temporal debe tener al menos 8 caracteres.");
   }
 
+  if (actor.globalAdmin && payload.organizationId && !targetOrganization) {
+    throw authError(404, "No encontre la organizacion para el administrador inicial.");
+  }
+
   clearDeletionMarkersForEmail(email);
 
   const timestamp = nowIso();
@@ -1057,8 +1065,8 @@ export function createManagedAuthUser(payload, actorOrId) {
     primaryRole,
     enabledProfiles: normalizeList(payload.enabledProfiles, [primaryRole]),
     viewPermissions: normalizeList(payload.viewPermissions, rolePermissions(primaryRole)),
-    organizationId: actor.organizationId || DEFAULT_ORGANIZATION.id,
-    organizationName: actor.organizationName || DEFAULT_ORGANIZATION.name,
+    organizationId: targetOrganization?.id || actor.organizationId || DEFAULT_ORGANIZATION.id,
+    organizationName: targetOrganization?.name || actor.organizationName || DEFAULT_ORGANIZATION.name,
     status: payload.status === "suspended" ? "suspended" : "active",
     accessNote: payload.accessNote || "",
     mustChangePassword: true,
@@ -1070,7 +1078,7 @@ export function createManagedAuthUser(payload, actorOrId) {
   });
 
   getState().users.unshift(user);
-  audit("auth.userCreated", { actorId: actor.id, userId: user.id, email: user.email });
+  audit("auth.userCreated", { actorId: actor.id, userId: user.id, email: user.email, organizationId: user.organizationId });
   persist();
 
   return safeUser(user);

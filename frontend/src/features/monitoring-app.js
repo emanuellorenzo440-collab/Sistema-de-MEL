@@ -21,7 +21,7 @@ import {
   listVisibleViews,
   updateCurrentUserChatAlertSettings,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260602d";
+} from "../services/auth-service.js?v=20260602e";
 import {
   apiFileUrl,
   addApiChatParticipants,
@@ -2543,12 +2543,17 @@ function renderAccessWorkspace(options = {}) {
   const renderRequest = ++accessRenderRequest;
 
   void (async () => {
+    const isMaster = isMasterPortal();
     const [users, organizations] = await Promise.all([
-      listManagedUsers().then((items) => items.filter((user) => !deletedAccessUserIds.has(user.id))),
-      isPlatformAdmin() ? fetchApiOrganizations().catch((error) => {
-        console.error("No pude cargar organizaciones.", error);
-        return [];
-      }) : Promise.resolve([]),
+      isMaster
+        ? Promise.resolve([])
+        : listManagedUsers().then((items) => items.filter((user) => !deletedAccessUserIds.has(user.id))),
+      isPlatformAdmin()
+        ? fetchApiOrganizations().catch((error) => {
+            console.error("No pude cargar organizaciones.", error);
+            return [];
+          })
+        : Promise.resolve([]),
     ]);
     if (renderRequest !== accessRenderRequest) return;
     const groups = [
@@ -2638,6 +2643,19 @@ function renderAccessWorkspace(options = {}) {
           <label class="span-2">
             Texto del login
             <textarea name="loginTagline" rows="2" placeholder="Texto breve de bienvenida para la organizacion."></textarea>
+          </label>
+          <label>
+            Admin inicial
+            <input name="adminFullName" type="text" placeholder="Nombre del administrador inicial" required />
+          </label>
+          <label>
+            Correo admin
+            <input name="adminEmail" type="email" placeholder="admin@organizacion.org" required />
+          </label>
+          <label class="span-2">
+            ContraseÃ±a temporal del admin
+            <input name="adminPassword" type="text" minlength="8" placeholder="Minimo 8 caracteres" required />
+            <p class="item-meta">Este acceso inicial quedara listo para entrar al portal de la nueva organizacion.</p>
           </label>
           <label class="span-2">
             Modulos habilitados
@@ -9146,23 +9164,35 @@ function bindEvents() {
         try {
           const hostnames = parseOrganizationHostnames(formData.get("hostnames") || "");
           const enabledModules = formData.getAll("enabledModules").map((item) => String(item));
+          const organizationName = String(formData.get("name") || "").trim();
           const createdOrganization = await createApiOrganization({
-            name: String(formData.get("name") || "").trim(),
+            name: organizationName,
             slug: String(formData.get("slug") || "").trim() || undefined,
             hostnames,
             settings: {
               productName: String(formData.get("productName") || "Nexora").trim(),
-              organizationName: String(formData.get("name") || "").trim(),
+              organizationName,
               loginTagline: String(formData.get("loginTagline") || "").trim(),
-              sidebarCaption: String(formData.get("name") || "").trim(),
+              sidebarCaption: organizationName,
               primaryColor: String(formData.get("primaryColor") || "").trim(),
               accentColor: String(formData.get("accentColor") || "").trim(),
               enabledModules,
             },
           });
+          await createManagedUser({
+            fullName: String(formData.get("adminFullName") || "").trim(),
+            email: String(formData.get("adminEmail") || "").trim(),
+            password: String(formData.get("adminPassword") || "").trim(),
+            systemRole: "Supervision M&E",
+            status: "active",
+            allowedRoles: SYSTEM_ROLES.slice(),
+            organizationId: createdOrganization.organization.id,
+            organizationName: createdOrganization.organization.name,
+            accessNote: `Administrador inicial de ${createdOrganization.organization.name}.`,
+          });
           form.reset();
           renderAccessWorkspace({ force: true });
-          showToast(`Organizacion ${createdOrganization.organization.name} creada.`);
+          showToast(`Organizacion ${createdOrganization.organization.name} y admin inicial creados.`);
         } catch (error) {
           console.error(error);
           showToast(error.message || "No pude crear la organizacion.");
