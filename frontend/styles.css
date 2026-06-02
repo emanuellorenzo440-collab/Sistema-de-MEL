@@ -256,6 +256,59 @@ button:disabled {
   text-decoration: underline;
 }
 
+.portal-shortcuts {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.portal-shortcuts-title {
+  color: rgba(248, 251, 250, 0.84);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.portal-shortcuts-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.portal-shortcut-card {
+  background: rgba(9, 18, 29, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: #f8fbfa;
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  text-decoration: none;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.portal-shortcut-card:hover,
+.portal-shortcut-card:focus-visible {
+  background: rgba(12, 26, 41, 0.92);
+  border-color: rgba(255, 255, 255, 0.24);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.portal-shortcut-card strong {
+  color: #ffffff;
+  font-size: 0.98rem;
+}
+
+.portal-shortcut-card span {
+  color: rgba(232, 239, 244, 0.82);
+  font-size: 0.88rem;
+}
+
 .delivery-link {
   width: 100%;
 }

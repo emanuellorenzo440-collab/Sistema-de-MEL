@@ -9,7 +9,7 @@
         display: none !important;
       }
     </style>
-    <link rel="stylesheet" href="styles.css?v=20260601k" />
+    <link rel="stylesheet" href="styles.css?v=20260602b" />
   </head>
   <body>
     <section class="auth-shell" id="authShell">
@@ -38,6 +38,20 @@
             <p class="auth-error" id="signinError" role="alert" aria-live="polite" hidden></p>
             <button class="primary-action auth-submit" type="submit">Entrar</button>
           </form>
+
+          <div class="portal-shortcuts" aria-label="Portales disponibles">
+            <p class="portal-shortcuts-title">Portales disponibles</p>
+            <div class="portal-shortcuts-grid">
+              <a class="portal-shortcut-card" href="./?organizationSlug=convoy-of-hope">
+                <strong>Portal Convoy</strong>
+                <span>Operacion diaria de Convoy of Hope</span>
+              </a>
+              <a class="portal-shortcut-card" href="./?organizationSlug=nexora-admin">
+                <strong>Nexora Admin</strong>
+                <span>Administracion global de organizaciones</span>
+              </a>
+            </div>
+          </div>
 
           <div class="auth-link-row">
             <button class="auth-link" data-open-auth="signup" type="button">Create an account</button>
@@ -1066,7 +1080,7 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="src/main.js?v=20260602a"></script>
+    <script type="module" src="src/main.js?v=20260602b"></script>
   </body>
 </html>
 
