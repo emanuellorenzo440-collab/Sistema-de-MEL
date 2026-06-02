@@ -1,5 +1,5 @@
 import { getApiBaseUrl } from "./mel-api.js?v=20260601a";
-import { DEFAULT_ORGANIZATION_BRANDING, normalizeOrganizationBranding, readRequestedOrganizationContext } from "./organization-branding.js?v=20260601c";
+import { DEFAULT_ORGANIZATION_BRANDING, normalizeOrganizationBranding, readRequestedOrganizationContext } from "./organization-branding.js?v=20260602d";
 
 const AUTH_STORAGE_KEY = "pulso-me-auth-v1";
 const AUTH_SESSION_KEY = "pulso-me-session-v1";
