@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#061525"/>
+      <stop offset="100%" stop-color="#103d62"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="30%" r="65%">
+      <stop offset="0%" stop-color="#27c1da" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#27c1da" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1600" height="900" fill="url(#bg)"/>
+  <rect width="1600" height="900" fill="url(#glow)"/>
+  <g opacity="0.18" stroke="#8ed7e6" fill="none">
+    <path d="M0 180h1600"/>
+    <path d="M0 360h1600"/>
+    <path d="M0 540h1600"/>
+    <path d="M0 720h1600"/>
+    <path d="M220 0v900"/>
+    <path d="M520 0v900"/>
+    <path d="M820 0v900"/>
+    <path d="M1120 0v900"/>
+    <path d="M1420 0v900"/>
+  </g>
+  <g opacity="0.12">
+    <circle cx="1260" cy="180" r="180" fill="#27c1da"/>
+    <circle cx="360" cy="720" r="220" fill="#1c5d8f"/>
+  </g>
+  <g transform="translate(170 240)">
+    <rect x="0" y="0" width="320" height="320" rx="56" fill="#0d2b43" stroke="#27c1da" stroke-opacity="0.35"/>
+    <path d="M78 238V82h34l76 88V82h34v156h-34l-76-88v88H78Z" fill="#ffffff"/>
+    <text x="390" y="132" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="88" font-weight="700" fill="#ffffff">Nexora</text>
+    <text x="392" y="212" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="34" fill="#c3ebf2">Portal maestro de organizaciones</text>
+    <text x="392" y="272" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="28" fill="#9ec8d6">Branding · dominios · modulos · administracion global</text>
+  </g>
+</svg>

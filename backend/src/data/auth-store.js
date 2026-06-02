@@ -44,6 +44,26 @@ const DEFAULT_ORGANIZATION = {
     enabledModules: VIEW_KEYS,
   },
 };
+const MASTER_ORGANIZATION = {
+  id: "org-nexora-admin",
+  name: "Nexora Admin",
+  slug: "nexora-admin",
+  hostnames: ["admin.nexora.app"],
+  settings: {
+    productName: DEFAULT_PRODUCT_NAME,
+    organizationName: "Nexora Admin",
+    loginTagline: "Portal maestro para administrar organizaciones, branding y modulos de Nexora",
+    loginLead: "Entra con tu cuenta global para crear organizaciones y preparar sus portales sin depender de ningun tenant operativo.",
+    sidebarCaption: "Control maestro",
+    topbarEyebrow: "Nexora | Portal maestro",
+    brandLogoPath: "assets/nexora-admin-logo.svg",
+    loginHeroPath: "assets/nexora-admin-hero.svg",
+    primaryColor: "#11446b",
+    primaryDarkColor: "#0a2c46",
+    accentColor: "#27c1da",
+    enabledModules: ["access"],
+  },
+};
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const defaultDataDir = path.resolve(dirname, "..", "..", "data");
@@ -137,6 +157,19 @@ const SEEDED_ACCOUNTS = [
     mustChangePassword: false,
     organizationId: DEFAULT_ORGANIZATION.id,
     organizationName: DEFAULT_ORGANIZATION.name,
+  },
+  {
+    id: "nexora-platform-admin",
+    fullName: "Nexora Platform Admin",
+    email: "admin@nexora.app",
+    password: "NexoraAdmin2026!",
+    primaryRole: SYSTEM_ROLES.supervision,
+    status: "active",
+    accessNote: "Cuenta global para administrar organizaciones y portales de Nexora.",
+    mustChangePassword: false,
+    organizationId: MASTER_ORGANIZATION.id,
+    organizationName: MASTER_ORGANIZATION.name,
+    globalAdmin: true,
   },
 ];
 
@@ -284,6 +317,7 @@ function createSeedUser(account) {
     viewPermissions: permissions,
     organizationId: account.organizationId || DEFAULT_ORGANIZATION.id,
     organizationName: account.organizationName || DEFAULT_ORGANIZATION.name,
+    globalAdmin: Boolean(account.globalAdmin),
     status: account.status || "active",
     accessNote: account.accessNote || "",
     mustChangePassword: Boolean(account.mustChangePassword),
@@ -299,7 +333,7 @@ function buildInitialState() {
   return {
     authDataVersion: CURRENT_AUTH_DATA_VERSION,
     presetAccountVersion: PRESET_ACCOUNT_VERSION,
-    organizations: [normalizeOrganization(DEFAULT_ORGANIZATION)],
+    organizations: [normalizeOrganization(DEFAULT_ORGANIZATION), normalizeOrganization(MASTER_ORGANIZATION)],
     users: SEEDED_ACCOUNTS.map(createSeedUser),
     activeSessions: [],
     deletedUserRegistry: [],
@@ -432,6 +466,7 @@ function safeUser(user, state = getState()) {
     viewPermissions: grantedViews,
     organizationId: organization.id,
     organizationName: organization.name,
+    globalAdmin: Boolean(publicUser.globalAdmin),
     organization,
     organizationSettings: structuredClone(organization.settings),
     mustChangePassword: Boolean(publicUser.mustChangePassword),
@@ -450,6 +485,7 @@ function normalizeUser(user) {
     viewPermissions: normalizeList(user.viewPermissions, rolePermissions(primaryRole)),
     organizationId: String(user.organizationId || DEFAULT_ORGANIZATION.id),
     organizationName: String(user.organizationName || DEFAULT_ORGANIZATION.name),
+    globalAdmin: Boolean(user.globalAdmin),
     status: user.status === "suspended" ? "suspended" : "active",
     accessNote: String(user.accessNote || ""),
     mustChangePassword: Boolean(user.mustChangePassword),
@@ -499,6 +535,9 @@ function migrateState(state) {
   if (!next.organizations.some((organization) => organization.id === DEFAULT_ORGANIZATION.id)) {
     next.organizations.unshift(normalizeOrganization(DEFAULT_ORGANIZATION));
   }
+  if (!next.organizations.some((organization) => organization.id === MASTER_ORGANIZATION.id)) {
+    next.organizations.push(normalizeOrganization(MASTER_ORGANIZATION));
+  }
 
   for (const seed of SEEDED_ACCOUNTS) {
     const email = normalizeEmail(seed.email);
@@ -515,6 +554,7 @@ function migrateState(state) {
         primaryRole: presetUser.primaryRole,
         enabledProfiles: presetUser.enabledProfiles,
         viewPermissions: presetUser.viewPermissions,
+        globalAdmin: presetUser.globalAdmin,
         status: "active",
         accessNote: presetUser.accessNote,
         mustChangePassword: false,
@@ -680,6 +720,9 @@ function requireSupervisionAdmin(actorOrId) {
   const actor = requireAccessAdmin(actorOrId);
   if (String(actor.primaryRole || "").trim() !== SYSTEM_ROLES.supervision) {
     throw authError(403, "Solo Supervision M&E puede administrar organizaciones.");
+  }
+  if (!actor.globalAdmin) {
+    throw authError(403, "Solo un administrador global de Nexora puede administrar organizaciones.");
   }
   return actor;
 }

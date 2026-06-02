@@ -2542,6 +2542,10 @@ export async function handleOrganizationList(_request, response) {
   const actor = requireAuthenticatedUser(_request, response);
   if (!actor) return;
   if (!requireActorViewPermission(response, actor, "access", "ver organizaciones")) return;
+  if (!actor.globalAdmin) {
+    sendJson(response, 403, { error: "Solo un administrador global de Nexora puede ver organizaciones." });
+    return;
+  }
   sendJson(response, 200, { data: listOrganizations() });
 }
 

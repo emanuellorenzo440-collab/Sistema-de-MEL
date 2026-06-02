@@ -392,6 +392,14 @@ function activeRole() {
   return normalizeRoleLabel(state?.role || "Facilitador");
 }
 
+function isPlatformAdmin() {
+  return Boolean(currentUser?.globalAdmin);
+}
+
+function isMasterPortal() {
+  return currentUser?.organizationId === "org-nexora-admin";
+}
+
 function currentOrganizationEnabledViews() {
   const enabled = Array.isArray(currentUser?.organizationSettings?.enabledModules)
     ? currentUser.organizationSettings.enabledModules
@@ -2537,7 +2545,7 @@ function renderAccessWorkspace(options = {}) {
   void (async () => {
     const [users, organizations] = await Promise.all([
       listManagedUsers().then((items) => items.filter((user) => !deletedAccessUserIds.has(user.id))),
-      isSystemAdminRole() ? fetchApiOrganizations().catch((error) => {
+      isPlatformAdmin() ? fetchApiOrganizations().catch((error) => {
         console.error("No pude cargar organizaciones.", error);
         return [];
       }) : Promise.resolve([]),
@@ -2556,12 +2564,12 @@ function renderAccessWorkspace(options = {}) {
     elements.accessRequestCount.textContent = `${pendingCount} pendiente${pendingCount === 1 ? "" : "s"}`;
     elements.accessRequestCount.className = `status-pill ${pendingCount ? "warning" : "good"}`;
 
-  const organizationMarkup = isSystemAdminRole()
+  const organizationMarkup = isPlatformAdmin()
     ? `
       <form class="user-access-card concept-upload-card" id="createOrganizationForm">
         <div class="user-access-top">
           <div>
-            <p class="eyebrow">Organizaciones</p>
+            <p class="eyebrow">Portal maestro Nexora</p>
             <h3>Registrar nueva organizacion</h3>
           </div>
           <span class="status-pill info">${organizations.length} registradas</span>
@@ -2680,7 +2688,7 @@ function renderAccessWorkspace(options = {}) {
     `
     : "";
 
-  const manualUploadMarkup = isSystemAdminRole()
+  const manualUploadMarkup = isSystemAdminRole() && !isMasterPortal()
     ? `
       <form class="user-access-card concept-upload-card" id="createProgramManualForm">
         <div class="user-access-top">
@@ -2725,7 +2733,23 @@ function renderAccessWorkspace(options = {}) {
     `
     : "";
 
-    const summaryMarkup = `
+    const summaryMarkup = isMasterPortal()
+      ? `
+          ${organizationMarkup}
+          <section class="access-group">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">Administracion global</p>
+                <h2>Control maestro de organizaciones</h2>
+              </div>
+            </div>
+            <article class="user-access-card">
+              <p class="item-meta">Estas dentro del portal maestro de Nexora. Desde aqui preparas organizaciones, branding, dominios y modulos antes de que cada cliente opere su propio portal.</p>
+              <p class="item-meta"><strong>Acceso temporal:</strong> mientras no tenga dominio propio, entra usando el mismo despliegue con <code>?organizationSlug=nexora-admin</code>.</p>
+            </article>
+          </section>
+        `
+      : `
           ${organizationMarkup}
           <form class="user-access-card create-user-card" id="createManagedUserForm">
             <div class="user-access-top">
@@ -2816,7 +2840,7 @@ function renderAccessWorkspace(options = {}) {
             </div>
           </form>
           ${manualUploadMarkup}
-      <div class="access-summary-grid">
+          <div class="access-summary-grid">
         ${groups
           .map((group) => {
             const total = users.filter((user) => user.status === group.key).length;
@@ -2831,10 +2855,12 @@ function renderAccessWorkspace(options = {}) {
             `;
           })
           .join("")}
-      </div>
-    `;
+          </div>
+        `;
 
-    const cardsMarkup = groups
+    const cardsMarkup = isMasterPortal()
+      ? ""
+      : groups
       .map((group) => {
         const groupUsers = users.filter((user) => user.status === group.key);
         return `
@@ -3483,11 +3509,14 @@ function resetViewportPosition() {
 function currentAccessSignature(user = currentUser) {
   return JSON.stringify({
     id: user?.id || null,
+    globalAdmin: Boolean(user?.globalAdmin),
+    organizationId: user?.organizationId || null,
     status: user?.status || null,
     role: user?.systemRole || null,
     updatedAt: user?.updatedAt || null,
     allowedRoles: [...(user?.allowedRoles || [])].sort(),
     viewPermissions: [...(user?.viewPermissions || [])].sort(),
+    enabledModules: [...(user?.organizationSettings?.enabledModules || [])].sort(),
   });
 }
 

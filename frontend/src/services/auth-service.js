@@ -67,6 +67,11 @@ const SEEDED_FACILITATOR_APUJOLS = {
   password: "Facilitador2026!",
   fullName: "A Pujols",
 };
+const SEEDED_PLATFORM_ADMIN = {
+  email: "admin@nexora.app",
+  password: "NexoraAdmin2026!",
+  fullName: "Nexora Platform Admin",
+};
 
 const SEEDED_ACCOUNTS_CREATED_AT = "2026-05-08T00:00:00.000Z";
 const PRESET_ACCOUNT_VERSION = 2;
@@ -87,6 +92,10 @@ const LEGACY_USER_PURGE_MATCHERS = [
 const DEFAULT_ORGANIZATION = {
   id: "org-convoy-of-hope",
   name: "Convoy of Hope",
+};
+const MASTER_ORGANIZATION = {
+  id: "org-nexora-admin",
+  name: "Nexora Admin",
 };
 let presetAccountTemplatesPromise = null;
 let authStateCache = null;
@@ -505,7 +514,8 @@ async function getPresetAccountTemplates() {
       sha256(DEMO_SUPERVISOR.password),
       sha256(SEEDED_ACCESS_MANAGER.password),
       sha256(SEEDED_FACILITATOR_APUJOLS.password),
-    ]).then(([supervisorPasswordHash, accessManagerPasswordHash, apujolsPasswordHash]) => [
+      sha256(SEEDED_PLATFORM_ADMIN.password),
+    ]).then(([supervisorPasswordHash, accessManagerPasswordHash, apujolsPasswordHash, platformAdminPasswordHash]) => [
       {
         id: "usr-supervision-root",
         fullName: DEMO_SUPERVISOR.fullName,
@@ -551,6 +561,22 @@ async function getPresetAccountTemplates() {
         verifiedAt: SEEDED_ACCOUNTS_CREATED_AT,
         accessNote: "Cuenta facilitadora configurada para iniciar sesion directamente.",
       },
+      {
+        id: "usr-nexora-platform-admin",
+        fullName: SEEDED_PLATFORM_ADMIN.fullName,
+        email: SEEDED_PLATFORM_ADMIN.email,
+        passwordHash: platformAdminPasswordHash,
+        status: "active",
+        systemRole: "Supervision M&E",
+        requestedRole: "Supervision M&E",
+        allowedRoles: SYSTEM_ROLES.slice(),
+        viewPermissions: ["access"],
+        organizationId: MASTER_ORGANIZATION.id,
+        organizationName: MASTER_ORGANIZATION.name,
+        verifiedAt: SEEDED_ACCOUNTS_CREATED_AT,
+        accessNote: "Cuenta global para administrar organizaciones y portales de Nexora.",
+        globalAdmin: true,
+      },
     ]);
   }
 
@@ -595,6 +621,7 @@ function normalizeUser(user = {}) {
     temporaryPasswordIssuedAt: user.temporaryPasswordIssuedAt || null,
     lastLoginAt: user.lastLoginAt || null,
     accessNote: user.accessNote || "",
+    globalAdmin: Boolean(user.globalAdmin),
     chatAlertSettings: normalizeChatAlertSettings(user.chatAlertSettings),
     organizationId: String(user.organizationId || organizationBranding.organization.id || DEFAULT_ORGANIZATION.id),
     organizationName: String(user.organizationName || organizationBranding.organization.name || DEFAULT_ORGANIZATION.name),
