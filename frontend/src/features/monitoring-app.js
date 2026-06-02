@@ -21,7 +21,7 @@ import {
   listVisibleViews,
   updateCurrentUserChatAlertSettings,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260601c";
+} from "../services/auth-service.js?v=20260601d";
 import {
   apiFileUrl,
   addApiChatParticipants,
@@ -277,6 +277,9 @@ function organizationPortalPreviewMarkup(organization = {}) {
   const primaryPortalUrl = String(organization.primaryPortalUrl || "").trim();
   const aliasUrls = Array.isArray(organization.hostnamePortalUrls) ? organization.hostnamePortalUrls.slice(1) : [];
   const fallbackPortalQuery = String(organization.fallbackPortalQuery || `?organizationSlug=${organization.slug || ""}`).trim();
+  const enabledModules = organizationEnabledModules(organization)
+    .map((viewId) => VIEW_DEFINITIONS.find((view) => view.id === viewId)?.label || viewId)
+    .join(" · ");
   return `
     <div class="organization-portal-preview">
       <p class="item-meta"><strong>Portal principal:</strong> ${escapeHtml(primaryPortalUrl || "Se resolvera por slug mientras no se asigne un dominio.")}</p>
@@ -286,6 +289,30 @@ function organizationPortalPreviewMarkup(organization = {}) {
           : `<p class="item-meta"><strong>Aliases:</strong> Todavia no hay aliases registrados.</p>`
       }
       <p class="item-meta"><strong>Fallback:</strong> ${escapeHtml(fallbackPortalQuery)}</p>
+      <p class="item-meta"><strong>Modulos activos:</strong> ${escapeHtml(enabledModules)}</p>
+    </div>
+  `;
+}
+
+function organizationEnabledModules(organization = {}) {
+  const enabled = Array.isArray(organization.settings?.enabledModules) ? organization.settings.enabledModules : [];
+  const allowedIds = new Set(VIEW_DEFINITIONS.map((view) => view.id));
+  const normalized = unique(enabled.filter((viewId) => allowedIds.has(viewId)));
+  return normalized.length ? normalized : VIEW_DEFINITIONS.map((view) => view.id);
+}
+
+function organizationModuleSelectorMarkup(selectedModules = []) {
+  const enabledModules = new Set(selectedModules.length ? selectedModules : VIEW_DEFINITIONS.map((view) => view.id));
+  return `
+    <div class="organization-module-grid">
+      ${VIEW_DEFINITIONS.map(
+        (view) => `
+          <label class="choice-pill">
+            <input type="checkbox" name="enabledModules" value="${view.id}" ${enabledModules.has(view.id) ? "checked" : ""} />
+            <span>${escapeHtml(view.label)}</span>
+          </label>
+        `,
+      ).join("")}
     </div>
   `;
 }
@@ -365,6 +392,15 @@ function activeRole() {
   return normalizeRoleLabel(state?.role || "Facilitador");
 }
 
+function currentOrganizationEnabledViews() {
+  const enabled = Array.isArray(currentUser?.organizationSettings?.enabledModules)
+    ? currentUser.organizationSettings.enabledModules
+    : VIEW_DEFINITIONS.map((view) => view.id);
+  const allowedIds = new Set(VIEW_DEFINITIONS.map((view) => view.id));
+  const normalized = unique(enabled.filter((viewId) => allowedIds.has(viewId)));
+  return normalized.length ? normalized : VIEW_DEFINITIONS.map((view) => view.id);
+}
+
 function loadRolePreference(fallback = "Facilitador") {
   try {
     const savedRole = window.localStorage.getItem(ROLE_STORAGE_KEY);
@@ -386,9 +422,11 @@ async function syncAuthenticatedAccess(authenticatedUser = null) {
   currentUser = authenticatedUser || (await getCurrentUser());
   applyOrganizationBranding(brandingFromUser(currentUser));
   currentUserRoles = currentUser ? currentUser.allowedRoles || (await getAllowedRoles()) : SYSTEM_ROLES.slice();
-  currentUserViews = currentUser
+  const roleViews = currentUser
     ? currentUser.viewPermissions || (await listVisibleViews())
     : VIEW_DEFINITIONS.map((view) => view.id);
+  const organizationViews = currentOrganizationEnabledViews();
+  currentUserViews = roleViews.filter((viewId) => organizationViews.includes(viewId));
   const nextRole = currentUser ? currentUser.systemRole || (await getSessionRole()) : loadRolePreference(state?.role || seedState.role);
   if (state) {
     state.role = normalizeRoleLabel(nextRole || state.role || seedState.role);
@@ -839,7 +877,7 @@ function accessStatusLabel(status = "") {
 }
 
 function viewIsEnabled(viewId) {
-  return isSystemAdminRole() || currentUserViews.includes(viewId);
+  return currentUserViews.includes(viewId);
 }
 
 function renderMetrics() {
@@ -2558,6 +2596,11 @@ function renderAccessWorkspace(options = {}) {
             Texto del login
             <textarea name="loginTagline" rows="2" placeholder="Texto breve de bienvenida para la organizacion."></textarea>
           </label>
+          <label class="span-2">
+            Modulos habilitados
+            ${organizationModuleSelectorMarkup(VIEW_DEFINITIONS.map((view) => view.id))}
+            <p class="item-meta">La organizacion define que areas existen; luego cada usuario hereda sus permisos dentro de esas areas.</p>
+          </label>
         </div>
         <div class="item-actions">
           <button class="primary-action" type="submit">Crear organizacion</button>
@@ -2616,6 +2659,11 @@ function renderAccessWorkspace(options = {}) {
                           <label class="span-2">
                             Texto del login
                             <textarea name="loginTagline" rows="2">${escapeHtml(organization.settings?.loginTagline || "")}</textarea>
+                          </label>
+                          <label class="span-2">
+                            Modulos habilitados
+                            ${organizationModuleSelectorMarkup(organizationEnabledModules(organization))}
+                            <p class="item-meta">Si desactivas un modulo aqui, desaparece para todos los usuarios de esa organizacion aunque su perfil lo tuviera marcado.</p>
                           </label>
                         </div>
                         <div class="item-actions">
@@ -9032,6 +9080,7 @@ function bindEvents() {
       void (async () => {
         try {
           const hostnames = parseOrganizationHostnames(formData.get("hostnames") || "");
+          const enabledModules = formData.getAll("enabledModules").map((item) => String(item));
           const createdOrganization = await createApiOrganization({
             name: String(formData.get("name") || "").trim(),
             slug: String(formData.get("slug") || "").trim() || undefined,
@@ -9043,6 +9092,7 @@ function bindEvents() {
               sidebarCaption: String(formData.get("name") || "").trim(),
               primaryColor: String(formData.get("primaryColor") || "").trim(),
               accentColor: String(formData.get("accentColor") || "").trim(),
+              enabledModules,
             },
           });
           form.reset();
@@ -9158,6 +9208,7 @@ function bindEvents() {
       void (async () => {
         try {
           const hostnames = parseOrganizationHostnames(formData.get("hostnames") || "");
+          const enabledModules = formData.getAll("enabledModules").map((item) => String(item));
           const updatedOrganization = await updateApiOrganization(organizationId, {
             name: String(formData.get("name") || "").trim(),
             slug: String(formData.get("slug") || "").trim(),
@@ -9168,10 +9219,20 @@ function bindEvents() {
               loginTagline: String(formData.get("loginTagline") || "").trim(),
               primaryColor: String(formData.get("primaryColor") || "").trim(),
               accentColor: String(formData.get("accentColor") || "").trim(),
+              enabledModules,
             },
           });
           if (updatedOrganization.organization.id === currentUser?.organizationId) {
+            currentUser = {
+              ...currentUser,
+              organization: updatedOrganization.organization,
+              organizationName: updatedOrganization.organization.name,
+              organizationSettings: updatedOrganization.branding,
+            };
             applyOrganizationBranding(updatedOrganization);
+            const organizationViews = currentOrganizationEnabledViews();
+            currentUserViews = (currentUserViews || []).filter((viewId) => organizationViews.includes(viewId));
+            applyAccessControl();
           }
           renderAccessWorkspace({ force: true });
           showToast(`Organizacion ${updatedOrganization.organization.name} actualizada.`);

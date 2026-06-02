@@ -379,6 +379,17 @@ function normalizeViewPermissions(items = []) {
   return uniqueStrings(items.filter((item) => allowedIds.has(item)));
 }
 
+function normalizeEnabledModules(items = []) {
+  const allowedIds = new Set(VIEW_DEFINITIONS.map((view) => view.id));
+  const normalized = uniqueStrings((Array.isArray(items) ? items : []).filter((item) => allowedIds.has(item)));
+  return normalized.length ? normalized : VIEW_DEFINITIONS.map((view) => view.id);
+}
+
+function filterViewPermissionsByOrganization(viewPermissions = [], organizationSettings = {}) {
+  const enabledModules = normalizeEnabledModules(organizationSettings.enabledModules);
+  return normalizeViewPermissions(viewPermissions).filter((viewId) => enabledModules.includes(viewId));
+}
+
 function normalizeChatAlertSettings(settings = {}) {
   const soundMode = String(settings.soundMode || "").trim() === "muted-permanent" ? "muted-permanent" : "enabled";
   const mutedUntil = settings.mutedUntil ? String(settings.mutedUntil) : null;
@@ -560,6 +571,7 @@ function normalizeUser(user = {}) {
     organizationName: user.organizationName,
     branding: user.organizationSettings || user.organization?.settings || DEFAULT_ORGANIZATION_BRANDING.branding,
   });
+  const filteredViewPermissions = filterViewPermissionsByOrganization(viewPermissions, organizationBranding.branding);
 
   return {
     id: user.id || `usr-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
@@ -570,7 +582,7 @@ function normalizeUser(user = {}) {
     systemRole,
     requestedRole: normalizeRoleLabel(user.requestedRole || systemRole),
     allowedRoles: allowedRoles.includes(systemRole) ? allowedRoles : [systemRole, ...allowedRoles],
-    viewPermissions,
+    viewPermissions: filteredViewPermissions,
     verifiedAt: user.verifiedAt || null,
     verificationTokenHash: user.verificationTokenHash || user.verificationCodeHash || null,
     verificationCodeHash: user.verificationCodeHash || null,
@@ -914,7 +926,7 @@ export async function hasViewAccess(viewId) {
 
 export async function listVisibleViews() {
   const user = await getCurrentUser();
-  return user ? user.viewPermissions.slice() : [];
+  return user ? filterViewPermissionsByOrganization(user.viewPermissions, user.organizationSettings).slice() : [];
 }
 
 export async function listManagedUsers() {

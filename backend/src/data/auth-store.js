@@ -9,6 +9,20 @@ const PASSWORD_HASH_VERSION = "pbkdf2-sha512";
 const PASSWORD_ITERATIONS = 120000;
 const SESSION_DURATION_MS = 12 * 60 * 60 * 1000;
 const DEFAULT_PRODUCT_NAME = "Nexora";
+const VIEW_KEYS = [
+  "dashboard",
+  "report",
+  "indicators",
+  "design",
+  "forms",
+  "charts",
+  "chat",
+  "attendance",
+  "concepts",
+  "supervision",
+  "programs",
+  "access",
+];
 const DEFAULT_ORGANIZATION = {
   id: "org-convoy-of-hope",
   name: "Convoy of Hope",
@@ -27,6 +41,7 @@ const DEFAULT_ORGANIZATION = {
     primaryColor: "#c5332f",
     primaryDarkColor: "#972623",
     accentColor: "#2f85c7",
+    enabledModules: VIEW_KEYS,
   },
 };
 
@@ -42,21 +57,6 @@ const SYSTEM_ROLES = {
   nationalDirector: "Director Nacional",
   supervision: "Supervision M&E",
 };
-
-const VIEW_KEYS = [
-  "dashboard",
-  "report",
-  "indicators",
-  "design",
-  "forms",
-  "charts",
-  "chat",
-  "attendance",
-  "concepts",
-  "supervision",
-  "programs",
-  "access",
-];
 
 const DEFAULT_ROLE_PERMISSIONS = {
   [SYSTEM_ROLES.facilitator]: ["dashboard", "report", "forms", "charts", "chat", "attendance"],
@@ -235,6 +235,10 @@ function normalizeHostnameList(values = []) {
 function normalizeOrganizationSettings(settings = {}, fallbackName = DEFAULT_ORGANIZATION.name) {
   const organizationName = String(settings.organizationName || fallbackName || DEFAULT_ORGANIZATION.name).trim() || DEFAULT_ORGANIZATION.name;
   const productName = String(settings.productName || DEFAULT_PRODUCT_NAME).trim() || DEFAULT_PRODUCT_NAME;
+  const enabledModules = normalizeList(
+    Array.isArray(settings.enabledModules) && settings.enabledModules.length ? settings.enabledModules : VIEW_KEYS,
+    VIEW_KEYS,
+  ).filter((viewId) => VIEW_KEYS.includes(viewId));
   return {
     productName,
     organizationName,
@@ -251,6 +255,7 @@ function normalizeOrganizationSettings(settings = {}, fallbackName = DEFAULT_ORG
     primaryColor: String(settings.primaryColor || DEFAULT_ORGANIZATION.settings.primaryColor).trim(),
     primaryDarkColor: String(settings.primaryDarkColor || DEFAULT_ORGANIZATION.settings.primaryDarkColor).trim(),
     accentColor: String(settings.accentColor || DEFAULT_ORGANIZATION.settings.accentColor).trim(),
+    enabledModules: enabledModules.length ? enabledModules : VIEW_KEYS.slice(),
   };
 }
 
@@ -416,11 +421,15 @@ function safeUser(user, state = getState()) {
 
   const { passwordHash, resetTokenHash, ...publicUser } = user;
   const organization = resolveOrganizationForUser(publicUser, state);
+  const enabledModules = normalizeList(organization.settings?.enabledModules, VIEW_KEYS).filter((viewId) => VIEW_KEYS.includes(viewId));
+  const grantedViews = normalizeList(publicUser.viewPermissions, rolePermissions(publicUser.primaryRole)).filter((viewId) =>
+    enabledModules.includes(viewId),
+  );
   return {
     ...publicUser,
     email: normalizeEmail(publicUser.email),
     enabledProfiles: normalizeList(publicUser.enabledProfiles, [publicUser.primaryRole]),
-    viewPermissions: normalizeList(publicUser.viewPermissions, rolePermissions(publicUser.primaryRole)),
+    viewPermissions: grantedViews,
     organizationId: organization.id,
     organizationName: organization.name,
     organization,

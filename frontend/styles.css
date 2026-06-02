@@ -1794,6 +1794,30 @@ textarea {
   padding: 12px 14px;
 }
 
+.organization-module-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.choice-pill {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 8px;
+  min-height: 38px;
+  padding: 7px 12px;
+}
+
+.choice-pill input {
+  min-height: auto;
+  width: auto;
+}
+
 .attendance-controls,
 .participant-form {
   align-items: end;

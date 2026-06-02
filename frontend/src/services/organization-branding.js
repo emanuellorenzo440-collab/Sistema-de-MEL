@@ -19,6 +19,7 @@ export const DEFAULT_ORGANIZATION_BRANDING = {
     primaryColor: "#c5332f",
     primaryDarkColor: "#972623",
     accentColor: "#2f85c7",
+    enabledModules: ["dashboard", "report", "indicators", "design", "forms", "charts", "chat", "attendance", "concepts", "supervision", "programs", "access"],
   },
 };
 
@@ -84,6 +85,9 @@ export function normalizeOrganizationBranding(payload = {}) {
       primaryColor: String(payload.branding?.primaryColor || fallback.branding.primaryColor).trim(),
       primaryDarkColor: String(payload.branding?.primaryDarkColor || fallback.branding.primaryDarkColor).trim(),
       accentColor: String(payload.branding?.accentColor || fallback.branding.accentColor).trim(),
+      enabledModules: Array.isArray(payload.branding?.enabledModules) && payload.branding.enabledModules.length
+        ? payload.branding.enabledModules.slice()
+        : fallback.branding.enabledModules.slice(),
     },
   };
 }
