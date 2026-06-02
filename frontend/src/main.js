@@ -1,10 +1,14 @@
-import { initializeAccessLobby } from "./features/access-lobby.js?v=20260601d";
+import { initializeAccessLobby } from "./features/access-lobby.js?v=20260602a";
 import { applyOrganizationBranding, brandingFromUser, loadPublicOrganizationBranding } from "./services/organization-branding.js?v=20260601c";
 
 let monitoringApp = null;
 let monitoringAppPromise = null;
 let runtimeBridgeStarted = false;
 const publicBranding = await loadPublicOrganizationBranding();
+
+function isMasterPortalUser(user = null) {
+  return Boolean(user?.globalAdmin && user?.organizationId === "org-nexora-admin");
+}
 
 if ("scrollRestoration" in window.history) {
   window.history.scrollRestoration = "manual";
@@ -16,19 +20,21 @@ async function loadMonitoringApp(authenticatedUser = null) {
 
   monitoringAppPromise = (async () => {
     const [{ createMonitoringApp }, { bootstrapApiBridge, startRuntimeBridge }] = await Promise.all([
-      import("./features/monitoring-app.js?v=20260601k"),
+      import("./features/monitoring-app.js?v=20260602a"),
       import("./services/mel-runtime-bridge.js?v=20260601b"),
     ]);
 
     const app = createMonitoringApp();
     await app.start(authenticatedUser);
 
-    if (!runtimeBridgeStarted) {
+    if (!runtimeBridgeStarted && !isMasterPortalUser(authenticatedUser)) {
       startRuntimeBridge();
       runtimeBridgeStarted = true;
     }
 
-    void bootstrapApiBridge();
+    if (!isMasterPortalUser(authenticatedUser)) {
+      void bootstrapApiBridge();
+    }
 
     monitoringApp = app;
     return app;

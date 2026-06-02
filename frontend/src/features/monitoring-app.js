@@ -21,7 +21,7 @@ import {
   listVisibleViews,
   updateCurrentUserChatAlertSettings,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260601d";
+} from "../services/auth-service.js?v=20260602a";
 import {
   apiFileUrl,
   addApiChatParticipants,
@@ -9346,6 +9346,20 @@ function bindEvents() {
 }
 
 export function createMonitoringApp() {
+  function stopOperationalMonitors() {
+    if (chatSyncIntervalId !== null) {
+      window.clearInterval(chatSyncIntervalId);
+      chatSyncIntervalId = null;
+    }
+    if (chatPresenceIntervalId !== null) {
+      window.clearInterval(chatPresenceIntervalId);
+      chatPresenceIntervalId = null;
+    }
+    chatSyncInFlight = false;
+    chatPresenceInFlight = false;
+    stopChatTyping();
+  }
+
   async function syncStartupData(options = {}) {
     const { showErrorToast = false } = options;
     if (startupSyncPromise) {
@@ -9416,6 +9430,11 @@ export function createMonitoringApp() {
       }
       ensureStateSyncListener();
       ensureAccessSyncMonitor();
+      if (isMasterPortal()) {
+        stopOperationalMonitors();
+        renderAll();
+        return;
+      }
       ensureChatSyncMonitor();
       ensureChatPresenceMonitor();
       await syncStartupData({ showErrorToast: true });
@@ -9429,6 +9448,11 @@ export function createMonitoringApp() {
       await syncAuthenticatedAccess(authenticatedUser);
       renderAll();
       ensureAccessSyncMonitor();
+      if (isMasterPortal()) {
+        stopOperationalMonitors();
+        renderAll();
+        return;
+      }
       ensureChatSyncMonitor();
       ensureChatPresenceMonitor();
       await syncStartupData({ showErrorToast: true });
