@@ -2557,16 +2557,51 @@ function renderAccessWorkspace(options = {}) {
       { key: "active", label: "Usuarios activos", empty: "No hay usuarios activos." },
       { key: "suspended", label: "Usuarios suspendidos", empty: "No hay usuarios suspendidos." },
     ];
-    const pendingCount = users.filter((user) => user.status === "pending_approval").length;
-    const totalUsers = users.length;
-    const activeUsers = users.filter((user) => user.status === "active").length;
-    const suspendedUsers = users.filter((user) => user.status === "suspended").length;
-    elements.accessRequestCount.textContent = `${pendingCount} pendiente${pendingCount === 1 ? "" : "s"}`;
-    elements.accessRequestCount.className = `status-pill ${pendingCount ? "warning" : "good"}`;
+      const pendingCount = users.filter((user) => user.status === "pending_approval").length;
+      const totalUsers = users.length;
+      const activeUsers = users.filter((user) => user.status === "active").length;
+      const suspendedUsers = users.filter((user) => user.status === "suspended").length;
+      const accessEyebrow = $("#accessPanelEyebrow");
+      const accessTitle = $("#accessPanelTitle");
+      if (isMasterPortal()) {
+        if (accessEyebrow) accessEyebrow.textContent = "Portal maestro";
+        if (accessTitle) accessTitle.textContent = "Organizaciones, branding y modulos";
+        elements.accessRequestCount.textContent = `${organizations.length} organizacion${organizations.length === 1 ? "" : "es"}`;
+        elements.accessRequestCount.className = "status-pill info";
+      } else {
+        if (accessEyebrow) accessEyebrow.textContent = "Control de acceso";
+        if (accessTitle) accessTitle.textContent = "Usuarios, perfiles y permisos";
+        elements.accessRequestCount.textContent = `${pendingCount} pendiente${pendingCount === 1 ? "" : "s"}`;
+        elements.accessRequestCount.className = `status-pill ${pendingCount ? "warning" : "good"}`;
+      }
 
-  const organizationMarkup = isPlatformAdmin()
-    ? `
-      <form class="user-access-card concept-upload-card" id="createOrganizationForm">
+      const masterPortalOverviewMarkup = isMasterPortal()
+        ? `
+            <section class="access-group">
+              <div class="master-portal-overview-grid">
+                <article class="master-portal-overview-card">
+                  <p class="eyebrow">Organizaciones</p>
+                  <div class="value">${organizations.length}</div>
+                  <p class="item-meta">Tenants registrados en Nexora</p>
+                </article>
+                <article class="master-portal-overview-card">
+                  <p class="eyebrow">Usuarios activos</p>
+                  <div class="value">${activeUsers}</div>
+                  <p class="item-meta">Cuentas operativas visibles desde el maestro</p>
+                </article>
+                <article class="master-portal-overview-card">
+                  <p class="eyebrow">Ruta de acceso</p>
+                  <div class="value">/admin</div>
+                  <p class="item-meta">Portal maestro separado del tenant de Convoy</p>
+                </article>
+              </div>
+            </section>
+          `
+        : "";
+
+    const organizationMarkup = isPlatformAdmin()
+      ? `
+        <form class="user-access-card concept-upload-card" id="createOrganizationForm">
         <div class="user-access-top">
           <div>
             <p class="eyebrow">Portal maestro Nexora</p>
@@ -2733,22 +2768,23 @@ function renderAccessWorkspace(options = {}) {
     `
     : "";
 
-    const summaryMarkup = isMasterPortal()
-      ? `
-          ${organizationMarkup}
-          <section class="access-group">
-            <div class="panel-header">
-              <div>
-                <p class="eyebrow">Administracion global</p>
+      const summaryMarkup = isMasterPortal()
+        ? `
+            ${masterPortalOverviewMarkup}
+            ${organizationMarkup}
+            <section class="access-group">
+              <div class="panel-header">
+                <div>
+                  <p class="eyebrow">Administracion global</p>
                 <h2>Control maestro de organizaciones</h2>
               </div>
-            </div>
-            <article class="user-access-card">
-              <p class="item-meta">Estas dentro del portal maestro de Nexora. Desde aqui preparas organizaciones, branding, dominios y modulos antes de que cada cliente opere su propio portal.</p>
-              <p class="item-meta"><strong>Acceso temporal:</strong> mientras no tenga dominio propio, entra usando el mismo despliegue con <code>?organizationSlug=nexora-admin</code>.</p>
-            </article>
-          </section>
-        `
+              </div>
+              <article class="user-access-card">
+                <p class="item-meta">Estas dentro del portal maestro de Nexora. Desde aqui preparas organizaciones, branding, dominios y modulos antes de que cada cliente opere su propio portal.</p>
+                <p class="item-meta"><strong>Acceso recomendado:</strong> usa <code>/admin</code> para entrar directo al portal maestro. El tenant de Convoy queda en la raiz del mismo despliegue.</p>
+              </article>
+            </section>
+          `
       : `
           ${organizationMarkup}
           <form class="user-access-card create-user-card" id="createManagedUserForm">
@@ -3648,7 +3684,7 @@ function switchView(viewName, options = {}) {
     concepts: "Concept papers",
     supervision: "Supervision y validacion",
     programs: "Programas",
-    access: "Usuarios y accesos",
+    access: isMasterPortal() ? "Portal maestro de organizaciones" : "Usuarios y accesos",
   };
   if (!viewIsEnabled(viewName)) {
     viewName = firstAllowedView();

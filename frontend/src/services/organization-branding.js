@@ -44,7 +44,15 @@ function currentUrl() {
 export function readRequestedOrganizationContext() {
   const url = currentUrl();
   const organizationId = url.searchParams.get("organizationId") || url.searchParams.get("org") || "";
-  const organizationSlug = url.searchParams.get("organizationSlug") || url.searchParams.get("orgSlug") || "";
+  const requestedSlug = url.searchParams.get("organizationSlug") || url.searchParams.get("orgSlug") || "";
+  const pathname = String(url.pathname || "/").trim();
+  const inferredPathSlug =
+    pathname === "/admin" || pathname.startsWith("/admin/")
+      ? "nexora-admin"
+      : pathname === "/convoy" || pathname.startsWith("/convoy/")
+        ? "convoy-of-hope"
+        : (pathname.match(/^\/portal\/([^/?#]+)/)?.[1] || "");
+  const organizationSlug = requestedSlug || inferredPathSlug;
   return {
     organizationId: String(organizationId || "").trim(),
     organizationSlug: String(organizationSlug || "").trim(),
@@ -138,6 +146,15 @@ export function applyOrganizationBranding(payload = DEFAULT_ORGANIZATION_BRANDIN
   updateText("topbarEyebrow", branding.topbarEyebrow);
   updateBrandImage("authBrandLogo", organization.name);
   updateBrandImage("sidebarBrandLogo", organization.name);
+
+  const portalShortcuts = document.getElementById("portalShortcuts");
+  const convoyPortalShortcut = document.getElementById("convoyPortalShortcut");
+  const adminPortalShortcut = document.getElementById("adminPortalShortcut");
+  if (convoyPortalShortcut) convoyPortalShortcut.href = "/";
+  if (adminPortalShortcut) adminPortalShortcut.href = "/admin";
+  if (portalShortcuts) {
+    portalShortcuts.hidden = organization.slug !== "nexora-admin";
+  }
 
   return normalized;
 }

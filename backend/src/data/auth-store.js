@@ -406,12 +406,18 @@ function buildOrganizationPortalLinks(organization = {}) {
   const normalized = normalizeOrganization(organization);
   const primaryHostname = normalized.hostnames[0] || "";
   const aliases = normalized.hostnames.slice(1);
+  const fallbackPortalPath =
+    normalized.slug === "nexora-admin"
+      ? "/admin"
+      : normalized.slug === "convoy-of-hope"
+        ? "/"
+        : `/portal/${encodeURIComponent(normalized.slug)}`;
   return {
     primaryHostname,
     primaryPortalUrl: portalUrlForHostname(primaryHostname),
     hostnameAliases: aliases,
     hostnamePortalUrls: normalized.hostnames.map((hostname) => portalUrlForHostname(hostname)).filter(Boolean),
-    fallbackPortalQuery: `?organizationSlug=${encodeURIComponent(normalized.slug)}`,
+    fallbackPortalQuery: fallbackPortalPath,
   };
 }
 

@@ -2370,19 +2370,28 @@ function organizationSelectorFrom(request, payload = {}) {
   const host = String(request.headers["x-forwarded-host"] || request.headers.host || "")
     .split(",")[0]
     .trim();
+  const url = new URL(request.url || "/", "http://localhost");
+  const pathname = String(url.pathname || "/").trim();
+  const inferredPathSlug =
+    pathname === "/admin" || pathname.startsWith("/admin/")
+      ? "nexora-admin"
+      : pathname === "/convoy" || pathname.startsWith("/convoy/")
+        ? "convoy-of-hope"
+        : (pathname.match(/^\/portal\/([^/?#]+)/)?.[1] || "");
   return {
     organizationId:
       request.headers["x-mel-organization-id"] ||
       payload.organizationId ||
       payload.orgId ||
-      new URL(request.url || "/", "http://localhost").searchParams.get("organizationId") ||
-      new URL(request.url || "/", "http://localhost").searchParams.get("org") ||
+      url.searchParams.get("organizationId") ||
+      url.searchParams.get("org") ||
       "",
     organizationSlug:
       payload.organizationSlug ||
       payload.orgSlug ||
-      new URL(request.url || "/", "http://localhost").searchParams.get("organizationSlug") ||
-      new URL(request.url || "/", "http://localhost").searchParams.get("orgSlug") ||
+      url.searchParams.get("organizationSlug") ||
+      url.searchParams.get("orgSlug") ||
+      inferredPathSlug ||
       "",
     host,
   };

@@ -39,14 +39,14 @@
             <button class="primary-action auth-submit" type="submit">Entrar</button>
           </form>
 
-          <div class="portal-shortcuts" aria-label="Portales disponibles">
+          <div class="portal-shortcuts" id="portalShortcuts" aria-label="Portales disponibles" hidden>
             <p class="portal-shortcuts-title">Portales disponibles</p>
             <div class="portal-shortcuts-grid">
-              <a class="portal-shortcut-card" href="./?organizationSlug=convoy-of-hope">
+              <a class="portal-shortcut-card" id="convoyPortalShortcut" href="./">
                 <strong>Portal Convoy</strong>
                 <span>Operacion diaria de Convoy of Hope</span>
               </a>
-              <a class="portal-shortcut-card" href="./?organizationSlug=nexora-admin">
+              <a class="portal-shortcut-card" id="adminPortalShortcut" href="./admin">
                 <strong>Nexora Admin</strong>
                 <span>Administracion global de organizaciones</span>
               </a>
@@ -1068,8 +1068,8 @@
           <section class="panel">
             <div class="panel-header">
               <div>
-                <p class="eyebrow">Control de acceso</p>
-                <h2>Usuarios, perfiles y permisos</h2>
+                <p class="eyebrow" id="accessPanelEyebrow">Control de acceso</p>
+                <h2 id="accessPanelTitle">Usuarios, perfiles y permisos</h2>
               </div>
               <span class="status-pill warning" id="accessRequestCount">0 pendientes</span>
             </div>
@@ -1080,7 +1080,7 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="src/main.js?v=20260602b"></script>
+    <script type="module" src="src/main.js?v=20260602c"></script>
   </body>
 </html>
 

@@ -309,6 +309,31 @@ button:disabled {
   font-size: 0.88rem;
 }
 
+.master-portal-overview-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+}
+
+.master-portal-overview-card {
+  background: #f8faf9;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+}
+
+.master-portal-overview-card .value {
+  color: var(--ink);
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+
+.master-portal-overview-card .item-meta {
+  margin: 0;
+}
+
 .delivery-link {
   width: 100%;
 }
@@ -2301,6 +2326,10 @@ textarea {
   .auth-link-row {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .master-portal-overview-grid {
+    grid-template-columns: 1fr;
   }
 
   .chart-column-frame {
