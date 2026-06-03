@@ -9,7 +9,7 @@
         display: none !important;
       }
     </style>
-    <link rel="stylesheet" href="styles.css?v=20260602e" />
+    <link rel="stylesheet" href="styles.css?v=20260602f" />
   </head>
   <body>
     <section class="auth-shell" id="authShell">
@@ -1080,7 +1080,36 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="src/main.js?v=20260602e"></script>
+    <script>
+      (() => {
+        const isAdminPortal = window.location.pathname === "/admin" || window.location.pathname.startsWith("/admin/");
+        if (!isAdminPortal) return;
+        document.documentElement.dataset.organizationSlug = "nexora-admin";
+        document.documentElement.dataset.organizationId = "org-nexora-admin";
+        document.title = "Nexora";
+        const applyText = (id, value) => {
+          const node = document.getElementById(id);
+          if (node) node.textContent = value;
+        };
+        const applyImage = (id, src, alt) => {
+          const image = document.getElementById(id);
+          if (!image) return;
+          image.src = src;
+          image.alt = alt;
+          const wrapper = image.closest(".brand-mark-logo");
+          if (wrapper) wrapper.setAttribute("aria-label", alt);
+        };
+        applyText("authBrandProductName", "Nexora");
+        applyText("authBrandSubtitle", "Portal maestro para administrar organizaciones, branding y modulos de Nexora");
+        applyText("authLead", "Entra con tu cuenta global para crear organizaciones y preparar sus portales sin depender de ningun tenant operativo.");
+        applyText("sidebarBrandProductName", "Nexora");
+        applyText("sidebarBrandOrganization", "Control maestro");
+        applyText("topbarEyebrow", "Nexora | Portal maestro");
+        applyImage("authBrandLogo", "./assets/nexora-admin-logo.svg", "Nexora Admin");
+        applyImage("sidebarBrandLogo", "./assets/nexora-admin-logo.svg", "Nexora Admin");
+      })();
+    </script>
+    <script type="module" src="src/main.js?v=20260602f"></script>
   </body>
 </html>
 

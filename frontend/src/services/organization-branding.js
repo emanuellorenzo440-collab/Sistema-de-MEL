@@ -23,6 +23,28 @@ export const DEFAULT_ORGANIZATION_BRANDING = {
   },
 };
 
+export const MASTER_ORGANIZATION_BRANDING = {
+  organization: {
+    id: "org-nexora-admin",
+    name: "Nexora Admin",
+    slug: "nexora-admin",
+  },
+  branding: {
+    productName: "Nexora",
+    organizationName: "Nexora Admin",
+    loginTagline: "Portal maestro para administrar organizaciones, branding y modulos de Nexora",
+    loginLead: "Entra con tu cuenta global para crear organizaciones y preparar sus portales sin depender de ningun tenant operativo.",
+    sidebarCaption: "Control maestro",
+    topbarEyebrow: "Nexora | Portal maestro",
+    brandLogoPath: "assets/nexora-admin-logo.svg",
+    loginHeroPath: "assets/nexora-admin-hero.svg",
+    primaryColor: "#11446b",
+    primaryDarkColor: "#0a2c46",
+    accentColor: "#27c1da",
+    enabledModules: ["access"],
+  },
+};
+
 const ORGANIZATION_QUERY_KEYS = ["organizationId", "org", "organizationSlug", "orgSlug"];
 
 function trimTrailingSlash(value) {
@@ -57,6 +79,12 @@ export function readRequestedOrganizationContext() {
     organizationId: String(organizationId || "").trim(),
     organizationSlug: String(organizationSlug || "").trim(),
   };
+}
+
+export function defaultBrandingForRequestedPortal() {
+  return readRequestedOrganizationContext().organizationSlug === "nexora-admin"
+    ? MASTER_ORGANIZATION_BRANDING
+    : DEFAULT_ORGANIZATION_BRANDING;
 }
 
 export function normalizeOrganizationBranding(payload = {}) {
@@ -100,7 +128,7 @@ export function normalizeOrganizationBranding(payload = {}) {
   };
 }
 
-export function brandingFromUser(user = null, fallback = DEFAULT_ORGANIZATION_BRANDING) {
+export function brandingFromUser(user = null, fallback = defaultBrandingForRequestedPortal()) {
   if (!user) return normalizeOrganizationBranding(fallback);
   return normalizeOrganizationBranding({
     organization: user.organization,
@@ -162,7 +190,7 @@ export function applyOrganizationBranding(payload = DEFAULT_ORGANIZATION_BRANDIN
 export async function loadPublicOrganizationBranding(organizationId = "") {
   const apiBaseUrl = getApiBaseUrl();
   if (!apiBaseUrl) {
-    return applyOrganizationBranding(DEFAULT_ORGANIZATION_BRANDING);
+    return applyOrganizationBranding(defaultBrandingForRequestedPortal());
   }
 
   try {
@@ -177,9 +205,9 @@ export async function loadPublicOrganizationBranding(organizationId = "") {
     if (!response.ok) {
       throw new Error(body.error || "No pude cargar la configuracion de organizacion.");
     }
-    return applyOrganizationBranding(body.data || DEFAULT_ORGANIZATION_BRANDING);
+    return applyOrganizationBranding(body.data || defaultBrandingForRequestedPortal());
   } catch (error) {
     console.error("No pude cargar la configuracion publica de la organizacion.", error);
-    return applyOrganizationBranding(DEFAULT_ORGANIZATION_BRANDING);
+    return applyOrganizationBranding(defaultBrandingForRequestedPortal());
   }
 }

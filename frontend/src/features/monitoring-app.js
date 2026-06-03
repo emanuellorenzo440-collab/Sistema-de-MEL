@@ -21,7 +21,7 @@ import {
   listVisibleViews,
   updateCurrentUserChatAlertSettings,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260602e";
+} from "../services/auth-service.js?v=20260602f";
 import {
   apiFileUrl,
   addApiChatParticipants,
@@ -82,7 +82,7 @@ import {
   updateApiProgramCenter,
   uploadApiFile,
 } from "../services/mel-api.js?v=20260601a";
-import { applyOrganizationBranding, brandingFromUser } from "../services/organization-branding.js?v=20260602d";
+import { applyOrganizationBranding, brandingFromUser, readRequestedOrganizationContext } from "../services/organization-branding.js?v=20260602f";
 import {
   currentMonth,
   escapeHtml,
@@ -397,7 +397,10 @@ function isPlatformAdmin() {
 }
 
 function isMasterPortal() {
-  return currentUser?.organizationId === "org-nexora-admin";
+  return (
+    currentUser?.organizationId === "org-nexora-admin" ||
+    readRequestedOrganizationContext().organizationSlug === "nexora-admin"
+  );
 }
 
 function currentOrganizationEnabledViews() {

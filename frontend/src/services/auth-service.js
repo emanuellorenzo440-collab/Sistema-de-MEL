@@ -1,5 +1,9 @@
 import { getApiBaseUrl } from "./mel-api.js?v=20260601a";
-import { DEFAULT_ORGANIZATION_BRANDING, normalizeOrganizationBranding, readRequestedOrganizationContext } from "./organization-branding.js?v=20260602d";
+import {
+  DEFAULT_ORGANIZATION_BRANDING,
+  normalizeOrganizationBranding,
+  readRequestedOrganizationContext,
+} from "./organization-branding.js?v=20260602f";
 
 const AUTH_STORAGE_KEY = "pulso-me-auth-v1";
 const AUTH_SESSION_KEY = "pulso-me-session-v1";
@@ -113,12 +117,41 @@ function authApiBaseUrl() {
 
 function storedSessionToken() {
   try {
-    const raw = window.localStorage.getItem(AUTH_SESSION_KEY);
-    const session = raw ? JSON.parse(raw) : null;
+    const session = readStoredSession();
     return String(session?.sessionToken || "").trim();
   } catch {
     return "";
   }
+}
+
+function requestedPortalContext() {
+  const context = readRequestedOrganizationContext();
+  return {
+    organizationId: String(context.organizationId || "").trim(),
+    organizationSlug: String(context.organizationSlug || "").trim().toLowerCase(),
+  };
+}
+
+function sessionMatchesRequestedPortal(session = {}, user = null) {
+  const requested = requestedPortalContext();
+  if (!requested.organizationId && !requested.organizationSlug) return true;
+
+  const sessionOrganizationId = String(session?.organizationId || user?.organizationId || "").trim();
+  const sessionOrganizationSlug = String(
+    session?.organizationSlug || user?.organization?.slug || user?.organizationSlug || "",
+  )
+    .trim()
+    .toLowerCase();
+
+  if (requested.organizationId && sessionOrganizationId && requested.organizationId !== sessionOrganizationId) {
+    return false;
+  }
+
+  if (requested.organizationSlug && sessionOrganizationSlug && requested.organizationSlug !== sessionOrganizationSlug) {
+    return false;
+  }
+
+  return true;
 }
 
 function isLocalAuthRuntime() {
@@ -283,6 +316,8 @@ async function startRemoteSession(remoteUser, eventType = "signed-in") {
     activeRole: normalizeRoleLabel(nextUser.systemRole),
     createdAt: nowIso(),
     sessionToken: remoteUser.sessionToken || state.session?.sessionToken || "",
+    organizationId: String(nextUser.organizationId || DEFAULT_ORGANIZATION.id).trim(),
+    organizationSlug: String(nextUser.organization?.slug || "").trim().toLowerCase(),
   };
   writeStoredAuthState(state, eventType);
   return nextUser;
@@ -710,7 +745,12 @@ function normalizeAuthState(rawState = {}) {
 function readStoredSession() {
   try {
     const raw = window.localStorage.getItem(AUTH_SESSION_KEY);
-    return raw ? JSON.parse(raw) : null;
+    const session = raw ? JSON.parse(raw) : null;
+    if (!sessionMatchesRequestedPortal(session)) {
+      writeStoredSession(null);
+      return null;
+    }
+    return session;
   } catch {
     return null;
   }
@@ -747,6 +787,14 @@ function restorePersistedSession(state) {
   }
 
   if (normalized.session?.userId) {
+    const normalizedSessionUser = normalized.users.find((user) => user.id === normalized.session.userId);
+    if (!sessionMatchesRequestedPortal(normalized.session, normalizedSessionUser)) {
+      writeStoredSession(null);
+      return {
+        ...normalized,
+        session: null,
+      };
+    }
     writeStoredSession(normalized.session);
     return normalized;
   }
@@ -758,6 +806,10 @@ function restorePersistedSession(state) {
     writeStoredSession(null);
     return normalized;
   }
+  if (!sessionMatchesRequestedPortal(persistedSession, sessionUser)) {
+    writeStoredSession(null);
+    return normalized;
+  }
 
   return normalizeAuthState({
     ...normalized,
@@ -766,6 +818,14 @@ function restorePersistedSession(state) {
         activeRole: normalizeRoleLabel(persistedSession.activeRole || sessionUser.systemRole),
         createdAt: persistedSession.createdAt || nowIso(),
         sessionToken: String(persistedSession.sessionToken || ""),
+        organizationId: String(
+          persistedSession.organizationId || sessionUser.organizationId || DEFAULT_ORGANIZATION.id,
+        ).trim(),
+        organizationSlug: String(
+          persistedSession.organizationSlug || sessionUser.organization?.slug || "",
+        )
+          .trim()
+          .toLowerCase(),
       },
     });
 }
@@ -1275,6 +1335,8 @@ export async function signInUser(payload = {}) {
     userId: user.id,
     activeRole: normalizeRoleLabel(user.systemRole),
     createdAt: nowIso(),
+    organizationId: String(user.organizationId || DEFAULT_ORGANIZATION.id).trim(),
+    organizationSlug: String(user.organization?.slug || "").trim().toLowerCase(),
   };
   writeStoredAuthState(state, "signed-in");
   return clone({
@@ -1368,6 +1430,8 @@ export async function completeRequiredPasswordChange(payload = {}) {
     userId: user.id,
     activeRole: normalizeRoleLabel(user.systemRole),
     createdAt: nowIso(),
+    organizationId: String(user.organizationId || DEFAULT_ORGANIZATION.id).trim(),
+    organizationSlug: String(user.organization?.slug || "").trim().toLowerCase(),
   };
   writeStoredAuthState(state, "password-change-completed");
   return clone({
