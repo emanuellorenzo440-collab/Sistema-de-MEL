@@ -32,6 +32,10 @@ body {
   letter-spacing: 0;
 }
 
+body.modal-open {
+  overflow: hidden;
+}
+
 [hidden] {
   display: none !important;
 }
@@ -1856,10 +1860,123 @@ textarea {
   min-height: 38px;
 }
 
+.access-action-strip {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding: 18px 20px;
+}
+
+.access-action-strip .item-meta {
+  margin-bottom: 0;
+}
+
+.item-actions.wrap {
+  flex-wrap: wrap;
+}
+
 .access-card-grid {
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(2, minmax(180px, 1fr));
+}
+
+.access-card-grid.compact {
+  gap: 14px;
+}
+
+.field-label {
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 0.82rem;
+  font-weight: 700;
+  gap: 4px;
+  line-height: 1.3;
+}
+
+.required-mark {
+  color: var(--brand-primary);
+  font-weight: 900;
+}
+
+.field-helper {
+  margin: -2px 0 0;
+}
+
+.app-modal-shell {
+  inset: 0;
+  position: fixed;
+  z-index: 1200;
+}
+
+.app-modal-backdrop {
+  background: rgba(9, 18, 29, 0.52);
+  inset: 0;
+  position: absolute;
+}
+
+.app-modal-card {
+  background: var(--surface);
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 8px;
+  box-shadow: 0 30px 90px rgba(15, 26, 36, 0.22);
+  left: 50%;
+  max-height: min(88vh, 980px);
+  max-width: min(900px, calc(100vw - 40px));
+  overflow: hidden;
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(900px, calc(100vw - 40px));
+}
+
+.app-modal-card-form .modalized-form {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  gap: 16px;
+  padding: 0;
+}
+
+.app-modal-header {
+  align-items: start;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 20px 22px 16px;
+}
+
+.app-modal-title {
+  font-size: 1.15rem;
+  margin-bottom: 4px;
+}
+
+.app-modal-description {
+  margin-bottom: 0;
+  max-width: 64ch;
+}
+
+.app-modal-scroll {
+  max-height: calc(88vh - 92px);
+  overflow: auto;
+  padding: 0 22px 22px;
+}
+
+.app-modal-scroll .modalized-form > .user-access-top {
+  display: none;
+}
+
+.app-modal-scroll .modalized-form > .item-actions {
+  border-top: 1px solid var(--line);
+  justify-content: flex-end;
+  margin-top: 8px;
+  padding-top: 16px;
 }
 
 .organization-portal-preview {
@@ -1889,6 +2006,10 @@ textarea {
   gap: 8px;
   min-height: 38px;
   padding: 7px 12px;
+}
+
+.modal-checkbox-row {
+  margin-top: 8px;
 }
 
 .choice-pill input {
@@ -2263,6 +2384,7 @@ textarea {
 
   .topbar,
   .panel-header,
+  .access-action-strip,
   .indicator-top,
   .review-top,
   .program-top,
@@ -2330,6 +2452,11 @@ textarea {
 
   .master-portal-overview-grid {
     grid-template-columns: 1fr;
+  }
+
+  .app-modal-card {
+    max-width: calc(100vw - 20px);
+    width: calc(100vw - 20px);
   }
 
   .chart-column-frame {

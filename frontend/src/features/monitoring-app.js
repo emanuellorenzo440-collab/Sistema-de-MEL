@@ -168,6 +168,7 @@ let chatAudioUnlocked = false;
 let chatLastRenderedMessageId = "";
 let openChatReactionMessageId = "";
 let openChatOptionsMessageId = "";
+let activeAccessModalId = "";
 const BASE_DOCUMENT_TITLE = document.title || "Pulso M&E";
 const INSTITUTIONAL_CHAT_AREAS = [
   { id: "mel", title: "M&E", description: "Coordinacion institucional de monitoreo, evaluacion y aprendizaje." },
@@ -315,6 +316,48 @@ function organizationModuleSelectorMarkup(selectedModules = []) {
       ).join("")}
     </div>
   `;
+}
+
+function requiredFieldLabel(label) {
+  return `${escapeHtml(label)} <span class="required-mark" aria-hidden="true">*</span>`;
+}
+
+function setActiveAccessModal(modalId = "") {
+  activeAccessModalId = modalId || "";
+  if (!elements.accessUserGrid) return;
+  const modals = Array.from(elements.accessUserGrid.querySelectorAll("[data-access-modal]"));
+  modals.forEach((modal) => {
+    const isActive = modal.dataset.accessModal === activeAccessModalId;
+    modal.classList.toggle("hidden", !isActive);
+    modal.setAttribute("aria-hidden", isActive ? "false" : "true");
+  });
+  document.body.classList.toggle("modal-open", Boolean(activeAccessModalId));
+  if (activeAccessModalId) {
+    const activeModal = elements.accessUserGrid.querySelector(`[data-access-modal="${activeAccessModalId}"]`);
+    const focusTarget = activeModal?.querySelector("input:not([type='hidden']), select, textarea, button[type='submit']");
+    if (focusTarget instanceof HTMLElement) {
+      window.setTimeout(() => focusTarget.focus({ preventScroll: true }), 0);
+    }
+  }
+}
+
+function closeAccessModal(modalId = "") {
+  if (!activeAccessModalId) return;
+  if (modalId && activeAccessModalId !== modalId) return;
+  setActiveAccessModal("");
+}
+
+function validateModalForm(form, extraValidation = null) {
+  if (!(form instanceof HTMLFormElement)) return false;
+  if (!form.reportValidity()) return false;
+  if (typeof extraValidation === "function") {
+    const validationMessage = extraValidation(form);
+    if (validationMessage) {
+      showToast(validationMessage);
+      return false;
+    }
+  }
+  return true;
 }
 
 function reportParticipantValue(report = {}, fieldKey = "") {
@@ -2464,6 +2507,7 @@ function captureAccessWorkspaceDraft() {
   const activeForm = activeElement?.closest?.("form");
 
   return {
+    activeModalId: activeAccessModalId || activeForm?.closest?.("[data-access-modal]")?.dataset?.accessModal || null,
     activeFormId:
       activeForm?.id === "createOrganizationForm"
         ? "organization-create"
@@ -2498,6 +2542,7 @@ function captureAccessWorkspaceDraft() {
 
 function restoreAccessWorkspaceDraft(snapshot) {
   if (!snapshot || !elements.accessUserGrid) return;
+  setActiveAccessModal(snapshot.activeModalId || "");
   restoreFormValues(elements.accessUserGrid.querySelector("#createOrganizationForm"), snapshot.organization);
   restoreFormValues(elements.accessUserGrid.querySelector("#createManagedUserForm"), snapshot.create);
   restoreFormValues(elements.accessUserGrid.querySelector("#createConceptPaperForm"), snapshot.concept);
@@ -3029,9 +3074,12 @@ function renderAccessWorkspace(options = {}) {
 
     const draftSnapshot = captureAccessWorkspaceDraft();
     elements.accessUserGrid.innerHTML = `${summaryMarkup}${cardsMarkup}`;
+    decorateAccessWorkspaceUi({ isMaster, organizations });
     restoreAccessWorkspaceDraft(draftSnapshot);
   })().catch((error) => {
     console.error(error);
+    activeAccessModalId = "";
+    document.body.classList.remove("modal-open");
     const message = escapeHtml(error?.message || "No pude cargar los accesos.");
     elements.accessUserGrid.innerHTML = `<p class="item-meta">${message}</p>`;
   });
@@ -3739,6 +3787,152 @@ function switchView(viewName, options = {}) {
   if (persist && state) {
     saveState();
   }
+}
+
+function ensureFieldLabelDecorations(form) {
+  if (!(form instanceof HTMLFormElement)) return;
+  Array.from(form.querySelectorAll("label")).forEach((label) => {
+    const textNodes = Array.from(label.childNodes).filter((node) => node.nodeType === Node.TEXT_NODE);
+    const firstTextNode = textNodes.find((node) => String(node.textContent || "").trim());
+    if (!firstTextNode) return;
+    if (label.querySelector(".field-label")) return;
+    const labelText = String(firstTextNode.textContent || "").trim();
+    if (!labelText) return;
+    const control = label.querySelector("input, select, textarea");
+    const isRequired = Boolean(control?.hasAttribute("required"));
+    const labelSpan = document.createElement("span");
+    labelSpan.className = "field-label";
+    labelSpan.innerHTML = isRequired ? requiredFieldLabel(labelText) : escapeHtml(labelText);
+    firstTextNode.textContent = "";
+    label.prepend(labelSpan);
+  });
+}
+
+function enhanceAccessCreateForms() {
+  const ensureSelectPlaceholder = (select, label) => {
+    if (!(select instanceof HTMLSelectElement) || select.dataset.placeholderReady === "true") return;
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = `Selecciona ${label}`;
+    placeholder.disabled = true;
+    placeholder.selected = true;
+    select.prepend(placeholder);
+    select.value = "";
+    select.dataset.placeholderReady = "true";
+    select.required = true;
+  };
+
+  const createManagedUserForm = elements.accessUserGrid?.querySelector("#createManagedUserForm");
+  if (createManagedUserForm instanceof HTMLFormElement) {
+    createManagedUserForm.querySelector('[name="fullName"]')?.setAttribute("placeholder", "Nombre y apellido");
+    createManagedUserForm.querySelector('[name="email"]')?.setAttribute("placeholder", "usuario@convoyofhope.org");
+    createManagedUserForm.querySelector('[name="password"]')?.setAttribute("placeholder", "Minimo 8 caracteres");
+    ensureSelectPlaceholder(createManagedUserForm.querySelector('[name="systemRole"]'), "un rol");
+    ensureSelectPlaceholder(createManagedUserForm.querySelector('[name="status"]'), "un estado");
+  }
+  ensureSelectPlaceholder(elements.accessUserGrid?.querySelector('#createConceptPaperForm [name="program"]'), "un programa");
+  ensureSelectPlaceholder(elements.accessUserGrid?.querySelector('#createProgramManualForm [name="program"]'), "un programa");
+  ensureFieldLabelDecorations(createManagedUserForm);
+  ensureFieldLabelDecorations(elements.accessUserGrid?.querySelector("#createOrganizationForm"));
+  ensureFieldLabelDecorations(elements.accessUserGrid?.querySelector("#createConceptPaperForm"));
+  ensureFieldLabelDecorations(elements.accessUserGrid?.querySelector("#createProgramManualForm"));
+}
+
+function modalizeAccessForm(form, config = {}) {
+  if (!(form instanceof HTMLFormElement) || form.closest("[data-access-modal]")) return;
+  const { modalId, eyebrow = "", title = "", description = "" } = config;
+  if (!modalId) return;
+  const shell = document.createElement("section");
+  shell.className = "app-modal-shell hidden";
+  shell.dataset.accessModal = modalId;
+  shell.setAttribute("aria-hidden", "true");
+  shell.innerHTML = `
+    <div class="app-modal-backdrop" data-close-access-modal="${escapeHtml(modalId)}"></div>
+    <div class="app-modal-card app-modal-card-form" role="dialog" aria-modal="true" aria-labelledby="${escapeHtml(modalId)}Title">
+      <div class="app-modal-header">
+        <div>
+          ${eyebrow ? `<p class="eyebrow">${escapeHtml(eyebrow)}</p>` : ""}
+          <h3 id="${escapeHtml(modalId)}Title" class="app-modal-title">${escapeHtml(title)}</h3>
+          ${description ? `<p class="item-meta app-modal-description">${escapeHtml(description)}</p>` : ""}
+        </div>
+        <button class="icon-button" type="button" data-close-access-modal="${escapeHtml(modalId)}" aria-label="Cerrar ventana">×</button>
+      </div>
+      <div class="app-modal-scroll"></div>
+    </div>
+  `;
+  form.classList.add("modalized-form");
+  shell.querySelector(".app-modal-scroll")?.append(form);
+  elements.accessUserGrid?.append(shell);
+}
+
+function injectAccessActionStrip(isMasterPortalView, organizations = []) {
+  if (!elements.accessUserGrid) return;
+  elements.accessUserGrid.querySelector(".access-action-strip")?.remove();
+  const hasUserForm = Boolean(elements.accessUserGrid.querySelector("#createManagedUserForm"));
+  const hasConceptForm = Boolean(elements.accessUserGrid.querySelector("#createConceptPaperForm"));
+  const hasManualForm = Boolean(elements.accessUserGrid.querySelector("#createProgramManualForm"));
+  const actionStrip = document.createElement("section");
+  actionStrip.className = "access-action-strip";
+  if (isMasterPortalView) {
+    actionStrip.innerHTML = `
+      <div>
+        <p class="eyebrow">Portal maestro</p>
+        <h2>Crear y configurar organizaciones</h2>
+        <p class="item-meta">Gestiona tenants, branding y modulos desde una experiencia separada del portal operativo.</p>
+      </div>
+      <div class="item-actions wrap">
+        <button class="primary-action" type="button" data-open-access-modal="create-organization">Nueva organizacion</button>
+      </div>
+    `;
+  } else {
+    actionStrip.innerHTML = `
+      <div>
+        <p class="eyebrow">Administracion operativa</p>
+        <h2>Usuarios, perfiles y biblioteca</h2>
+        <p class="item-meta">Crea accesos y sube documentos en ventanas modales sin perder contexto de la bandeja.</p>
+      </div>
+      <div class="item-actions wrap">
+        ${hasUserForm ? '<button class="primary-action" type="button" data-open-access-modal="create-user">Nuevo usuario</button>' : ""}
+        ${hasConceptForm ? '<button class="ghost-action" type="button" data-open-access-modal="create-concept">Subir Concept Paper</button>' : ""}
+        ${hasManualForm ? '<button class="ghost-action" type="button" data-open-access-modal="create-manual">Subir manual</button>' : ""}
+      </div>
+    `;
+  }
+  elements.accessUserGrid.prepend(actionStrip);
+}
+
+function decorateAccessWorkspaceUi(options = {}) {
+  if (!elements.accessUserGrid) return;
+  const { isMaster = false, organizations = [] } = options;
+  enhanceAccessCreateForms();
+  injectAccessActionStrip(isMaster, organizations);
+  if (isMaster) {
+    modalizeAccessForm(elements.accessUserGrid.querySelector("#createOrganizationForm"), {
+      modalId: "create-organization",
+      eyebrow: "Portal maestro Nexora",
+      title: "Registrar nueva organizacion",
+      description: "Crea un tenant, su branding base y su administrador inicial desde una sola ventana.",
+    });
+    return;
+  }
+  modalizeAccessForm(elements.accessUserGrid.querySelector("#createManagedUserForm"), {
+    modalId: "create-user",
+    eyebrow: "Nuevo usuario",
+    title: "Crear acceso directo",
+    description: "Define rol, estado y politica de primer ingreso sin salir de la bandeja.",
+  });
+  modalizeAccessForm(elements.accessUserGrid.querySelector("#createConceptPaperForm"), {
+    modalId: "create-concept",
+    eyebrow: "Concept Papers",
+    title: "Cargar documento al sistema",
+    description: "Sube un Concept Paper institucional y dejalo disponible para todos los usuarios con acceso.",
+  });
+  modalizeAccessForm(elements.accessUserGrid.querySelector("#createProgramManualForm"), {
+    modalId: "create-manual",
+    eyebrow: "Manuales",
+    title: "Cargar manual de programa",
+    description: "Sube una version oficial del manual y mantenla disponible para el equipo.",
+  });
 }
 
 function viewNeedsInteractionProtection(viewName = state?.activeView || activeViewName()) {
@@ -8053,6 +8247,11 @@ function bindEvents() {
     button.addEventListener("click", () => switchView(button.dataset.view));
   });
 
+  window.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || !activeAccessModalId) return;
+    closeAccessModal(activeAccessModalId);
+  });
+
   $("#quickReportButton").addEventListener("click", () => switchView("report"));
 
   elements.chatCreateForm?.addEventListener("submit", (event) => {
@@ -9162,6 +9361,10 @@ function bindEvents() {
     if (event.target.id === "createOrganizationForm") {
       event.preventDefault();
       const form = event.target;
+      if (!validateModalForm(form, (currentForm) => {
+        const enabledModules = new FormData(currentForm).getAll("enabledModules");
+        return enabledModules.length ? "" : "Selecciona al menos un modulo para la organizacion.";
+      })) return;
       const formData = new FormData(form);
       void (async () => {
         try {
@@ -9193,6 +9396,7 @@ function bindEvents() {
             organizationName: createdOrganization.organization.name,
             accessNote: `Administrador inicial de ${createdOrganization.organization.name}.`,
           });
+          closeAccessModal("create-organization");
           form.reset();
           renderAccessWorkspace({ force: true });
           showToast(`Organizacion ${createdOrganization.organization.name} y admin inicial creados.`);
@@ -9207,6 +9411,7 @@ function bindEvents() {
     if (event.target.id === "createConceptPaperForm") {
       event.preventDefault();
       const form = event.target;
+      if (!validateModalForm(form)) return;
       const formData = new FormData(form);
       const file = form.elements.conceptFile?.files?.[0] || null;
       void (async () => {
@@ -9217,6 +9422,7 @@ function bindEvents() {
           state.conceptPapers = [savedPaper, ...state.conceptPapers.filter((paper) => paper.id !== savedPaper.id)];
           state.selectedConceptPaper = savedPaper.id;
           saveState();
+          closeAccessModal("create-concept");
           form.reset();
           await refreshConceptPapersFromApi();
           await sendProgramChatActivity(
@@ -9239,6 +9445,7 @@ function bindEvents() {
     if (event.target.id === "createProgramManualForm") {
       event.preventDefault();
       const form = event.target;
+      if (!validateModalForm(form)) return;
       const formData = new FormData(form);
       const file = form.elements.manualFile?.files?.[0] || null;
       void (async () => {
@@ -9248,6 +9455,7 @@ function bindEvents() {
           const savedManual = isApiConfigured() ? await createApiProgramManual({ ...manual, ...actorPayload() }) : manual;
           state.programManuals = [savedManual, ...(state.programManuals || []).filter((item) => item.id !== savedManual.id)];
           saveState();
+          closeAccessModal("create-manual");
           form.reset();
           await refreshProgramManualsFromApi();
           await sendProgramChatActivity(
@@ -9269,6 +9477,7 @@ function bindEvents() {
 
     if (event.target.id === "createManagedUserForm") {
       event.preventDefault();
+      if (!validateModalForm(event.target)) return;
       const formData = new FormData(event.target);
       void (async () => {
         try {
@@ -9287,6 +9496,7 @@ function bindEvents() {
             "access",
             `${currentUser?.fullName || activeRole()} creo el acceso de ${createdUser.fullName} (${createdUser.systemRole}) con estado ${createdUser.status || formData.get("status") || "active"}.`,
           );
+          closeAccessModal("create-user");
           event.target.reset();
           renderAccessWorkspace();
           showToast("Usuario creado.");
@@ -9301,6 +9511,10 @@ function bindEvents() {
     const organizationForm = event.target.closest("[data-organization-form]");
     if (organizationForm) {
       event.preventDefault();
+      if (!validateModalForm(organizationForm, (currentForm) => {
+        const enabledModules = new FormData(currentForm).getAll("enabledModules");
+        return enabledModules.length ? "" : "Selecciona al menos un modulo habilitado.";
+      })) return;
       const organizationId = organizationForm.dataset.organizationForm;
       const formData = new FormData(organizationForm);
       void (async () => {
@@ -9380,6 +9594,21 @@ function bindEvents() {
 
   elements.accessUserGrid?.addEventListener("click", (event) => {
     const clickTarget = event.target instanceof Element ? event.target : event.target?.parentElement;
+    const openModalButton = clickTarget?.closest("[data-open-access-modal]");
+    if (openModalButton) {
+      event.preventDefault();
+      const modalId = openModalButton.dataset.openAccessModal;
+      if (modalId) setActiveAccessModal(modalId);
+      return;
+    }
+
+    const closeModalButton = clickTarget?.closest("[data-close-access-modal]");
+    if (closeModalButton) {
+      event.preventDefault();
+      closeAccessModal(closeModalButton.dataset.closeAccessModal || "");
+      return;
+    }
+
     const deleteButton = clickTarget?.closest("[data-delete-access]");
     if (!deleteButton) return;
 
