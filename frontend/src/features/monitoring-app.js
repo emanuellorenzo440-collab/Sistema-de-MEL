@@ -322,10 +322,151 @@ function requiredFieldLabel(label) {
   return `${escapeHtml(label)} <span class="required-mark" aria-hidden="true">*</span>`;
 }
 
+function isValidEmailAddress(value = "") {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(String(value || "").trim());
+}
+
+function isValidSlugValue(value = "") {
+  return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(String(value || "").trim());
+}
+
+function isValidHexColor(value = "") {
+  return /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(String(value || "").trim());
+}
+
+function isValidPeriodValue(value = "") {
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(String(value || "").trim());
+}
+
+function isValidUrlValue(value = "") {
+  try {
+    const url = new URL(String(value || "").trim());
+    return ["http:", "https:"].includes(url.protocol);
+  } catch {
+    return false;
+  }
+}
+
+function optionalEmailValidationMessage(value = "", label = "correo") {
+  const normalized = String(value || "").trim();
+  if (!normalized) return "";
+  return isValidEmailAddress(normalized) ? "" : `Revisa ${label}: debe ser un correo valido.`;
+}
+
+function requirePersistentApi(actionLabel = "esta accion") {
+  if (isApiConfigured()) return true;
+  showToast(`No puedo completar ${actionLabel} sin la API. Para evitar inconsistencias, el cambio no se guardara solo localmente.`);
+  return false;
+}
+
+function invalidProgramCenterLines(value = "") {
+  return String(value || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => {
+      const parts = line.split(/\s*\|\s*|\s*:\s*/).map((part) => part.trim()).filter(Boolean);
+      return parts.length < 2;
+    });
+}
+
+function validateProgramPayload(payload, options = {}) {
+  const { rawCenters = "" } = options;
+  if (!String(payload.name || "").trim()) return "Debes indicar el nombre del programa.";
+  if (!String(payload.lead || "").trim()) return "Debes indicar el lider del programa.";
+  if (!Array.isArray(payload.provinces) || !payload.provinces.length) {
+    return "Selecciona al menos una provincia para el programa.";
+  }
+  if (!String(payload.focus || "").trim()) return "Debes completar el enfoque del programa.";
+  if (!Number.isFinite(Number(payload.beneficiaries)) || Number(payload.beneficiaries) < 0) {
+    return "La meta de beneficiarios debe ser un numero igual o mayor que cero.";
+  }
+  const invalidCenters = invalidProgramCenterLines(rawCenters);
+  if (invalidCenters.length) {
+    return `Revisa los centros del programa. Cada linea debe usar el formato Provincia | Nombre del centro.`;
+  }
+  return (
+    optionalEmailValidationMessage(payload.coordinatorEmail, "el correo de coordinacion") ||
+    optionalEmailValidationMessage(payload.programManagerEmail, "el correo de Program Manager") ||
+    optionalEmailValidationMessage(payload.melSupervisorEmail, "el correo de Supervision M&E")
+  );
+}
+
+function validateProgramCenterPayload(payload) {
+  if (!String(payload.program || "").trim()) return "Selecciona un programa para el centro.";
+  if (!String(payload.province || "").trim()) return "Selecciona una provincia para el centro.";
+  if (!String(payload.name || "").trim()) return "Debes indicar el nombre del centro.";
+  return "";
+}
+
+function validateManagedUserSubmission({
+  fullName = "",
+  email = "",
+  password = "",
+  systemRole = "",
+  status = "",
+  allowedRoles = [],
+  viewPermissions = [],
+  requirePassword = true,
+} = {}) {
+  if (!String(fullName || "").trim()) return "Debes indicar el nombre completo del usuario.";
+  if (!isValidEmailAddress(email)) return "Debes indicar un correo valido para el usuario.";
+  if (requirePassword && String(password || "").trim().length < 8) {
+    return "La contrasena temporal debe tener al menos 8 caracteres.";
+  }
+  if (String(password || "").trim() && String(password || "").trim().length < 8) {
+    return "La nueva contrasena debe tener al menos 8 caracteres.";
+  }
+  if (!String(systemRole || "").trim()) return "Selecciona un rol principal para el usuario.";
+  if (!String(status || "").trim()) return "Selecciona un estado para el usuario.";
+  if (!Array.isArray(allowedRoles) || !allowedRoles.length) {
+    return "Habilita al menos un perfil para el usuario.";
+  }
+  if (!allowedRoles.includes(systemRole)) {
+    return "El rol principal tambien debe quedar marcado dentro de los perfiles habilitados.";
+  }
+  if (!Array.isArray(viewPermissions) || !viewPermissions.length) {
+    return "Selecciona al menos un modulo permitido para el usuario.";
+  }
+  return "";
+}
+
+function validateOrganizationSubmission({
+  name = "",
+  slug = "",
+  adminFullName = "",
+  adminEmail = "",
+  adminPassword = "",
+  enabledModules = [],
+  primaryColor = "",
+  accentColor = "",
+  isUpdate = false,
+} = {}) {
+  if (!String(name || "").trim()) return "Debes indicar el nombre de la organizacion.";
+  if (String(slug || "").trim() && !isValidSlugValue(slug)) {
+    return "El slug debe usar solo letras minusculas, numeros y guiones.";
+  }
+  if (String(primaryColor || "").trim() && !isValidHexColor(primaryColor)) {
+    return "El color principal debe estar en formato HEX, por ejemplo #c5332f.";
+  }
+  if (String(accentColor || "").trim() && !isValidHexColor(accentColor)) {
+    return "El color secundario debe estar en formato HEX, por ejemplo #2f85c7.";
+  }
+  if (!Array.isArray(enabledModules) || !enabledModules.length) {
+    return "Selecciona al menos un modulo para la organizacion.";
+  }
+  if (isUpdate) return "";
+  if (!String(adminFullName || "").trim()) return "Debes indicar el nombre del administrador inicial.";
+  if (!isValidEmailAddress(adminEmail)) return "Debes indicar un correo valido para el administrador inicial.";
+  if (String(adminPassword || "").trim().length < 8) {
+    return "La contrasena temporal del administrador inicial debe tener al menos 8 caracteres.";
+  }
+  return "";
+}
+
 function setActiveAccessModal(modalId = "") {
   activeAccessModalId = modalId || "";
-  if (!elements.accessUserGrid) return;
-  const modals = Array.from(elements.accessUserGrid.querySelectorAll("[data-access-modal]"));
+  const modals = Array.from(document.querySelectorAll("[data-access-modal]"));
   modals.forEach((modal) => {
     const isActive = modal.dataset.accessModal === activeAccessModalId;
     modal.classList.toggle("hidden", !isActive);
@@ -333,7 +474,7 @@ function setActiveAccessModal(modalId = "") {
   });
   document.body.classList.toggle("modal-open", Boolean(activeAccessModalId));
   if (activeAccessModalId) {
-    const activeModal = elements.accessUserGrid.querySelector(`[data-access-modal="${activeAccessModalId}"]`);
+    const activeModal = document.querySelector(`[data-access-modal="${activeAccessModalId}"]`);
     const focusTarget = activeModal?.querySelector("input:not([type='hidden']), select, textarea, button[type='submit']");
     if (focusTarget instanceof HTMLElement) {
       window.setTimeout(() => focusTarget.focus({ preventScroll: true }), 0);
@@ -358,6 +499,52 @@ function validateModalForm(form, extraValidation = null) {
     }
   }
   return true;
+}
+
+function ensureSelectPlaceholder(select, label = "una opcion") {
+  if (!(select instanceof HTMLSelectElement) || select.multiple) return;
+  const hasBlankOption = Array.from(select.options).some((option) => option.value === "");
+  if (!hasBlankOption) {
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = `Selecciona ${label}`;
+    placeholder.disabled = true;
+    placeholder.selected = !select.value;
+    select.prepend(placeholder);
+  }
+  if (!select.value) {
+    select.value = "";
+  }
+  select.dataset.placeholderReady = "true";
+  select.required = true;
+}
+
+function modalizeWorkspaceForm(form, mountTarget, config = {}) {
+  if (!(form instanceof HTMLFormElement) || form.closest("[data-access-modal]")) return;
+  if (!(mountTarget instanceof HTMLElement)) return;
+  const { modalId, eyebrow = "", title = "", description = "" } = config;
+  if (!modalId) return;
+  const shell = document.createElement("section");
+  shell.className = "app-modal-shell hidden";
+  shell.dataset.accessModal = modalId;
+  shell.setAttribute("aria-hidden", "true");
+  shell.innerHTML = `
+    <div class="app-modal-backdrop" data-close-access-modal="${escapeHtml(modalId)}"></div>
+    <div class="app-modal-card app-modal-card-form" role="dialog" aria-modal="true" aria-labelledby="${escapeHtml(modalId)}Title">
+      <div class="app-modal-header">
+        <div>
+          ${eyebrow ? `<p class="eyebrow">${escapeHtml(eyebrow)}</p>` : ""}
+          <h3 id="${escapeHtml(modalId)}Title" class="app-modal-title">${escapeHtml(title)}</h3>
+          ${description ? `<p class="item-meta app-modal-description">${escapeHtml(description)}</p>` : ""}
+        </div>
+        <button class="icon-button" type="button" data-close-access-modal="${escapeHtml(modalId)}" aria-label="Cerrar ventana">&times;</button>
+      </div>
+      <div class="app-modal-scroll"></div>
+    </div>
+  `;
+  form.classList.add("modalized-form");
+  shell.querySelector(".app-modal-scroll")?.append(form);
+  mountTarget.append(shell);
 }
 
 function reportParticipantValue(report = {}, fieldKey = "") {
@@ -1525,6 +1712,7 @@ async function refreshProgramCentersFromApi() {
 }
 
 function renderIndicators() {
+  decorateOperationalCrudUi();
   const programIndicators =
     state.filters.program === "Todos"
       ? state.indicators
@@ -2367,6 +2555,7 @@ function renderActions() {
 }
 
 function renderPrograms() {
+  decorateOperationalCrudUi();
   elements.programGrid.innerHTML = state.programs
     .map((program) => {
       const indicators = state.indicators.filter((indicator) => indicator.program === program.name);
@@ -2407,6 +2596,7 @@ function renderPrograms() {
 
 function renderProgramCenters() {
   if (!elements.programCenterGrid) return;
+  decorateOperationalCrudUi();
   const canManage = canManageProgramCenters();
   if (elements.programCenterForm) {
     elements.programCenterForm.hidden = !canManage;
@@ -3809,19 +3999,6 @@ function ensureFieldLabelDecorations(form) {
 }
 
 function enhanceAccessCreateForms() {
-  const ensureSelectPlaceholder = (select, label) => {
-    if (!(select instanceof HTMLSelectElement) || select.dataset.placeholderReady === "true") return;
-    const placeholder = document.createElement("option");
-    placeholder.value = "";
-    placeholder.textContent = `Selecciona ${label}`;
-    placeholder.disabled = true;
-    placeholder.selected = true;
-    select.prepend(placeholder);
-    select.value = "";
-    select.dataset.placeholderReady = "true";
-    select.required = true;
-  };
-
   const createManagedUserForm = elements.accessUserGrid?.querySelector("#createManagedUserForm");
   if (createManagedUserForm instanceof HTMLFormElement) {
     createManagedUserForm.querySelector('[name="fullName"]')?.setAttribute("placeholder", "Nombre y apellido");
@@ -3855,7 +4032,7 @@ function modalizeAccessForm(form, config = {}) {
           <h3 id="${escapeHtml(modalId)}Title" class="app-modal-title">${escapeHtml(title)}</h3>
           ${description ? `<p class="item-meta app-modal-description">${escapeHtml(description)}</p>` : ""}
         </div>
-        <button class="icon-button" type="button" data-close-access-modal="${escapeHtml(modalId)}" aria-label="Cerrar ventana">×</button>
+        <button class="icon-button" type="button" data-close-access-modal="${escapeHtml(modalId)}" aria-label="Cerrar ventana">&times;</button>
       </div>
       <div class="app-modal-scroll"></div>
     </div>
@@ -3933,6 +4110,128 @@ function decorateAccessWorkspaceUi(options = {}) {
     title: "Cargar manual de programa",
     description: "Sube una version oficial del manual y mantenla disponible para el equipo.",
   });
+}
+
+function enhanceOperationalCrudForms() {
+  if (elements.indicatorCrudForm instanceof HTMLFormElement) {
+    elements.indicatorNameInput?.setAttribute("placeholder", "Ej. Participantes completan el ciclo formativo");
+    elements.indicatorTargetInput?.setAttribute("placeholder", "100");
+    elements.indicatorUnitInput?.setAttribute("placeholder", "Ej. personas");
+    elements.indicatorOwnerInput?.setAttribute("placeholder", "Ej. Equipo M&E");
+    ensureSelectPlaceholder(elements.indicatorProgramInput, "un programa");
+    ensureFieldLabelDecorations(elements.indicatorCrudForm);
+  }
+
+  if (elements.programCrudForm instanceof HTMLFormElement) {
+    elements.programNameInput?.setAttribute("placeholder", "Ej. Girls Empowerment");
+    elements.programLeadInput?.setAttribute("placeholder", "Ej. Coordinacion nacional");
+    elements.programBeneficiariesInput?.setAttribute("placeholder", "0");
+    elements.programBudgetInput?.setAttribute("placeholder", "Ej. USD 25,000");
+    elements.programPopulationInput?.setAttribute("placeholder", "Ej. Adolescentes, mujeres y familias participantes.");
+    elements.programFocusInput?.setAttribute("placeholder", "Describe el enfoque operativo, la promesa del programa y sus resultados esperados.");
+    elements.programCentersInput?.setAttribute("placeholder", "Una linea por centro. Usa el formato: Provincia | Nombre del centro");
+    ensureFieldLabelDecorations(elements.programCrudForm);
+  }
+
+  if (elements.programCenterForm instanceof HTMLFormElement) {
+    elements.programCenterNameInput?.setAttribute("placeholder", "Ej. Centro Agricola Monte Plata");
+    ensureSelectPlaceholder(elements.programCenterProgramInput, "un programa");
+    ensureSelectPlaceholder(elements.programCenterProvinceInput, "una provincia");
+    ensureFieldLabelDecorations(elements.programCenterForm);
+  }
+}
+
+function injectOperationalActionStrip(panel, config = {}) {
+  if (!(panel instanceof HTMLElement)) return;
+  panel.querySelector(".access-action-strip")?.remove();
+  const {
+    eyebrow = "",
+    title = "",
+    description = "",
+    primaryLabel = "",
+    modalId = "",
+    tone = "primary-action",
+  } = config;
+  const strip = document.createElement("section");
+  strip.className = "access-action-strip";
+  strip.innerHTML = `
+    <div>
+      ${eyebrow ? `<p class="eyebrow">${escapeHtml(eyebrow)}</p>` : ""}
+      <h2>${escapeHtml(title)}</h2>
+      ${description ? `<p class="item-meta">${escapeHtml(description)}</p>` : ""}
+    </div>
+    <div class="item-actions wrap">
+      ${primaryLabel && modalId ? `<button class="${escapeHtml(tone)}" type="button" data-open-access-modal="${escapeHtml(modalId)}">${escapeHtml(primaryLabel)}</button>` : ""}
+    </div>
+  `;
+  const targetGrid = panel.querySelector("#indicatorBoard, #programGrid, #programCenterGrid");
+  if (targetGrid) {
+    targetGrid.before(strip);
+  } else {
+    panel.append(strip);
+  }
+}
+
+function decorateOperationalCrudUi() {
+  enhanceOperationalCrudForms();
+
+  const indicatorPanel = elements.indicatorBoard?.closest(".panel");
+  if (indicatorPanel) {
+    const addIndicatorButton = $("#addIndicatorButton");
+    addIndicatorButton?.setAttribute("data-open-access-modal", "indicator-form");
+    if (addIndicatorButton instanceof HTMLButtonElement) addIndicatorButton.hidden = true;
+    injectOperationalActionStrip(indicatorPanel, {
+      eyebrow: "Operacion guiada",
+      title: "Bandeja de indicadores",
+      description: "Crea o ajusta indicadores desde un modal limpio, con validaciones claras y menos ruido en la mesa de trabajo.",
+      primaryLabel: "Nuevo indicador",
+      modalId: "indicator-form",
+    });
+    modalizeWorkspaceForm(elements.indicatorCrudForm, indicatorPanel, {
+      modalId: "indicator-form",
+      eyebrow: "Indicadores",
+      title: "Crear o editar indicador",
+      description: "Define meta, responsable y fecha objetivo sin salir de la bandeja de seguimiento.",
+    });
+  }
+
+  const programPanel = elements.programGrid?.closest(".panel");
+  if (programPanel) {
+    injectOperationalActionStrip(programPanel, {
+      eyebrow: "Portafolio operativo",
+      title: "Programas activos",
+      description: "Mantén el catálogo limpio y crea programas desde una ventana más enfocada y consistente.",
+      primaryLabel: "Nuevo programa",
+      modalId: "program-form",
+    });
+    modalizeWorkspaceForm(elements.programCrudForm, programPanel, {
+      modalId: "program-form",
+      eyebrow: "Programas",
+      title: "Crear o editar programa",
+      description: "Captura cobertura, enfoque y provincias en una sola ventana con validación clara.",
+    });
+  }
+
+  const centerPanel = elements.programCenterGrid?.closest(".panel");
+  if (centerPanel) {
+    if (canManageProgramCenters()) {
+      injectOperationalActionStrip(centerPanel, {
+        eyebrow: "Cobertura territorial",
+        title: "Centros por programa",
+        description: "Agrega o ajusta centros desde un flujo más rápido, con programa y provincia bien guiados.",
+        primaryLabel: "Nuevo centro",
+        modalId: "program-center-form",
+      });
+    } else {
+      centerPanel.querySelector(".access-action-strip")?.remove();
+    }
+    modalizeWorkspaceForm(elements.programCenterForm, centerPanel, {
+      modalId: "program-center-form",
+      eyebrow: "Centros",
+      title: "Crear o editar centro",
+      description: "Relaciona centro, programa y provincia desde un popup consistente con el resto del sistema.",
+    });
+  }
 }
 
 function viewNeedsInteractionProtection(viewName = state?.activeView || activeViewName()) {
@@ -6817,6 +7116,7 @@ function analyzeReportFormFile(file) {
 }
 
 async function submitDraftReports() {
+  if (!requirePersistentApi("el envio de borradores")) return;
   const drafts = state.reportDrafts || [];
   if (!drafts.length) {
     showToast("No hay borradores listos para enviar.");
@@ -6847,14 +7147,9 @@ async function submitDraftReports() {
   });
 
   try {
-    if (isApiConfigured()) {
-      await createApiReportsBulk(reportsToSubmit);
-      await createApiFormSubmission(submissionRecord);
-      await refreshReportsAndNotificationsFromApi();
-    } else {
-      reportsToSubmit.forEach((report) => queueReportForReview(report));
-      upsertLocalFormSubmission(submissionRecord);
-    }
+    await createApiReportsBulk(reportsToSubmit);
+    await createApiFormSubmission(submissionRecord);
+    await refreshReportsAndNotificationsFromApi();
   } catch (error) {
     console.error(error);
     showToast(error.message || "No pude enviar los reportes a la API.");
@@ -6872,12 +7167,41 @@ async function submitDraftReports() {
 }
 
 async function addReport(formData) {
+  if (!requirePersistentApi("el guardado del reporte")) return false;
+  const owner = String(formData.get("owner") || "").trim();
+  const programName = String(formData.get("program") || "").trim();
+  const province = String(formData.get("province") || "").trim();
+  const period = String(formData.get("period") || "").trim();
+  if (!owner) {
+    showToast("Debes indicar la persona responsable del reporte.");
+    return false;
+  }
+  if (!programName || !state.programs.some((item) => item.name === programName)) {
+    showToast("Selecciona un programa valido para el reporte.");
+    return false;
+  }
+  if (!province) {
+    showToast("Selecciona una provincia valida para el reporte.");
+    return false;
+  }
+  if (!isValidPeriodValue(period)) {
+    showToast("Selecciona un periodo valido con formato YYYY-MM.");
+    return false;
+  }
   const indicator = state.indicators.find((item) => item.name === formData.get("indicator"));
   if (!indicator) {
     showToast("Selecciona un indicador valido.");
     return false;
   }
+  if (indicator.program !== programName) {
+    showToast("El indicador seleccionado no pertenece al programa elegido.");
+    return false;
+  }
   const value = Number(formData.get("value"));
+  if (!Number.isFinite(value) || value < 0) {
+    showToast("El dato reportado debe ser un numero igual o mayor que cero.");
+    return false;
+  }
   const selectedCenter = String(formData.get("center") || "").trim();
   if (!selectedCenter || selectedCenter === NO_CENTER_OPTION) {
     showToast("Selecciona un centro registrado para ese programa y provincia.");
@@ -6908,7 +7232,11 @@ async function addReport(formData) {
     showToast(error.message || "No pude adjuntar el documento.");
     return false;
   }
-  if (evidenceType === "link" && evidenceDetail && !/^https?:\/\//i.test(evidenceDetail)) {
+  if (evidenceType === "link" && !evidenceDetail) {
+    showToast("Pega el enlace de evidencia antes de enviar el reporte.");
+    return false;
+  }
+  if (evidenceType === "link" && evidenceDetail && !isValidUrlValue(evidenceDetail)) {
     showToast("Cuando la evidencia sea un enlace, pega una URL valida que empiece con http:// o https://.");
     return false;
   }
@@ -6922,10 +7250,10 @@ async function addReport(formData) {
     organizationId: currentUser?.organizationId || "org-convoy-of-hope",
     organizationName: currentUser?.organizationName || "Convoy of Hope",
     date: new Date().toISOString().slice(0, 10),
-    period: formData.get("period"),
-    program: formData.get("program"),
-    programId: state.programs.find((program) => program.name === formData.get("program"))?.id || null,
-    province: formData.get("province"),
+    period,
+    program: programName,
+    programId: state.programs.find((program) => program.name === programName)?.id || null,
+    province,
     center: selectedCenter,
     indicatorId: indicator.id,
     value,
@@ -6935,7 +7263,7 @@ async function addReport(formData) {
     children: participantBreakdown.children,
     youth: participantBreakdown.adolescents,
     participantBreakdown,
-    owner: formData.get("owner"),
+    owner,
     ownerUserId: currentUser?.id || null,
     ownerEmail: currentUser?.email || "",
     evidence: buildEvidenceSummary(evidenceType, evidenceDetail, evidenceAttachments),
@@ -6947,13 +7275,8 @@ async function addReport(formData) {
   };
 
   try {
-    if (isApiConfigured()) {
-      await createApiReport(newReport);
-      await refreshReportsAndNotificationsFromApi();
-    } else {
-      queueReportForReview(newReport);
-      saveState();
-    }
+    await createApiReport(newReport);
+    await refreshReportsAndNotificationsFromApi();
     renderAll();
     showToast(evidenceAttachments.length || attachedDocuments.length ? "Reporte y documentos enviados a revision." : "Reporte enviado a coordinacion para primera aprobacion.");
     return true;
@@ -7250,6 +7573,7 @@ function rowsToReports(rows, fileName) {
 }
 
 function importCompletedForm(file) {
+  if (!requirePersistentApi("la importacion de formularios")) return;
   if (!file) {
     showToast("Selecciona un archivo.");
     return;
@@ -7272,12 +7596,8 @@ function importCompletedForm(file) {
           processing: "soporte",
           attachments: supportAttachment ? [supportAttachment] : [],
         });
-        if (isApiConfigured()) {
-          await createApiFormSubmission(submissionRecord);
-          await refreshReportsAndNotificationsFromApi();
-        } else {
-          upsertLocalFormSubmission(submissionRecord);
-        }
+        await createApiFormSubmission(submissionRecord);
+        await refreshReportsAndNotificationsFromApi();
         saveState();
         renderAll();
         elements.uploadStatus.textContent = "Soporte cargado";
@@ -7330,16 +7650,9 @@ function importCompletedForm(file) {
         attachments: sourceAttachment ? [sourceAttachment] : [],
       });
 
-      if (isApiConfigured()) {
-        await createApiReportsBulk(reports);
-        await createApiFormSubmission(submissionRecord);
-        await refreshReportsAndNotificationsFromApi();
-      } else {
-        reports.forEach((report) => {
-          queueReportForReview(report);
-        });
-        upsertLocalFormSubmission(submissionRecord);
-      }
+      await createApiReportsBulk(reports);
+      await createApiFormSubmission(submissionRecord);
+      await refreshReportsAndNotificationsFromApi();
       state.filters.period = reports[0].period;
       saveState();
       renderAll();
@@ -7505,6 +7818,8 @@ function fillIndicatorForm(indicator) {
   elements.indicatorUnitInput.value = indicator.unit;
   elements.indicatorOwnerInput.value = indicator.owner;
   elements.indicatorDueInput.value = indicator.due;
+  setActiveAccessModal("indicator-form");
+  elements.indicatorNameInput?.focus({ preventScroll: true });
 }
 
 async function saveIndicatorFromForm(formData) {
@@ -7531,6 +7846,7 @@ async function saveIndicatorFromForm(formData) {
       : payload;
     upsertById(state.indicators, saved);
     saveState();
+    closeAccessModal("indicator-form");
     renderAll();
     resetIndicatorForm();
     showToast(indicatorId ? "Indicador actualizado." : "Indicador creado.");
@@ -7568,7 +7884,7 @@ function fillProgramCenterForm(center) {
   elements.programCenterProgramInput.value = center.program || state.programs[0]?.name || "";
   elements.programCenterProvinceInput.value = center.province || state.operationalProvinces?.[0] || "";
   elements.programCenterNameInput.value = center.name || "";
-  elements.programCenterForm?.scrollIntoView({ behavior: "smooth", block: "start" });
+  setActiveAccessModal("program-center-form");
   elements.programCenterNameInput?.focus({ preventScroll: true });
 }
 
@@ -7587,33 +7903,37 @@ function fillProgramForm(program) {
   if (elements.programMelSupervisorEmailInput) elements.programMelSupervisorEmailInput.value = program.melSupervisorEmail || "";
   elements.programFocusInput.value = program.focus;
   elements.programPopulationInput.value = program.primaryPopulation || "";
-  elements.programCrudForm?.scrollIntoView({ behavior: "smooth", block: "start" });
+  setActiveAccessModal("program-form");
   elements.programNameInput?.focus({ preventScroll: true });
 }
 
 async function saveProgramFromForm(formData) {
+  if (!requirePersistentApi("el guardado del programa")) return;
   const programId = formData.get("id");
   const selectedProvinces = formData.getAll("provinces").map((item) => String(item || "").trim()).filter(Boolean);
   const centers = parseProgramCentersInput(formData.get("centers"));
   const payload = {
     id: programId || undefined,
-    name: formData.get("name"),
-    lead: formData.get("lead"),
+    name: String(formData.get("name") || "").trim(),
+    lead: String(formData.get("lead") || "").trim(),
     beneficiaries: Number(formData.get("beneficiaries") || 0),
-    budget: formData.get("budget"),
-    coordinatorEmail: formData.get("coordinatorEmail"),
-    programManagerEmail: formData.get("programManagerEmail"),
-    melSupervisorEmail: formData.get("melSupervisorEmail"),
+    budget: String(formData.get("budget") || "").trim(),
+    coordinatorEmail: String(formData.get("coordinatorEmail") || "").trim(),
+    programManagerEmail: String(formData.get("programManagerEmail") || "").trim(),
+    melSupervisorEmail: String(formData.get("melSupervisorEmail") || "").trim(),
     provinces: selectedProvinces,
-    focus: formData.get("focus"),
-    primaryPopulation: formData.get("primaryPopulation"),
+    focus: String(formData.get("focus") || "").trim(),
+    primaryPopulation: String(formData.get("primaryPopulation") || "").trim(),
     centers,
     expectedResults: programId ? state.programs.find((program) => program.id === programId)?.expectedResults || [] : [],
     ...actorPayload(),
   };
 
-  if (!payload.provinces.length) {
-    showToast("Selecciona al menos una provincia para el programa.");
+  const validationMessage = validateProgramPayload(payload, {
+    rawCenters: String(formData.get("centers") || ""),
+  });
+  if (validationMessage) {
+    showToast(validationMessage);
     return;
   }
 
@@ -7653,6 +7973,7 @@ async function saveProgramFromForm(formData) {
       ];
     }
     saveState();
+    closeAccessModal("program-form");
     renderAll();
     if (isApiConfigured()) {
       const conversation = await ensureContextChatConversation({
@@ -7786,6 +8107,7 @@ async function deleteProgramManualFromUi(manualId) {
 }
 
 async function saveProgramCenterFromForm(formData) {
+  if (!requirePersistentApi("el guardado del centro")) return;
   if (!canManageProgramCenters()) {
     showToast("No tienes permiso para administrar centros.");
     return;
@@ -7814,6 +8136,7 @@ async function saveProgramCenterFromForm(formData) {
     upsertById(state.programCenters, saved);
     saveState();
     resetProgramCenterForm();
+    closeAccessModal("program-center-form");
     renderAll();
     if (isApiConfigured()) {
       const targetProgram = (state.programs || []).find((program) => program.id === saved.programId || program.name === saved.program);
@@ -7908,6 +8231,7 @@ saveProgramFromForm = async function (formData) {
       ];
     }
     saveState();
+    closeAccessModal("program-form");
     renderAll();
     await sendProgramChatActivity(
       saved.id || saved.name,
@@ -7936,8 +8260,9 @@ saveProgramCenterFromForm = async function (formData) {
     ...actorPayload(),
   };
 
-  if (!payload.program || !payload.province || !payload.name) {
-    showToast("Completa programa, provincia y centro.");
+  const validationMessage = validateProgramCenterPayload(payload);
+  if (validationMessage) {
+    showToast(validationMessage);
     return;
   }
 
@@ -7950,6 +8275,7 @@ saveProgramCenterFromForm = async function (formData) {
     upsertById(state.programCenters, saved);
     saveState();
     resetProgramCenterForm();
+    closeAccessModal("program-center-form");
     renderAll();
     await sendProgramChatActivity(
       saved.programId || saved.program,
@@ -9044,16 +9370,50 @@ function bindEvents() {
   $("#downloadAllFormsButton").addEventListener("click", downloadAllForms);
   elements.indicatorCrudForm.addEventListener("submit", (event) => {
     event.preventDefault();
+    if (!validateModalForm(elements.indicatorCrudForm)) return;
     void saveIndicatorFromForm(new FormData(elements.indicatorCrudForm));
   });
   elements.clearIndicatorFormButton.addEventListener("click", resetIndicatorForm);
   elements.programCrudForm.addEventListener("submit", (event) => {
     event.preventDefault();
+    if (
+      !validateModalForm(elements.programCrudForm, () => {
+        const formData = new FormData(elements.programCrudForm);
+        return validateProgramPayload(
+          {
+            name: formData.get("name"),
+            lead: formData.get("lead"),
+            beneficiaries: Number(formData.get("beneficiaries") || 0),
+            budget: formData.get("budget"),
+            coordinatorEmail: formData.get("coordinatorEmail"),
+            programManagerEmail: formData.get("programManagerEmail"),
+            melSupervisorEmail: formData.get("melSupervisorEmail"),
+            provinces: formData.getAll("provinces").map((item) => String(item || "").trim()).filter(Boolean),
+            focus: formData.get("focus"),
+            primaryPopulation: formData.get("primaryPopulation"),
+          },
+          { rawCenters: formData.get("centers") || "" },
+        );
+      })
+    ) {
+      return;
+    }
     void saveProgramFromForm(new FormData(elements.programCrudForm));
   });
   elements.clearProgramFormButton.addEventListener("click", resetProgramForm);
   elements.programCenterForm.addEventListener("submit", (event) => {
     event.preventDefault();
+    if (
+      !validateModalForm(elements.programCenterForm, () =>
+        validateProgramCenterPayload({
+          program: elements.programCenterProgramInput?.value,
+          province: elements.programCenterProvinceInput?.value,
+          name: elements.programCenterNameInput?.value,
+        }),
+      )
+    ) {
+      return;
+    }
     void saveProgramCenterFromForm(new FormData(elements.programCenterForm));
   });
   elements.clearProgramCenterFormButton.addEventListener("click", resetProgramCenterForm);
@@ -9354,7 +9714,25 @@ function bindEvents() {
     elements.indicatorProgramInput.value = program?.name || "";
     elements.indicatorNameInput.value = `Nuevo indicador ${next}`;
     elements.indicatorTargetInput.value = 100;
+    setActiveAccessModal("indicator-form");
     elements.indicatorNameInput.focus();
+  });
+
+  document.addEventListener("click", (event) => {
+    const clickTarget = event.target instanceof Element ? event.target : event.target?.parentElement;
+    const openModalButton = clickTarget?.closest("[data-open-access-modal]");
+    if (openModalButton) {
+      event.preventDefault();
+      const modalId = openModalButton.dataset.openAccessModal;
+      if (modalId) setActiveAccessModal(modalId);
+      return;
+    }
+
+    const closeModalButton = clickTarget?.closest("[data-close-access-modal]");
+    if (closeModalButton) {
+      event.preventDefault();
+      closeAccessModal(closeModalButton.dataset.closeAccessModal || "");
+    }
   });
 
   elements.accessUserGrid?.addEventListener("submit", (event) => {
