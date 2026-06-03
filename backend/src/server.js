@@ -113,6 +113,8 @@ const CORS_HEADERS = {
 };
 const MAX_UPLOAD_FILE_BYTES = 200 * 1024 * 1024;
 const MAX_JSON_BODY_BYTES = 12 * 1024 * 1024;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+const PERIOD_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 function sendJson(response, status, body) {
   response.writeHead(status, {
@@ -389,6 +391,91 @@ function requireFields(payload, fields) {
   };
 }
 
+function hasOwn(object, key) {
+  return Object.prototype.hasOwnProperty.call(object || {}, key);
+}
+
+function isValidEmail(value = "") {
+  return EMAIL_REGEX.test(String(value || "").trim());
+}
+
+function validateOptionalEmail(value = "", label = "correo") {
+  const normalized = String(value || "").trim();
+  if (!normalized) return null;
+  if (isValidEmail(normalized)) return null;
+  return {
+    error: `${label} no es valido.`,
+    details: { field: label },
+  };
+}
+
+function validateProgramPayload(payload = {}, { requireCoreFields = false } = {}) {
+  if ((requireCoreFields || hasOwn(payload, "name")) && !String(payload.name || "").trim()) {
+    return { error: "Debes indicar el nombre del programa.", details: { field: "name" } };
+  }
+  if ((requireCoreFields || hasOwn(payload, "lead")) && !String(payload.lead || "").trim()) {
+    return { error: "Debes indicar el lider del programa.", details: { field: "lead" } };
+  }
+  if ((requireCoreFields || hasOwn(payload, "focus")) && !String(payload.focus || "").trim()) {
+    return { error: "Debes completar el enfoque del programa.", details: { field: "focus" } };
+  }
+  if ((requireCoreFields || hasOwn(payload, "provinces")) && (!Array.isArray(payload.provinces) || !payload.provinces.some((item) => String(item || "").trim()))) {
+    return { error: "Debes seleccionar al menos una provincia.", details: { field: "provinces" } };
+  }
+  if (hasOwn(payload, "beneficiaries")) {
+    const beneficiaries = Number(payload.beneficiaries);
+    if (!Number.isFinite(beneficiaries) || beneficiaries < 0) {
+      return { error: "La meta de beneficiarios debe ser un numero igual o mayor que cero.", details: { field: "beneficiaries" } };
+    }
+  }
+  return (
+    validateOptionalEmail(payload.coordinatorEmail, "El correo de coordinacion") ||
+    validateOptionalEmail(payload.programManagerEmail, "El correo de Program Manager") ||
+    validateOptionalEmail(payload.melSupervisorEmail, "El correo de Supervision M&E")
+  );
+}
+
+function validateProgramCenterPayload(payload = {}, { requireCoreFields = false } = {}) {
+  if ((requireCoreFields || hasOwn(payload, "program")) && !String(payload.program || "").trim()) {
+    return { error: "Debes indicar el programa del centro.", details: { field: "program" } };
+  }
+  if ((requireCoreFields || hasOwn(payload, "province")) && !String(payload.province || "").trim()) {
+    return { error: "Debes indicar la provincia del centro.", details: { field: "province" } };
+  }
+  if ((requireCoreFields || hasOwn(payload, "name")) && !String(payload.name || "").trim()) {
+    return { error: "Debes indicar el nombre del centro.", details: { field: "name" } };
+  }
+  return null;
+}
+
+function validateReportPayload(payload = {}, { requireCoreFields = false } = {}) {
+  if ((requireCoreFields || hasOwn(payload, "program")) && !String(payload.program || "").trim()) {
+    return { error: "Debes indicar el programa del reporte.", details: { field: "program" } };
+  }
+  if ((requireCoreFields || hasOwn(payload, "indicatorId")) && !String(payload.indicatorId || "").trim()) {
+    return { error: "Debes indicar el indicador del reporte.", details: { field: "indicatorId" } };
+  }
+  if ((requireCoreFields || hasOwn(payload, "owner")) && !String(payload.owner || "").trim()) {
+    return { error: "Debes indicar la persona responsable del reporte.", details: { field: "owner" } };
+  }
+  if ((requireCoreFields || hasOwn(payload, "period")) && !PERIOD_REGEX.test(String(payload.period || "").trim())) {
+    return { error: "El periodo del reporte debe tener formato YYYY-MM.", details: { field: "period" } };
+  }
+  if ((requireCoreFields || hasOwn(payload, "province")) && !String(payload.province || "").trim()) {
+    return { error: "Debes indicar la provincia del reporte.", details: { field: "province" } };
+  }
+  if ((requireCoreFields || hasOwn(payload, "center")) && !String(payload.center || "").trim()) {
+    return { error: "Debes indicar el centro del reporte.", details: { field: "center" } };
+  }
+  if ((requireCoreFields || hasOwn(payload, "value"))) {
+    const numericValue = Number(payload.value);
+    if (!Number.isFinite(numericValue) || numericValue < 0) {
+      return { error: "El valor del reporte debe ser un numero igual o mayor que cero.", details: { field: "value" } };
+    }
+  }
+  return null;
+}
+
 function safeFileName(value = "archivo") {
   const baseName = path.basename(String(value || "archivo")).replace(/[^\w.\- ]+/g, "-").trim();
   return baseName || "archivo";
@@ -595,6 +682,11 @@ export async function handleProgramCenterCreate(request, response) {
     sendJson(response, 400, required);
     return;
   }
+  const validationError = validateProgramCenterPayload(payload, { requireCoreFields: true });
+  if (validationError) {
+    sendJson(response, 400, validationError);
+    return;
+  }
   if (!requireActorRole(response, actor, ["Supervision M&E", "Coordinador de programa"], "crear centros")) return;
 
   sendJson(response, 201, { data: createProgramCenter(payloadWithActor(request, payload)) });
@@ -608,6 +700,11 @@ export async function handleProgramCenterUpdate(request, response, centerId) {
     payload = await readJsonBody(request);
   } catch {
     sendJson(response, 400, { error: "El cuerpo del centro no es JSON valido." });
+    return;
+  }
+  const validationError = validateProgramCenterPayload(payload);
+  if (validationError) {
+    sendJson(response, 400, validationError);
     return;
   }
   if (!requireActorRole(response, actor, ["Supervision M&E", "Coordinador de programa"], "editar centros")) return;
@@ -649,6 +746,11 @@ export async function handleProgramCreate(request, response) {
     sendJson(response, 400, required);
     return;
   }
+  const validationError = validateProgramPayload(payload, { requireCoreFields: true });
+  if (validationError) {
+    sendJson(response, 400, validationError);
+    return;
+  }
   if (!requireActorRole(response, actor, ["Supervision M&E", "Program Manager"], "crear programas")) return;
 
   const program = createProgram(payloadWithActor(request, payload));
@@ -663,6 +765,11 @@ export async function handleProgramUpdate(request, response, programId) {
     payload = await readJsonBody(request);
   } catch {
     sendJson(response, 400, { error: "El cuerpo del programa no es JSON valido." });
+    return;
+  }
+  const validationError = validateProgramPayload(payload);
+  if (validationError) {
+    sendJson(response, 400, validationError);
     return;
   }
   if (!requireActorRole(response, actor, ["Supervision M&E", "Program Manager"], "editar programas")) return;
@@ -1253,6 +1360,11 @@ export async function handleReportCreate(request, response) {
     sendJson(response, 400, required);
     return;
   }
+  const validationError = validateReportPayload(payload, { requireCoreFields: true });
+  if (validationError) {
+    sendJson(response, 400, validationError);
+    return;
+  }
 
   const uploadError = validatePayloadUploads(payload, "adjunto del reporte");
   if (uploadError) {
@@ -1282,6 +1394,11 @@ export async function handleReportBulkCreate(request, response) {
       error: "Debes enviar un arreglo de reportes en reports.",
       details: { field: "reports" },
     });
+    return;
+  }
+  const validationError = items.map((item) => validateReportPayload(item, { requireCoreFields: true })).find(Boolean);
+  if (validationError) {
+    sendJson(response, 400, validationError);
     return;
   }
 

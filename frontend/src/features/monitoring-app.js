@@ -9610,6 +9610,7 @@ function bindEvents() {
     }
 
     if (deleteId || deleteName) {
+      if (!requirePersistentApi("la eliminacion del programa")) return;
       const targetProgram = state.programs.find((item) => item.id === deleteId) || state.programs.find((item) => item.name === deleteName);
       if (!targetProgram) return;
       const hasIndicators = state.indicators.some((indicator) => indicator.programId === targetProgram.id || indicator.program === targetProgram.name);
@@ -9652,6 +9653,7 @@ function bindEvents() {
     }
 
     if (deleteId) {
+      if (!requirePersistentApi("la eliminacion del centro")) return;
       if (!canManageProgramCenters()) {
         showToast("No tienes permiso para eliminar centros.");
         return;
@@ -9993,6 +9995,7 @@ function bindEvents() {
     event.preventDefault();
     const userId = deleteButton.dataset.deleteAccess;
     if (!userId || deleteButton.disabled) return;
+    if (!requirePersistentApi("la eliminacion del acceso")) return;
 
     void (async () => {
       const userCard = deleteButton.closest("[data-user-access-form]");

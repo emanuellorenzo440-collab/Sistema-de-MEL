@@ -206,6 +206,10 @@ function sharedAuthApiError(error) {
   return nextError;
 }
 
+function remoteAccessMutationRequiredError(actionLabel = "guardar este cambio") {
+  return new Error(`No pude ${actionLabel} porque la API de accesos no esta disponible. Para evitar inconsistencias, el cambio no se guardo solo localmente.`);
+}
+
 async function requestAuthApi(pathname, options = {}) {
   const baseUrl = authApiBaseUrl();
   if (!baseUrl) {
@@ -354,6 +358,10 @@ function nowIso() {
 
 function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
+}
+
+function isValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(normalizeEmail(value));
 }
 
 function legacyUserShouldBePurged(user = {}) {
@@ -1149,6 +1157,9 @@ export async function createManagedUser(payload = {}) {
   if (!email) {
     throw new Error("Debes indicar un correo electrónico.");
   }
+  if (!isValidEmail(email)) {
+    throw new Error("Debes indicar un correo electronico valido.");
+  }
   if (!password || password.length < 8) {
     throw new Error("La contraseña debe tener al menos 8 caracteres.");
   }
@@ -1184,38 +1195,8 @@ export async function createManagedUser(payload = {}) {
     });
   } catch (error) {
     if (!shouldUseLocalAuthFallback(error)) throw sharedAuthApiError(error);
+    throw remoteAccessMutationRequiredError("crear el usuario");
   }
-
-  const nextUser = normalizeUser({
-    id: `usr-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
-    fullName,
-    email,
-    passwordHash: await sha256(password),
-    requestedRole: systemRole,
-    systemRole,
-    allowedRoles,
-    viewPermissions: viewPermissions.length ? viewPermissions : defaultPermissionsForRole(systemRole),
-    organizationId: String(payload.organizationId || "").trim() || actor.organizationId || DEFAULT_ORGANIZATION.id,
-    organizationName: String(payload.organizationName || "").trim() || actor.organizationName || DEFAULT_ORGANIZATION.name,
-    verifiedAt: nowIso(),
-    status,
-    mustChangePassword,
-    passwordUpdatedAt: null,
-    temporaryPasswordIssuedAt: mustChangePassword ? nowIso() : null,
-    createdAt: nowIso(),
-    updatedAt: nowIso(),
-    accessNote: String(payload.accessNote || "Usuario creado desde Accesos.").trim(),
-  });
-
-  state.users.unshift(nextUser);
-  state.emailOutbox.unshift(
-    createEmailRecord({ user: nextUser, type: "temporary-password", code: password, expiresAt: null }),
-  );
-  writeStoredAuthState(state, "managed-user-created");
-  return clone({
-    ...nextUser,
-    passwordHash: undefined,
-  });
 }
 
 function completeVerification(user) {
@@ -1591,6 +1572,9 @@ export async function updateManagedUserAccess(userId, updates = {}) {
   if (!nextEmail) {
     throw new Error("Debes indicar un correo electrónico.");
   }
+  if (!isValidEmail(nextEmail)) {
+    throw new Error("Debes indicar un correo electronico valido.");
+  }
   if (nextEmail !== user.email && state.users.some((item) => item.email === nextEmail)) {
     throw new Error("Ya existe una cuenta registrada con ese correo.");
   }
@@ -1619,52 +1603,8 @@ export async function updateManagedUserAccess(userId, updates = {}) {
     return clone(await upsertRemoteUser(response.user, "access-updated-remote"));
   } catch (error) {
     if (!shouldUseLocalAuthFallback(error)) throw sharedAuthApiError(error);
+    throw remoteAccessMutationRequiredError("actualizar el acceso");
   }
-
-  user.fullName = nextFullName;
-  user.email = nextEmail;
-  if (nextPassword) {
-    user.passwordHash = await sha256(nextPassword);
-    user.passwordUpdatedAt = mustChangePassword ? null : nowIso();
-    user.temporaryPasswordIssuedAt = mustChangePassword ? nowIso() : null;
-    if (mustChangePassword) {
-      state.emailOutbox.unshift(
-        createEmailRecord({ user, type: "temporary-password", code: nextPassword, expiresAt: null }),
-      );
-    }
-  }
-  user.mustChangePassword = mustChangePassword;
-  if (!nextPassword && !mustChangePassword) {
-    user.temporaryPasswordIssuedAt = null;
-  }
-  user.systemRole = nextSystemRole;
-  user.allowedRoles = nextAllowedRoles.includes(nextSystemRole)
-    ? nextAllowedRoles
-    : [nextSystemRole, ...nextAllowedRoles];
-  user.viewPermissions = nextViewPermissions.length ? nextViewPermissions : defaultPermissionsForRole(nextSystemRole);
-  user.status = updates.status || user.status;
-  user.accessNote = String(updates.accessNote || user.accessNote || "").trim();
-  user.updatedAt = nowIso();
-
-  if (user.status === "active" && !user.verifiedAt) {
-    user.verifiedAt = nowIso();
-    user.verificationTokenHash = null;
-    user.verificationCodeHash = null;
-    user.verificationExpiresAt = null;
-  }
-
-  if (state.session?.userId === user.id) {
-    if (user.status !== "active") {
-      state.session = null;
-    } else {
-      state.session.activeRole = user.allowedRoles.includes(state.session.activeRole)
-        ? state.session.activeRole
-        : user.systemRole;
-    }
-  }
-
-  writeStoredAuthState(state, "access-updated");
-  return clone(user);
 }
 
 export async function deleteManagedUser(userId) {
@@ -1702,32 +1642,8 @@ export async function deleteManagedUser(userId) {
     });
   } catch (error) {
     if (!shouldUseLocalAuthFallback(error)) throw sharedAuthApiError(error);
+    throw remoteAccessMutationRequiredError("eliminar el usuario");
   }
-
-  const [deletedUser] = state.users.splice(userIndex, 1);
-  state.deletedUserEmails = Array.from(new Set([...(state.deletedUserEmails || []), deletedUser.email]));
-  state.deletedUserRegistry = [
-    createDeletedUserRecord(deletedUser, {
-      actor,
-      reason: "Eliminacion definitiva desde Accesos",
-    }),
-    ...(state.deletedUserRegistry || []),
-  ];
-  const presets = await getPresetAccountTemplates();
-  if (presets.some((preset) => preset.email === deletedUser.email)) {
-    state.deletedPresetEmails = Array.from(new Set([...(state.deletedPresetEmails || []), deletedUser.email]));
-  }
-  state.emailOutbox = state.emailOutbox.filter((item) => item.toEmail !== deletedUser.email);
-  if (state.session?.userId === deletedUser.id) {
-    state.session = null;
-  }
-
-  writeStoredAuthState(state, "managed-user-deleted");
-  return clone({
-    id: deletedUser.id,
-    email: deletedUser.email,
-    fullName: deletedUser.fullName,
-  });
 }
 
 export async function setSessionRole(nextRole) {

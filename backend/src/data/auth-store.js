@@ -9,6 +9,9 @@ const PASSWORD_HASH_VERSION = "pbkdf2-sha512";
 const PASSWORD_ITERATIONS = 120000;
 const SESSION_DURATION_MS = 12 * 60 * 60 * 1000;
 const DEFAULT_PRODUCT_NAME = "Nexora";
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const HEX_COLOR_REGEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 const VIEW_KEYS = [
   "dashboard",
   "report",
@@ -183,6 +186,10 @@ function normalizeEmail(email) {
   return String(email || "").trim().toLowerCase();
 }
 
+function isValidEmail(email) {
+  return EMAIL_REGEX.test(normalizeEmail(email));
+}
+
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString("hex");
   const digest = crypto.pbkdf2Sync(String(password || ""), salt, PASSWORD_ITERATIONS, 64, "sha512").toString("hex");
@@ -263,6 +270,14 @@ function normalizeHostnameList(values = []) {
         .split(/[\n,]+/g)
         .map((item) => item.trim());
   return [...new Set(list.map((item) => normalizeHostname(item)).filter(Boolean))];
+}
+
+function validateOptionalHexColor(value, label) {
+  const normalized = String(value || "").trim();
+  if (!normalized) return;
+  if (!HEX_COLOR_REGEX.test(normalized)) {
+    throw authError(400, `${label} debe estar en formato HEX, por ejemplo #c5332f.`);
+  }
 }
 
 function normalizeOrganizationSettings(settings = {}, fallbackName = DEFAULT_ORGANIZATION.name) {
@@ -801,6 +816,15 @@ export function createOrganization(payload = {}, actorOrId) {
   if (!slug) {
     throw authError(400, "El slug de la organizacion es obligatorio.");
   }
+  if (!SLUG_REGEX.test(slug)) {
+    throw authError(400, "El slug de la organizacion solo puede usar letras minusculas, numeros y guiones.");
+  }
+  const enabledModules = Array.isArray(payload.settings?.enabledModules) ? payload.settings.enabledModules : payload.enabledModules;
+  if (!Array.isArray(enabledModules) || !enabledModules.length) {
+    throw authError(400, "Debes habilitar al menos un modulo para la organizacion.");
+  }
+  validateOptionalHexColor(payload.settings?.primaryColor || payload.primaryColor, "El color principal");
+  validateOptionalHexColor(payload.settings?.accentColor || payload.accentColor, "El color secundario");
   if (state.organizations.some((organization) => organization.id === payload.id || organization.slug === slug)) {
     throw authError(409, "Ya existe una organizacion con ese identificador o slug.");
   }
@@ -843,6 +867,22 @@ export function updateOrganization(organizationId, payload = {}, actorOrId) {
   if (!current) {
     throw authError(404, "No encontre la organizacion solicitada.");
   }
+  const nextName = String(payload.name || current.name || "").trim();
+  const nextSlug = String(payload.slug || current.slug || "").trim().toLowerCase();
+  if (!nextName) {
+    throw authError(400, "El nombre de la organizacion es obligatorio.");
+  }
+  if (!nextSlug || !SLUG_REGEX.test(nextSlug)) {
+    throw authError(400, "El slug de la organizacion solo puede usar letras minusculas, numeros y guiones.");
+  }
+  const enabledModules = Array.isArray(payload.settings?.enabledModules)
+    ? payload.settings.enabledModules
+    : current.settings?.enabledModules;
+  if (!Array.isArray(enabledModules) || !enabledModules.length) {
+    throw authError(400, "Debes mantener al menos un modulo habilitado para la organizacion.");
+  }
+  validateOptionalHexColor(payload.settings?.primaryColor, "El color principal");
+  validateOptionalHexColor(payload.settings?.accentColor, "El color secundario");
 
   const next = normalizeOrganization({
     ...current,
@@ -1044,6 +1084,9 @@ export function createManagedAuthUser(payload, actorOrId) {
   if (!email || !email.includes("@")) {
     throw authError(400, "El correo electrónico no es válido.");
   }
+  if (!isValidEmail(email)) {
+    throw authError(400, "El correo electronico no es valido.");
+  }
   if (findUserByEmail(email)) {
     throw authError(409, "Ya existe un usuario con ese correo.");
   }
@@ -1095,6 +1138,9 @@ export function updateManagedAuthUser(id, updates, actorOrId) {
   }
 
   const nextEmail = updates.email ? normalizeEmail(updates.email) : user.email;
+  if (!isValidEmail(nextEmail)) {
+    throw authError(400, "El correo electronico no es valido.");
+  }
   const conflicting = getState().users.find((candidate) => candidate.id !== id && candidate.email === nextEmail);
   if (conflicting) {
     throw authError(409, "Ya existe otro usuario con ese correo.");
