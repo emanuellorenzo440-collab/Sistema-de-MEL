@@ -21,7 +21,7 @@ import {
   listVisibleViews,
   updateCurrentUserChatAlertSettings,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260602g";
+} from "../services/auth-service.js?v=20260602h";
 import {
   apiFileUrl,
   addApiChatParticipants,

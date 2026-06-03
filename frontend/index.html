@@ -25,7 +25,7 @@
         }
       })();
     </script>
-    <link rel="stylesheet" href="styles.css?v=20260602g" />
+    <link rel="stylesheet" href="styles.css?v=20260602h" />
   </head>
   <body>
     <section class="auth-shell" id="authShell">
@@ -1120,15 +1120,29 @@
             applyText("sidebarBrandProductName", "Nexora");
             applyText("sidebarBrandOrganization", "Control maestro");
             applyText("topbarEyebrow", "Nexora | Portal maestro");
+            applyText("pageTitle", "Portal maestro de organizaciones");
             applyImage("authBrandLogo", "./assets/nexora-admin-logo.svg", "Nexora Admin");
             applyImage("sidebarBrandLogo", "./assets/nexora-admin-logo.svg", "Nexora Admin");
+            const navList = document.querySelector(".nav-list");
+            if (navList) {
+              navList.innerHTML = `
+                <button class="nav-item active" data-view="access" type="button">
+                  <span aria-hidden="true">◧</span>
+                  Accesos
+                </button>
+              `;
+            }
+            const roleBox = document.querySelector(".role-box");
+            if (roleBox) roleBox.hidden = true;
           }
         } finally {
-          document.documentElement.dataset.portalReady = "true";
+          if (!isAdminPortal) {
+            document.documentElement.dataset.portalReady = "true";
+          }
         }
       })();
     </script>
-    <script type="module" src="src/main.js?v=20260602g"></script>
+    <script type="module" src="src/main.js?v=20260602h"></script>
   </body>
 </html>
 
