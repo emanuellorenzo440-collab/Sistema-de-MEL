@@ -1,5 +1,5 @@
 import { API_BASE_STORAGE_KEY, DEFAULT_API_BASE_URL } from "../core/config.js?v=20260507i";
-const AUTH_SESSION_KEY = "pulso-me-session-v1";
+const AUTH_SESSION_KEY_BASE = "pulso-me-session-v1";
 
 function trimTrailingSlash(value) {
   return String(value || "").replace(/\/+$/, "");
@@ -58,9 +58,39 @@ function buildApiUrl(pathname, params = {}) {
   return url;
 }
 
+function readRequestedOrganizationContext() {
+  const url = new URL(window.location.href);
+  const organizationId = url.searchParams.get("organizationId") || url.searchParams.get("org") || "";
+  const requestedSlug = url.searchParams.get("organizationSlug") || url.searchParams.get("orgSlug") || "";
+  const pathname = String(url.pathname || "/").trim();
+  const inferredPathSlug =
+    pathname === "/admin" || pathname.startsWith("/admin/")
+      ? "nexora-admin"
+      : pathname === "/convoy" || pathname.startsWith("/convoy/")
+        ? "convoy-of-hope"
+        : pathname.match(/^\/portal\/([^/?#]+)/)?.[1] || "";
+  return {
+    organizationId: String(organizationId || "").trim(),
+    organizationSlug: String(requestedSlug || inferredPathSlug || "").trim().toLowerCase(),
+  };
+}
+
+function authPortalScope() {
+  const requested = readRequestedOrganizationContext();
+  if (requested.organizationSlug) return requested.organizationSlug;
+  if (requested.organizationId) return requested.organizationId.toLowerCase();
+  const pathname = String(window.location.pathname || "/").trim();
+  if (!pathname || pathname === "/") return "convoy-of-hope";
+  return "default";
+}
+
+function authSessionKey() {
+  return `${AUTH_SESSION_KEY_BASE}:${authPortalScope()}`;
+}
+
 function readSessionToken() {
   try {
-    const raw = window.localStorage.getItem(AUTH_SESSION_KEY);
+    const raw = window.localStorage.getItem(authSessionKey());
     const session = raw ? JSON.parse(raw) : null;
     return String(session?.sessionToken || "").trim();
   } catch {
