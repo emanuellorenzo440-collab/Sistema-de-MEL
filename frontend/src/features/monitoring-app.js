@@ -21,7 +21,7 @@ import {
   listVisibleViews,
   updateCurrentUserChatAlertSettings,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260602f";
+} from "../services/auth-service.js?v=20260602g";
 import {
   apiFileUrl,
   addApiChatParticipants,
@@ -82,7 +82,7 @@ import {
   updateApiProgramCenter,
   uploadApiFile,
 } from "../services/mel-api.js?v=20260601a";
-import { applyOrganizationBranding, brandingFromUser, readRequestedOrganizationContext } from "../services/organization-branding.js?v=20260602f";
+import { applyOrganizationBranding, brandingFromUser, readRequestedOrganizationContext } from "../services/organization-branding.js?v=20260602g";
 import {
   currentMonth,
   escapeHtml,

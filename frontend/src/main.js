@@ -1,5 +1,5 @@
-import { initializeAccessLobby } from "./features/access-lobby.js?v=20260602f";
-import { applyOrganizationBranding, brandingFromUser, loadPublicOrganizationBranding } from "./services/organization-branding.js?v=20260602f";
+import { initializeAccessLobby } from "./features/access-lobby.js?v=20260602g";
+import { applyOrganizationBranding, brandingFromUser, loadPublicOrganizationBranding } from "./services/organization-branding.js?v=20260602g";
 
 let monitoringApp = null;
 let monitoringAppPromise = null;
@@ -20,7 +20,7 @@ async function loadMonitoringApp(authenticatedUser = null) {
 
   monitoringAppPromise = (async () => {
     const [{ createMonitoringApp }, { bootstrapApiBridge, startRuntimeBridge }] = await Promise.all([
-      import("./features/monitoring-app.js?v=20260602f"),
+      import("./features/monitoring-app.js?v=20260602g"),
       import("./services/mel-runtime-bridge.js?v=20260601b"),
     ]);
 

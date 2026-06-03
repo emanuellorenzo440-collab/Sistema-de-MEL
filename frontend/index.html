@@ -8,8 +8,27 @@
       [hidden] {
         display: none !important;
       }
+      body.portal-pending {
+        visibility: hidden;
+      }
+      body.portal-ready {
+        visibility: visible;
+      }
     </style>
-    <link rel="stylesheet" href="styles.css?v=20260602f" />
+    <script>
+      (() => {
+        const isAdminPortal = window.location.pathname === "/admin" || window.location.pathname.startsWith("/admin/");
+        document.documentElement.dataset.portalMode = isAdminPortal ? "master" : "tenant";
+        if (isAdminPortal) {
+          document.documentElement.dataset.organizationSlug = "nexora-admin";
+          document.documentElement.dataset.organizationId = "org-nexora-admin";
+          document.addEventListener("DOMContentLoaded", () => {
+            document.body.classList.add("portal-pending");
+          }, { once: true });
+        }
+      })();
+    </script>
+    <link rel="stylesheet" href="styles.css?v=20260602g" />
   </head>
   <body>
     <section class="auth-shell" id="authShell">
@@ -1083,33 +1102,37 @@
     <script>
       (() => {
         const isAdminPortal = window.location.pathname === "/admin" || window.location.pathname.startsWith("/admin/");
-        if (!isAdminPortal) return;
-        document.documentElement.dataset.organizationSlug = "nexora-admin";
-        document.documentElement.dataset.organizationId = "org-nexora-admin";
-        document.title = "Nexora";
-        const applyText = (id, value) => {
-          const node = document.getElementById(id);
-          if (node) node.textContent = value;
-        };
-        const applyImage = (id, src, alt) => {
-          const image = document.getElementById(id);
-          if (!image) return;
-          image.src = src;
-          image.alt = alt;
-          const wrapper = image.closest(".brand-mark-logo");
-          if (wrapper) wrapper.setAttribute("aria-label", alt);
-        };
-        applyText("authBrandProductName", "Nexora");
-        applyText("authBrandSubtitle", "Portal maestro para administrar organizaciones, branding y modulos de Nexora");
-        applyText("authLead", "Entra con tu cuenta global para crear organizaciones y preparar sus portales sin depender de ningun tenant operativo.");
-        applyText("sidebarBrandProductName", "Nexora");
-        applyText("sidebarBrandOrganization", "Control maestro");
-        applyText("topbarEyebrow", "Nexora | Portal maestro");
-        applyImage("authBrandLogo", "./assets/nexora-admin-logo.svg", "Nexora Admin");
-        applyImage("sidebarBrandLogo", "./assets/nexora-admin-logo.svg", "Nexora Admin");
+        try {
+          if (isAdminPortal) {
+            document.title = "Nexora";
+            const applyText = (id, value) => {
+              const node = document.getElementById(id);
+              if (node) node.textContent = value;
+            };
+            const applyImage = (id, src, alt) => {
+              const image = document.getElementById(id);
+              if (!image) return;
+              image.src = src;
+              image.alt = alt;
+              const wrapper = image.closest(".brand-mark-logo");
+              if (wrapper) wrapper.setAttribute("aria-label", alt);
+            };
+            applyText("authBrandProductName", "Nexora");
+            applyText("authBrandSubtitle", "Portal maestro para administrar organizaciones, branding y modulos de Nexora");
+            applyText("authLead", "Entra con tu cuenta global para crear organizaciones y preparar sus portales sin depender de ningun tenant operativo.");
+            applyText("sidebarBrandProductName", "Nexora");
+            applyText("sidebarBrandOrganization", "Control maestro");
+            applyText("topbarEyebrow", "Nexora | Portal maestro");
+            applyImage("authBrandLogo", "./assets/nexora-admin-logo.svg", "Nexora Admin");
+            applyImage("sidebarBrandLogo", "./assets/nexora-admin-logo.svg", "Nexora Admin");
+          }
+        } finally {
+          document.body.classList.remove("portal-pending");
+          document.body.classList.add("portal-ready");
+        }
       })();
     </script>
-    <script type="module" src="src/main.js?v=20260602f"></script>
+    <script type="module" src="src/main.js?v=20260602g"></script>
   </body>
 </html>
 

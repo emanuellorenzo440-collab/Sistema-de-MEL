@@ -3,7 +3,7 @@ import {
   DEFAULT_ORGANIZATION_BRANDING,
   normalizeOrganizationBranding,
   readRequestedOrganizationContext,
-} from "./organization-branding.js?v=20260602f";
+} from "./organization-branding.js?v=20260602g";
 
 const AUTH_STORAGE_KEY = "pulso-me-auth-v1";
 const AUTH_SESSION_KEY = "pulso-me-session-v1";
