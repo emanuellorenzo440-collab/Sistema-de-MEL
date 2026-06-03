@@ -8,10 +8,10 @@
       [hidden] {
         display: none !important;
       }
-      body.portal-pending {
+      html[data-portal-mode="master"]:not([data-portal-ready="true"]) body {
         visibility: hidden;
       }
-      body.portal-ready {
+      html[data-portal-ready="true"] body {
         visibility: visible;
       }
     </style>
@@ -22,9 +22,6 @@
         if (isAdminPortal) {
           document.documentElement.dataset.organizationSlug = "nexora-admin";
           document.documentElement.dataset.organizationId = "org-nexora-admin";
-          document.addEventListener("DOMContentLoaded", () => {
-            document.body.classList.add("portal-pending");
-          }, { once: true });
         }
       })();
     </script>
@@ -1127,8 +1124,7 @@
             applyImage("sidebarBrandLogo", "./assets/nexora-admin-logo.svg", "Nexora Admin");
           }
         } finally {
-          document.body.classList.remove("portal-pending");
-          document.body.classList.add("portal-ready");
+          document.documentElement.dataset.portalReady = "true";
         }
       })();
     </script>
