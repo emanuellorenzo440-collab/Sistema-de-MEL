@@ -5,9 +5,9 @@ import {
   readRequestedOrganizationContext,
 } from "./organization-branding.js?v=20260602g";
 
-const AUTH_STORAGE_KEY = "pulso-me-auth-v1";
-const AUTH_SESSION_KEY = "pulso-me-session-v1";
-const AUTH_SIGNED_OUT_KEY = "pulso-me-signed-out-v1";
+const AUTH_STORAGE_KEY_BASE = "pulso-me-auth-v1";
+const AUTH_SESSION_KEY_BASE = "pulso-me-session-v1";
+const AUTH_SIGNED_OUT_KEY_BASE = "pulso-me-signed-out-v1";
 const AUTH_EVENT_NAME = "mel:auth-changed";
 const AUTH_API_TIMEOUT_MS = 10000;
 const REMOTE_SESSION_SYNC_INTERVAL_MS = 15000;
@@ -130,6 +130,27 @@ function requestedPortalContext() {
     organizationId: String(context.organizationId || "").trim(),
     organizationSlug: String(context.organizationSlug || "").trim().toLowerCase(),
   };
+}
+
+function authPortalScope() {
+  const requested = requestedPortalContext();
+  if (requested.organizationSlug) return requested.organizationSlug;
+  if (requested.organizationId) return requested.organizationId.toLowerCase();
+  const pathname = String(window.location.pathname || "/").trim();
+  if (!pathname || pathname === "/") return "convoy-of-hope";
+  return "default";
+}
+
+function authStorageKey() {
+  return `${AUTH_STORAGE_KEY_BASE}:${authPortalScope()}`;
+}
+
+function authSessionKey() {
+  return `${AUTH_SESSION_KEY_BASE}:${authPortalScope()}`;
+}
+
+function authSignedOutKey() {
+  return `${AUTH_SIGNED_OUT_KEY_BASE}:${authPortalScope()}`;
 }
 
 function sessionMatchesRequestedPortal(session = {}, user = null) {
@@ -459,7 +480,7 @@ function dispatchAuthChange(type, detail = {}) {
 }
 
 window.addEventListener("storage", (event) => {
-  if (event.key === AUTH_STORAGE_KEY || event.key === AUTH_SESSION_KEY) {
+  if (event.key === authStorageKey() || event.key === authSessionKey()) {
     authStateCache = null;
     authHydrationPromise = null;
     dispatchAuthChange("storage-synced", { session: readStoredAuthState()?.session || null });
@@ -744,7 +765,7 @@ function normalizeAuthState(rawState = {}) {
 
 function readStoredSession() {
   try {
-    const raw = window.localStorage.getItem(AUTH_SESSION_KEY);
+    const raw = window.localStorage.getItem(authSessionKey());
     const session = raw ? JSON.parse(raw) : null;
     if (!sessionMatchesRequestedPortal(session)) {
       writeStoredSession(null);
@@ -759,10 +780,10 @@ function readStoredSession() {
 function writeStoredSession(session) {
   try {
     if (session?.userId) {
-      window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
-      window.sessionStorage.removeItem(AUTH_SIGNED_OUT_KEY);
+      window.localStorage.setItem(authSessionKey(), JSON.stringify(session));
+      window.sessionStorage.removeItem(authSignedOutKey());
     } else {
-      window.localStorage.removeItem(AUTH_SESSION_KEY);
+      window.localStorage.removeItem(authSessionKey());
     }
   } catch {
     // Keep auth usable even if persistent storage is unavailable.
@@ -771,7 +792,7 @@ function writeStoredSession(session) {
 
 function restorePersistedSession(state) {
   const normalized = normalizeAuthState(state);
-  if (window.sessionStorage.getItem(AUTH_SIGNED_OUT_KEY) === "1") {
+  if (window.sessionStorage.getItem(authSignedOutKey()) === "1") {
     writeStoredSession(null);
     return {
       ...normalized,
@@ -832,7 +853,7 @@ function restorePersistedSession(state) {
 
 function readStoredAuthState() {
   try {
-    const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
+    const raw = window.localStorage.getItem(authStorageKey());
     return raw ? restorePersistedSession(JSON.parse(raw)) : null;
   } catch {
     return null;
@@ -841,7 +862,7 @@ function readStoredAuthState() {
 
 function writeStoredAuthState(state, eventType = "updated") {
   const normalized = normalizeAuthState(state);
-  window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(normalized));
+  window.localStorage.setItem(authStorageKey(), JSON.stringify(normalized));
   writeStoredSession(normalized.session);
   authStateCache = normalized;
   authHydrationPromise = null;
@@ -1362,7 +1383,7 @@ export async function signOutUser() {
   }
   state.session = null;
   try {
-    window.sessionStorage.setItem(AUTH_SIGNED_OUT_KEY, "1");
+    window.sessionStorage.setItem(authSignedOutKey(), "1");
   } catch {
     // ignore storage issues during sign out
   }
