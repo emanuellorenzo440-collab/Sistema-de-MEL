@@ -59,6 +59,7 @@ import {
   fetchApiAttendanceSessions,
   fetchApiFormSubmissions,
   fetchApiNotifications,
+  fetchApiPlatformActivity,
   fetchApiProgramCenters,
   fetchApiProgramManuals,
   fetchApiReports,
@@ -864,6 +865,7 @@ function normalizeState(savedState) {
     name: String(center.name || ""),
   }));
   nextState.reports = Array.isArray(savedState.reports) ? savedState.reports.slice() : [];
+  nextState.platformActivity = Array.isArray(savedState.platformActivity) ? savedState.platformActivity.slice() : [];
   nextState.notifications = Array.isArray(savedState.notifications) ? savedState.notifications.slice() : [];
   nextState.reportDrafts = Array.isArray(savedState.reportDrafts) ? savedState.reportDrafts.slice() : [];
   nextState.actions = Array.isArray(savedState.actions) ? savedState.actions.slice() : [];
@@ -1163,6 +1165,133 @@ function initialsFromLabel(value = "") {
   return parts.map((part) => part.charAt(0).toUpperCase()).join("");
 }
 
+const ACTIVITY_MODULE_LABELS = {
+  access: "Accesos",
+  attendance: "Asistencia",
+  auth: "Accesos",
+  chat: "Chat",
+  concepts: "Concept papers",
+  forms: "Formularios",
+  indicators: "Indicadores",
+  manuals: "Manuales",
+  programs: "Programas",
+  reports: "Reportes",
+};
+
+const ACTIVITY_ENTITY_LABELS = {
+  auth: "Acceso",
+  center: "Centro",
+  conversation: "Conversacion",
+  indicator: "Indicador",
+  manual: "Manual",
+  message: "Mensaje",
+  participant: "Participante",
+  report: "Reporte",
+  session: "Sesion",
+  submission: "Formulario",
+  user: "Usuario",
+};
+
+function labelForActivityModule(module = "", entityType = "") {
+  const normalizedModule = String(module || "").trim().toLowerCase();
+  if (ACTIVITY_MODULE_LABELS[normalizedModule]) return ACTIVITY_MODULE_LABELS[normalizedModule];
+  const normalizedEntityType = String(entityType || "").trim().toLowerCase();
+  if (ACTIVITY_ENTITY_LABELS[normalizedEntityType]) return ACTIVITY_ENTITY_LABELS[normalizedEntityType];
+  return "Sistema";
+}
+
+function classForActivityEntry(entry = {}) {
+  if (entry.module === "reports" && entry.status) {
+    return classForReportStatus(entry.status);
+  }
+  const actionType = String(entry.actionType || "").trim().toLowerCase();
+  if (actionType === "created") return "good";
+  if (actionType === "updated") return "info";
+  if (actionType === "deleted") return "danger";
+  return "neutral";
+}
+
+function labelForActivityValue(entry = {}) {
+  const rawValue = entry?.metadata?.value;
+  if (rawValue !== null && rawValue !== undefined && rawValue !== "" && Number.isFinite(Number(rawValue))) {
+    return Number(rawValue).toLocaleString("es-DO");
+  }
+  return ACTIVITY_ENTITY_LABELS[String(entry.entityType || "").trim().toLowerCase()] || labelForActivityModule(entry.module, entry.entityType);
+}
+
+function normalizeDashboardActivityEntry(entry = {}) {
+  const actorLabel = String(entry.actorName || entry.actorId || "Sistema").trim() || "Sistema";
+  const moduleLabel = labelForActivityModule(entry.module, entry.entityType);
+  const timestamp = String(entry.createdAt || entry.date || "").trim();
+  const reportId =
+    entry.module === "reports"
+      ? String(entry.metadata?.reportId || entry.entityId || "").trim()
+      : String(entry.metadata?.reportId || "").trim();
+  const relatedReport =
+    entry._report ||
+    (reportId ? state.reports.find((report) => String(report.id) === reportId) || null : null);
+  const statusLabel =
+    String(entry.status || "").trim() ||
+    (String(entry.actionType || "").trim() === "created"
+      ? "Creado"
+      : String(entry.actionType || "").trim() === "deleted"
+        ? "Eliminado"
+        : "Actualizado");
+  const resourceLabel = String(entry.resourceLabel || moduleLabel).trim() || moduleLabel;
+  const description = String(entry.description || entry.title || `${moduleLabel} actualizado.`).trim();
+  return {
+    id: String(entry.id || `${entry.module || "system"}-${entry.entityId || timestamp || Math.random()}`).trim(),
+    actorLabel,
+    actorMeta: String(entry.actorRole || moduleLabel).trim() || moduleLabel,
+    title: String(entry.title || `${moduleLabel} actualizado`).trim(),
+    description,
+    moduleLabel,
+    resourceLabel,
+    resourceMeta: String(entry.organizationName || entry.entityType || "Operacion").trim(),
+    valueLabel: labelForActivityValue(entry),
+    statusLabel,
+    statusClass: classForActivityEntry(entry),
+    createdAt: timestamp,
+    relativeDate: timestamp ? formatRelativeTimestamp(timestamp) : "Sin fecha",
+    exactDate: timestamp ? formatShortDateTime(timestamp) : "Sin fecha exacta",
+    reportId,
+    relatedReport,
+  };
+}
+
+function dashboardActivityRecords() {
+  const remoteActivity = Array.isArray(state.platformActivity) ? state.platformActivity.filter(Boolean) : [];
+  if (remoteActivity.length) {
+    return remoteActivity
+      .slice()
+      .sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || "")))
+      .map((entry) => normalizeDashboardActivityEntry(entry));
+  }
+  return getFilteredReports()
+    .slice()
+    .sort((left, right) => String(right.date || "").localeCompare(String(left.date || "")))
+    .map((report) =>
+      normalizeDashboardActivityEntry({
+        id: `legacy-${report.id}`,
+        actionType: "created",
+        module: "reports",
+        entityType: "report",
+        entityId: report.id,
+        actorName: report.owner,
+        title: "Reporte creado",
+        description: `${report.owner || "Un usuario"} registro un reporte para ${report.program}.`,
+        resourceLabel: reportLocation(report) || report.program || "Cobertura general",
+        status: report.status,
+        createdAt: report.date,
+        metadata: {
+          value: report.value,
+          reportId: report.id,
+        },
+        _report: report,
+      }),
+    );
+}
+
 function renderFilters() {
   const programs = ["Todos", ...state.programs.map((program) => program.name)];
   const provinces = [
@@ -1373,36 +1502,38 @@ function renderRisks() {
 
 function renderReports() {
   const reports = getFilteredReports().slice().sort((a, b) => b.date.localeCompare(a.date));
-  const lastReport = reports[0] || null;
-  const approvedCount = reports.filter((report) => isApprovedReportStatus(report.status)).length;
+  const activity = dashboardActivityRecords();
+  const lastActivity = activity[0] || null;
   const pendingCount = reports.filter((report) => isPendingApprovalStatus(report.status)).length;
-  const rejectedCount = reports.filter((report) => String(report.status || "").toLowerCase() === "devuelto").length;
-  const totalReportedValue = reports.reduce((sum, report) => sum + Number(report.value || 0), 0);
-  const uniquePrograms = new Set(reports.map((report) => String(report.program || "").trim()).filter(Boolean)).size;
+  const uniqueActors = new Set(activity.map((entry) => entry.actorLabel).filter(Boolean)).size;
+  const uniqueModules = new Set(activity.map((entry) => entry.moduleLabel).filter(Boolean)).size;
+  const createdCount = activity.filter((entry) => entry.statusClass === "good").length;
+  const updatedCount = activity.filter((entry) => entry.statusClass === "info").length;
+  const deletedCount = activity.filter((entry) => entry.statusClass === "danger").length;
   const overviewCards = [
     {
-      label: "Ultima captura",
-      value: lastReport ? formatRelativeTimestamp(lastReport.date) : "Sin datos",
-      meta: lastReport ? `${lastReport.program} - ${lastReport.owner || "Sin responsable"}` : "Todavia no hay reportes visibles",
+      label: "Ultimo movimiento",
+      value: lastActivity ? lastActivity.relativeDate : "Sin datos",
+      meta: lastActivity ? `${lastActivity.actorLabel} - ${lastActivity.moduleLabel}` : "Todavia no hay actividad visible",
       tone: "info",
     },
     {
-      label: "Pendientes",
-      value: String(pendingCount),
-      meta: pendingCount ? "esperando revision o aprobacion" : "sin cola operativa",
-      tone: pendingCount ? "warning" : "good",
+      label: "Usuarios activos",
+      value: String(uniqueActors),
+      meta: uniqueActors ? "con movimientos recientes en la plataforma" : "sin actividad de usuarios",
+      tone: uniqueActors ? "good" : "neutral",
     },
     {
-      label: "Programas activos",
-      value: String(uniquePrograms),
-      meta: uniquePrograms ? "con actividad en los filtros actuales" : "sin movimiento visible",
+      label: "Modulos tocados",
+      value: String(uniqueModules),
+      meta: uniqueModules ? "areas con cambios reales registrados" : "sin movimiento visible",
       tone: "neutral",
     },
     {
-      label: "Valor reportado",
-      value: totalReportedValue.toLocaleString("es-DO"),
-      meta: `${approvedCount} aprobados - ${rejectedCount} devueltos`,
-      tone: approvedCount > 0 ? "good" : "neutral",
+      label: "Cambios registrados",
+      value: String(activity.length),
+      meta: `${createdCount} altas - ${updatedCount} cambios - ${deletedCount} eliminaciones - ${pendingCount} pendientes`,
+      tone: activity.length ? "warning" : "neutral",
     },
   ];
 
@@ -1421,34 +1552,30 @@ function renderReports() {
   }
 
   if (elements.recentActivityFeed) {
-    elements.recentActivityFeed.innerHTML = reports.length
-      ? reports
+    elements.recentActivityFeed.innerHTML = activity.length
+      ? activity
           .slice(0, 5)
-          .map((report) => {
-            const indicator = indicatorById(report.indicatorId);
-            const ownerLabel = String(report.owner || "Sin responsable").trim();
-            const evidenceLabel = String(report.evidence || "").trim() || "Sin evidencia";
-            const statusClass = classForReportStatus(report.status);
+          .map((entry) => {
             return `
               <article class="activity-feed-card">
                 <div class="activity-feed-top">
                   <div class="activity-person">
-                    <span class="activity-avatar">${escapeHtml(initialsFromLabel(ownerLabel))}</span>
+                    <span class="activity-avatar">${escapeHtml(initialsFromLabel(entry.actorLabel))}</span>
                     <div class="activity-copy">
-                      <strong>${escapeHtml(ownerLabel)}</strong>
-                      <span class="item-meta">${escapeHtml(report.program || "Programa")}</span>
+                      <strong>${escapeHtml(entry.actorLabel)}</strong>
+                      <span class="item-meta">${escapeHtml(entry.actorMeta)}</span>
                     </div>
                   </div>
-                  <span class="status-pill ${escapeHtml(statusClass)}">${escapeHtml(report.status || "Sin estado")}</span>
+                  <span class="status-pill ${escapeHtml(entry.statusClass)}">${escapeHtml(entry.statusLabel)}</span>
                 </div>
                 <div class="activity-feed-body">
-                  <strong>${escapeHtml(indicator?.name || "Indicador eliminado")}</strong>
-                  <p class="item-meta">${escapeHtml(reportLocation(report) || report.program || "Cobertura general")}</p>
+                  <strong>${escapeHtml(entry.title)}</strong>
+                  <p class="item-meta">${escapeHtml(entry.description)}</p>
                 </div>
                 <div class="activity-feed-meta">
-                  <span class="activity-feed-chip">Valor: ${escapeHtml(Number(report.value || 0).toLocaleString("es-DO"))}</span>
-                  <span class="activity-feed-chip">${escapeHtml(evidenceLabel)}</span>
-                  <span class="activity-feed-chip">${escapeHtml(formatShortDateTime(report.date))}</span>
+                  <span class="activity-feed-chip">${escapeHtml(entry.moduleLabel)}</span>
+                  <span class="activity-feed-chip">${escapeHtml(entry.resourceLabel)}</span>
+                  <span class="activity-feed-chip">${escapeHtml(entry.exactDate)}</span>
                 </div>
               </article>
             `;
@@ -1457,61 +1584,59 @@ function renderReports() {
       : `<article class="activity-feed-empty"><p class="item-meta">Todavia no hay actividad reciente para mostrar.</p></article>`;
   }
 
-  if (!reports.length) {
+  if (!activity.length) {
     elements.recentReports.innerHTML = `
       <tr>
-        <td colspan="7" class="empty-cell">Todavia no hay reportes cargados.</td>
+        <td colspan="7" class="empty-cell">Todavia no hay actividad registrada.</td>
       </tr>
     `;
     return;
   }
 
-  elements.recentReports.innerHTML = reports
-    .map((report) => {
-      const indicator = indicatorById(report.indicatorId);
-      const ownerLabel = String(report.owner || "Sin responsable").trim();
-      const activityLabel = indicator?.name ?? "Indicador eliminado";
-      const resourceLabel = reportLocation(report) || report.program;
-      const evidenceLabel = String(report.evidence || "").trim() || "Sin evidencia";
-      const relativeDate = formatRelativeTimestamp(report.date);
-      const exactDate = formatShortDateTime(report.date);
+  elements.recentReports.innerHTML = activity
+    .map((entry) => {
+      const relatedReport = entry.relatedReport;
       return `
         <tr>
           <td>
             <div class="activity-person">
-              <span class="activity-avatar">${escapeHtml(initialsFromLabel(ownerLabel))}</span>
+              <span class="activity-avatar">${escapeHtml(initialsFromLabel(entry.actorLabel))}</span>
               <div class="activity-copy">
-                <strong>${escapeHtml(ownerLabel)}</strong>
-                <span class="item-meta">Responsable del reporte</span>
+                <strong>${escapeHtml(entry.actorLabel)}</strong>
+                <span class="item-meta">${escapeHtml(entry.actorMeta)}</span>
               </div>
             </div>
           </td>
           <td>
             <div class="activity-copy">
-              <strong>${escapeHtml(activityLabel)}</strong>
-              <span class="item-meta">${escapeHtml(report.program)} Â· ${escapeHtml(evidenceLabel)}</span>
+              <strong>${escapeHtml(entry.title)}</strong>
+              <span class="item-meta">${escapeHtml(entry.description)}</span>
             </div>
           </td>
           <td>
             <div class="activity-copy">
-              <strong>${escapeHtml(resourceLabel)}</strong>
-              <span class="item-meta">${escapeHtml(report.center || report.province || "Cobertura general")}</span>
+              <strong>${escapeHtml(entry.resourceLabel)}</strong>
+              <span class="item-meta">${escapeHtml(entry.moduleLabel)} - ${escapeHtml(entry.resourceMeta)}</span>
             </div>
           </td>
-          <td><strong class="activity-value">${report.value.toLocaleString("es-DO")}</strong></td>
-          <td><span class="status-pill ${classForReportStatus(report.status)}">${report.status}</span></td>
+          <td><strong class="activity-value">${escapeHtml(entry.valueLabel)}</strong></td>
+          <td><span class="status-pill ${escapeHtml(entry.statusClass)}">${escapeHtml(entry.statusLabel)}</span></td>
           <td>
             <div class="activity-copy activity-time">
-              <strong>${escapeHtml(relativeDate)}</strong>
-              <span class="item-meta">${escapeHtml(exactDate)}</span>
+              <strong>${escapeHtml(entry.relativeDate)}</strong>
+              <span class="item-meta">${escapeHtml(entry.exactDate)}</span>
             </div>
           </td>
           <td>
             <div class="item-actions report-row-actions">
-              ${renderAttachmentLinks(report, true) || `<span class="item-meta">-</span>`}
               ${
-                canDeleteReport(report)
-                  ? `<button class="ghost-action danger-action" type="button" data-delete-report="${report.id}">Eliminar</button>`
+                relatedReport
+                  ? renderAttachmentLinks(relatedReport, true) || `<span class="item-meta">${escapeHtml(entry.moduleLabel)}</span>`
+                  : `<span class="item-meta">${escapeHtml(entry.moduleLabel)}</span>`
+              }
+              ${
+                relatedReport && canDeleteReport(relatedReport)
+                  ? `<button class="ghost-action danger-action" type="button" data-delete-report="${relatedReport.id}">Eliminar</button>`
                   : ""
               }
             </div>
@@ -1521,7 +1646,6 @@ function renderReports() {
     })
     .join("");
 }
-
 function classForReportStatus(status) {
   if (status === REPORT_STATUSES.APPROVED) return "good";
   if (isPendingApprovalStatus(status)) return "pending";
@@ -4369,7 +4493,17 @@ function ensureAccessSyncMonitor() {
   if (accessSyncIntervalId !== null) return;
   accessSyncIntervalId = window.setInterval(() => {
     if (document.hidden || accessSyncInFlight) return;
-    void refreshAccessStateFromRemote({ showToastOnPermissionChange: false });
+    void (async () => {
+      await refreshAccessStateFromRemote({ showToastOnPermissionChange: false });
+      if (!isMasterPortal() && isApiConfigured()) {
+        try {
+          await refreshPlatformActivityFromApi();
+          renderReports();
+        } catch (error) {
+          console.error("No pude sincronizar la actividad reciente.", error);
+        }
+      }
+    })();
   }, ACCESS_SYNC_INTERVAL_MS);
 }
 
@@ -4448,6 +4582,11 @@ function switchView(viewName, options = {}) {
   }
   if (viewName === "charts" && isApiConfigured()) {
     window.dispatchEvent(new CustomEvent("mel:charts-refresh"));
+  }
+  if (viewName === "dashboard" && isApiConfigured() && !isMasterPortal()) {
+    void refreshPlatformActivityFromApi()
+      .then(() => renderReports())
+      .catch((error) => console.error("No pude abrir la actividad reciente.", error));
   }
   if (persist && state) {
     saveState();
@@ -5268,6 +5407,12 @@ async function refreshReportsAndNotificationsFromApi() {
   state.notifications = remoteNotifications;
   state.formSubmissions = remoteFormSubmissions;
   recomputeIndicatorValues();
+  saveState({ persistRemoteSlices: true });
+}
+
+async function refreshPlatformActivityFromApi() {
+  if (!isApiConfigured()) return;
+  state.platformActivity = await fetchApiPlatformActivity({ limit: 120 });
   saveState({ persistRemoteSlices: true });
 }
 
@@ -10945,6 +11090,7 @@ export function createMonitoringApp() {
 
     const loaders = [
       { label: "reportes y notificaciones", run: refreshReportsAndNotificationsFromApi },
+      { label: "actividad reciente", run: refreshPlatformActivityFromApi },
       { label: "concept papers", run: refreshConceptPapersFromApi },
       { label: "manuales", run: refreshProgramManualsFromApi },
       { label: "centros de programa", run: refreshProgramCentersFromApi },
@@ -11066,6 +11212,7 @@ export function createMonitoringApp() {
     },
   };
 }
+
 
 
 

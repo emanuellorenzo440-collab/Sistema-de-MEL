@@ -403,6 +403,11 @@ export async function fetchApiNotifications(filters = {}) {
   return response.data || [];
 }
 
+export async function fetchApiPlatformActivity(filters = {}) {
+  const response = await requestJson("platform-activity", {}, filters);
+  return response.data || [];
+}
+
 export async function markApiNotificationRead(notificationId, payload = {}) {
   const response = await requestJson("notifications/" + encodeURIComponent(notificationId) + "/read", {
     method: "PATCH",

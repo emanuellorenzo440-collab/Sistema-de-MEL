@@ -49,6 +49,7 @@ import {
   listProgramManuals,
   listAllReportStatusHistory,
   listDeletedReports,
+  listPlatformActivity,
   listReportStatusHistory,
   heartbeatChatPresence,
   markChatConversationRead,
@@ -74,6 +75,7 @@ import {
   getCurrentOrganization,
   getOrganizationBranding,
   listOrganizations,
+  listAuditLog,
   listAuthUsers,
   requestPasswordResetLink,
   restoreAuthSession,
@@ -788,7 +790,7 @@ export async function handleProgramDelete(request, response, programId) {
   if (!actor) return;
   const payload = await readOptionalJsonBody(request);
   if (!requireActorRole(response, actor, ["Supervision M&E", "Program Manager"], "eliminar programas")) return;
-  const result = deleteProgram(programId);
+  const result = deleteProgram(programId, payloadWithActor(request, payload));
   if (!result) {
     sendJson(response, 404, { error: "No encontre el programa solicitado." });
     return;
@@ -863,7 +865,7 @@ export async function handleIndicatorDelete(request, response, indicatorId) {
   if (!actor) return;
   const payload = await readOptionalJsonBody(request);
   if (!requireActorRole(response, actor, ["Supervision M&E", "Program Manager"], "eliminar indicadores")) return;
-  const result = deleteIndicator(indicatorId);
+  const result = deleteIndicator(indicatorId, payloadWithActor(request, payload));
   if (!result) {
     sendJson(response, 404, { error: "No encontre el indicador solicitado." });
     return;
@@ -1458,6 +1460,46 @@ export async function handleNotificationsList(_request, response, url) {
   sendJson(response, 200, { data: listNotifications(filters), filters });
 }
 
+function authAuditEntryToActivity(entry = {}, actor) {
+  const details = entry.details || {};
+  const action = String(entry.action || "").trim();
+  const actorLabel = String(details.email || details.userId || details.actorId || "Usuario").trim();
+  return {
+    id: entry.id,
+    actionType: action.includes("Deleted") || action.includes("deleted") ? "deleted" : action.includes("Created") || action.includes("created") ? "created" : "updated",
+    module: "access",
+    entityType: "auth",
+    entityId: String(details.userId || details.organizationId || entry.id || "").trim(),
+    organizationId: actor.organizationId,
+    organizationName: actor.organizationName,
+    actorId: String(details.actorId || details.userId || "").trim(),
+    actorName: actorLabel,
+    actorRole: "",
+    title: action || "Movimiento de acceso",
+    description: actorLabel,
+    resourceLabel: String(details.slug || details.email || details.organizationId || "acceso").trim(),
+    status: "Registrado",
+    metadata: details,
+    createdAt: entry.createdAt,
+  };
+}
+
+export async function handlePlatformActivityList(request, response, url) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
+  const limit = Number(url.searchParams.get("limit") || 120);
+  const filters = actorScopeFilters(request, {
+    limit,
+    module: url.searchParams.get("module") || undefined,
+  });
+  const domainActivity = listPlatformActivity(filters);
+  const authActivity = listAuditLog({ organizationId: actor.organizationId, limit }).map((entry) => authAuditEntryToActivity(entry, actor));
+  const combined = [...domainActivity, ...authActivity]
+    .sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || "")))
+    .slice(0, limit);
+  sendJson(response, 200, { data: combined, filters });
+}
+
 export async function handleNotificationRead(request, response, notificationId) {
   const actor = requireAuthenticatedUser(request, response);
   if (!actor) return;
@@ -1512,6 +1554,9 @@ export async function handleFormSubmissionCreate(request, response) {
         ...payload,
         importedBy: payload.importedBy || actor.email || actor.fullName || actor.id,
         importedByRole: payload.importedByRole || actor.primaryRole,
+        actorId: actor.id,
+        actorName: actor.fullName || actor.email || actor.id,
+        actorRole: actor.role,
         organizationId: actor.organizationId,
         companyId: actor.organizationId,
         organizationName: actor.organizationName,
@@ -1643,6 +1688,9 @@ function postSystemChatMessage(conversation, actor, body) {
     messageType: "system",
     body: String(body || "").trim(),
     senderUserId: actor.id,
+    senderName: actor.fullName || actor.email || actor.id,
+    actorName: actor.fullName || actor.email || actor.id,
+    actorRole: actor.role,
     organizationId: actor.organizationId,
     companyId: actor.organizationId,
     organizationName: actor.organizationName,
@@ -1685,6 +1733,8 @@ export async function handleChatConversationCreate(request, response) {
       contextId: payload.contextId || "",
       participantUserIds,
       createdByUserId: actor.id,
+      actorName: actor.fullName || actor.email || actor.id,
+      actorRole: actor.role,
       organizationId: actor.organizationId,
       companyId: actor.organizationId,
       organizationName: actor.organizationName,
@@ -1748,6 +1798,9 @@ export async function handleChatConversationUpdate(request, response, conversati
     const updated = updateChatConversation(conversationId, {
       title: payload.title,
       description: payload.description,
+      actorId: actor.id,
+      actorName: actor.fullName || actor.email || actor.id,
+      actorRole: actor.role,
     });
     const nextTitle = String(updated?.title || "").trim();
     if (nextTitle && nextTitle !== previousTitle) {
@@ -1828,6 +1881,9 @@ export async function handleChatMessageCreate(request, response, conversationId)
       replyToMessageId: payload.replyToMessageId || "",
       attachments,
       senderUserId: actor.id,
+      senderName: actor.fullName || actor.email || actor.id,
+      actorName: actor.fullName || actor.email || actor.id,
+      actorRole: actor.role,
       organizationId: actor.organizationId,
       companyId: actor.organizationId,
       organizationName: actor.organizationName,
@@ -1884,6 +1940,9 @@ export async function handleChatMessageUpdate(request, response, conversationId,
       return;
     }
     const updated = updateChatMessage(conversationId, messageId, {
+      actorId: actor.id,
+      actorName: actor.fullName || actor.email || actor.id,
+      actorRole: actor.role,
       ...(Object.prototype.hasOwnProperty.call(payload, "isPinned")
         ? {
             isPinned: payload.isPinned === true,
@@ -1985,7 +2044,12 @@ export async function handleChatParticipantAdd(request, response, conversationId
       sendJson(response, 400, { error: "Hay participantes no validos para esta organizacion.", details: { missingUserIds } });
       return;
     }
-    const added = addChatParticipants(conversationId, { participantUserIds });
+    const added = addChatParticipants(conversationId, {
+      participantUserIds,
+      actorId: actor.id,
+      actorName: actor.fullName || actor.email || actor.id,
+      actorRole: actor.role,
+    });
     if (added?.length) {
       const participantNames = added
         .map((entry) => usersById.get(entry.userId)?.fullName || entry.userId)
@@ -2022,7 +2086,11 @@ export async function handleChatParticipantDelete(request, response, conversatio
       sendJson(response, 403, { error: "No tienes permiso para quitar participantes de esta conversacion." });
       return;
     }
-    const removed = removeChatParticipant(conversationId, userId);
+    const removed = removeChatParticipant(conversationId, userId, {
+      actorId: actor.id,
+      actorName: actor.fullName || actor.email || actor.id,
+      actorRole: actor.role,
+    });
     if (!removed) {
       sendJson(response, 404, { error: "No encontre el participante solicitado." });
       return;
@@ -2095,6 +2163,9 @@ export async function handleChatParticipantUpdate(request, response, conversatio
       ...roleTemplates[roleInput],
       canSendMessages: payload.canSendMessages !== undefined ? payload.canSendMessages : targetParticipant.canSendMessages,
       isMuted: payload.isMuted !== undefined ? payload.isMuted : targetParticipant.isMuted,
+      actorId: actor.id,
+      actorName: actor.fullName || actor.email || actor.id,
+      actorRole: actor.role,
     });
     const usersById = chatUserDirectory(actor);
     const targetName = usersById.get(userId)?.fullName || userId;
@@ -2136,7 +2207,11 @@ export async function handleChatConversationArchive(request, response, conversat
       sendJson(response, 403, { error: "No tienes permiso para eliminar esta conversacion." });
       return;
     }
-    const archived = archiveChatConversation(conversationId, { actorId: actor.id });
+    const archived = archiveChatConversation(conversationId, {
+      actorId: actor.id,
+      actorName: actor.fullName || actor.email || actor.id,
+      actorRole: actor.role,
+    });
     sendJson(response, 200, { data: archived });
   } catch (error) {
     sendApiError(response, error);
@@ -2529,6 +2604,7 @@ function payloadWithActor(request, payload = {}) {
   return {
     ...payload,
     actorId: actorIdFrom(request, payload),
+    actorName: request.melActor?.fullName || request.melActor?.email || payload.actorName || undefined,
     actorRole: actorRoleFrom(request, payload),
     organizationId,
     companyId: organizationId,
@@ -3201,6 +3277,11 @@ async function router(request, response) {
 
   if (request.method === "GET" && pathname === "/api/v1/notifications") {
     await handleNotificationsList(request, response, url);
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/v1/platform-activity") {
+    await handlePlatformActivityList(request, response, url);
     return;
   }
 

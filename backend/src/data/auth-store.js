@@ -681,6 +681,19 @@ function audit(action, details = {}) {
   state.auditLog = state.auditLog.slice(0, 500);
 }
 
+export function listAuditLog(filters = {}) {
+  const { organizationId, limit } = filters;
+  const maxItems = Number.isFinite(Number(limit)) ? Math.max(1, Number(limit)) : 120;
+  return getState().auditLog
+    .filter((entry) => {
+      if (!organizationId) return true;
+      const detailOrganizationId = String(entry.details?.organizationId || "").trim();
+      return !detailOrganizationId || detailOrganizationId === organizationId;
+    })
+    .slice(0, maxItems)
+    .map((entry) => ({ ...entry, details: { ...(entry.details || {}) } }));
+}
+
 function findUserByEmail(email) {
   const normalizedEmail = normalizeEmail(email);
   return getState().users.find((user) => user.email === normalizedEmail) || null;

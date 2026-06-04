@@ -433,6 +433,7 @@ export const seedState = {
     },
   ],
   reports: [],
+  platformActivity: [],
   actions: [],
   formSubmissions: [],
   monitoringForms: [

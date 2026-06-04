@@ -186,6 +186,7 @@ const attendanceSessions = [];
 const attendanceArchive = [];
 const notifications = [];
 const emailOutbox = [];
+const platformActivity = [];
 const chatConversations = [];
 const chatParticipants = [];
 const chatMessages = [];
@@ -305,6 +306,7 @@ function snapshotStore() {
     attendanceArchive,
     notifications,
     emailOutbox,
+    platformActivity,
     chatConversations,
     chatParticipants,
     chatMessages,
@@ -373,6 +375,7 @@ function hydratePersistentStore() {
   replaceArray(attendanceArchive, Array.isArray(stored.attendanceArchive) ? stored.attendanceArchive : []);
   replaceArray(notifications, Array.isArray(stored.notifications) ? stored.notifications : []);
   replaceArray(emailOutbox, Array.isArray(stored.emailOutbox) ? stored.emailOutbox : []);
+  replaceArray(platformActivity, Array.isArray(stored.platformActivity) ? stored.platformActivity : []);
   replaceArray(chatConversations, Array.isArray(stored.chatConversations) ? stored.chatConversations.map(normalizedChatConversation) : []);
   replaceArray(chatParticipants, Array.isArray(stored.chatParticipants) ? stored.chatParticipants.map(normalizedChatParticipant) : []);
   replaceArray(chatMessages, Array.isArray(stored.chatMessages) ? stored.chatMessages.map(normalizedChatMessage) : []);
@@ -730,6 +733,36 @@ function normalizeString(value, fallback = "") {
   return normalized || fallback;
 }
 
+function reportLocationLabel(report = {}) {
+  return normalizeString(report.center || report.province || report.program || "Cobertura general");
+}
+
+function recordPlatformActivity(entry = {}) {
+  const timestamp = normalizeString(entry.createdAt, nowIso());
+  const organizationId = normalizeOrganizationId(entry.organizationId || entry.companyId, DEFAULT_COMPANY_ID);
+  const organizationName = normalizeOrganizationName(organizationId, entry.organizationName, DEFAULT_COMPANY_NAME);
+  platformActivity.unshift({
+    id: normalizeString(entry.id, `act-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`),
+    actionType: normalizeString(entry.actionType, "updated"),
+    module: normalizeString(entry.module, "general"),
+    entityType: normalizeString(entry.entityType, "registro"),
+    entityId: normalizeString(entry.entityId, ""),
+    organizationId,
+    companyId: organizationId,
+    organizationName,
+    actorId: normalizeString(entry.actorId, ""),
+    actorName: normalizeString(entry.actorName, normalizeString(entry.actorId, "Usuario")),
+    actorRole: normalizeString(entry.actorRole, ""),
+    title: normalizeString(entry.title, "Actividad registrada"),
+    description: normalizeString(entry.description, ""),
+    resourceLabel: normalizeString(entry.resourceLabel, ""),
+    status: normalizeString(entry.status, "Registrado"),
+    metadata: entry.metadata && typeof entry.metadata === "object" ? structuredClone(entry.metadata) : {},
+    createdAt: timestamp,
+  });
+  platformActivity.splice(500);
+}
+
 function normalizeStringList(value) {
   if (Array.isArray(value)) {
     return value.map((item) => normalizeString(item)).filter(Boolean);
@@ -1045,6 +1078,21 @@ export function createProgramCenter(input) {
   );
   if (duplicate) return structuredClone(duplicate);
   programCenters.push(center);
+  recordPlatformActivity({
+    actionType: "created",
+    module: "programs",
+    entityType: "center",
+    entityId: center.id,
+    organizationId: center.organizationId,
+    organizationName: center.organizationName,
+    actorId: input.actorId,
+    actorName: input.actorName,
+    actorRole: input.actorRole,
+    title: "Centro creado",
+    description: `${center.name} fue agregado en ${center.program}.`,
+    resourceLabel: `${center.program} - ${center.province}`,
+    status: "Creado",
+  });
   persistStore();
   return structuredClone(center);
 }
@@ -1054,6 +1102,21 @@ export function updateProgramCenter(centerId, input) {
   if (index < 0) return null;
   const next = normalizedProgramCenter({ ...programCenters[index], ...input, id: centerId }, programCenters[index]);
   programCenters[index] = next;
+  recordPlatformActivity({
+    actionType: "updated",
+    module: "programs",
+    entityType: "center",
+    entityId: next.id,
+    organizationId: next.organizationId,
+    organizationName: next.organizationName,
+    actorId: input.actorId,
+    actorName: input.actorName,
+    actorRole: input.actorRole,
+    title: "Centro actualizado",
+    description: `${next.name} fue ajustado en el catalogo operativo.`,
+    resourceLabel: `${next.program} - ${next.province}`,
+    status: "Actualizado",
+  });
   persistStore();
   return structuredClone(next);
 }
@@ -1075,6 +1138,21 @@ export function deleteProgramCenter(centerId, input = {}) {
   }
   if (index < 0) return null;
   const [deleted] = programCenters.splice(index, 1);
+  recordPlatformActivity({
+    actionType: "deleted",
+    module: "programs",
+    entityType: "center",
+    entityId: deleted.id,
+    organizationId: deleted.organizationId,
+    organizationName: deleted.organizationName,
+    actorId: input.actorId,
+    actorName: input.actorName,
+    actorRole: input.actorRole,
+    title: "Centro eliminado",
+    description: `${deleted.name} fue retirado del catalogo operativo.`,
+    resourceLabel: `${deleted.program} - ${deleted.province}`,
+    status: "Eliminado",
+  });
   persistStore();
   return structuredClone(deleted);
 }
@@ -1087,6 +1165,21 @@ export function createProgram(input) {
   const program = normalizedProgram(input);
   programs.push(program);
   const centers = Array.isArray(input.centers) ? syncProgramCentersForProgram(program, input.centers) : [];
+  recordPlatformActivity({
+    actionType: "created",
+    module: "programs",
+    entityType: "program",
+    entityId: program.id,
+    organizationId: program.organizationId,
+    organizationName: program.organizationName,
+    actorId: input.actorId,
+    actorName: input.actorName,
+    actorRole: input.actorRole,
+    title: "Programa creado",
+    description: `${program.name} fue creado en el portafolio operativo.`,
+    resourceLabel: program.name,
+    status: "Creado",
+  });
   persistStore();
   return {
     ...structuredClone(program),
@@ -1128,6 +1221,21 @@ export function updateProgram(programId, input) {
 
   const centers = Array.isArray(input.centers) ? syncProgramCentersForProgram(next, input.centers) : [];
 
+  recordPlatformActivity({
+    actionType: "updated",
+    module: "programs",
+    entityType: "program",
+    entityId: next.id,
+    organizationId: next.organizationId,
+    organizationName: next.organizationName,
+    actorId: input.actorId,
+    actorName: input.actorName,
+    actorRole: input.actorRole,
+    title: "Programa actualizado",
+    description: `${next.name} fue actualizado en el catalogo operativo.`,
+    resourceLabel: next.name,
+    status: "Actualizado",
+  });
   persistStore();
   return {
     ...structuredClone(next),
@@ -1135,7 +1243,7 @@ export function updateProgram(programId, input) {
   };
 }
 
-export function deleteProgram(programId) {
+export function deleteProgram(programId, input = {}) {
   const index = programs.findIndex((program) => program.id === programId);
   if (index < 0) return false;
 
@@ -1152,6 +1260,21 @@ export function deleteProgram(programId) {
       programCenters.splice(centerIndex, 1);
     }
   }
+  recordPlatformActivity({
+    actionType: "deleted",
+    module: "programs",
+    entityType: "program",
+    entityId: program.id,
+    organizationId: program.organizationId,
+    organizationName: program.organizationName,
+    actorId: input.actorId,
+    actorName: input.actorName,
+    actorRole: input.actorRole,
+    title: "Programa eliminado",
+    description: `${program.name} fue eliminado del portafolio.`,
+    resourceLabel: program.name,
+    status: "Eliminado",
+  });
   persistStore();
   return true;
 }
@@ -1176,6 +1299,21 @@ export function findIndicatorById(indicatorId) {
 export function createIndicator(input) {
   const indicator = normalizedIndicator(input);
   indicators.push(indicator);
+  recordPlatformActivity({
+    actionType: "created",
+    module: "indicators",
+    entityType: "indicator",
+    entityId: indicator.id,
+    organizationId: indicator.organizationId,
+    organizationName: indicator.organizationName,
+    actorId: input.actorId,
+    actorName: input.actorName,
+    actorRole: input.actorRole,
+    title: "Indicador creado",
+    description: `${indicator.name} fue agregado a ${indicator.program}.`,
+    resourceLabel: indicator.program,
+    status: "Creado",
+  });
   persistStore();
   return structuredClone(indicator);
 }
@@ -1186,11 +1324,26 @@ export function updateIndicator(indicatorId, input) {
 
   const next = normalizedIndicator({ ...indicators[index], ...input, id: indicatorId }, indicators[index]);
   indicators[index] = next;
+  recordPlatformActivity({
+    actionType: "updated",
+    module: "indicators",
+    entityType: "indicator",
+    entityId: next.id,
+    organizationId: next.organizationId,
+    organizationName: next.organizationName,
+    actorId: input.actorId,
+    actorName: input.actorName,
+    actorRole: input.actorRole,
+    title: "Indicador actualizado",
+    description: `${next.name} fue ajustado en ${next.program}.`,
+    resourceLabel: next.program,
+    status: "Actualizado",
+  });
   persistStore();
   return structuredClone(next);
 }
 
-export function deleteIndicator(indicatorId) {
+export function deleteIndicator(indicatorId, input = {}) {
   const index = indicators.findIndex((indicator) => indicator.id === indicatorId);
   if (index < 0) return false;
 
@@ -1199,7 +1352,22 @@ export function deleteIndicator(indicatorId) {
     return { blocked: true, hasReports };
   }
 
-  indicators.splice(index, 1);
+  const [deleted] = indicators.splice(index, 1);
+  recordPlatformActivity({
+    actionType: "deleted",
+    module: "indicators",
+    entityType: "indicator",
+    entityId: deleted.id,
+    organizationId: deleted.organizationId,
+    organizationName: deleted.organizationName,
+    actorId: input.actorId,
+    actorName: input.actorName,
+    actorRole: input.actorRole,
+    title: "Indicador eliminado",
+    description: `${deleted.name} fue eliminado del sistema.`,
+    resourceLabel: deleted.program,
+    status: "Eliminado",
+  });
   persistStore();
   return true;
 }
@@ -1225,6 +1393,21 @@ export function findConceptPaperById(conceptPaperId) {
 export function createConceptPaper(input = {}) {
   const paper = normalizedConceptPaper(input);
   conceptPapers.unshift(paper);
+  recordPlatformActivity({
+    actionType: "created",
+    module: "concepts",
+    entityType: "concept-paper",
+    entityId: paper.id,
+    organizationId: paper.organizationId,
+    organizationName: paper.organizationName,
+    actorId: input.actorId,
+    actorName: input.actorName || input.uploadedBy,
+    actorRole: input.actorRole,
+    title: "Concept Paper cargado",
+    description: `${paper.title} fue agregado a la biblioteca.`,
+    resourceLabel: paper.program,
+    status: "Cargado",
+  });
   persistStore();
   return structuredClone(paper);
 }
@@ -1282,6 +1465,21 @@ export function deleteConceptPaper(conceptPaperId, options = {}) {
 
   const [deleted] = conceptPapers.splice(index, 1);
   archiveLibraryDocument("concept-paper", deleted, options);
+  recordPlatformActivity({
+    actionType: "deleted",
+    module: "concepts",
+    entityType: "concept-paper",
+    entityId: deleted.id,
+    organizationId: deleted.organizationId,
+    organizationName: deleted.organizationName,
+    actorId: options.actorId,
+    actorName: options.actorName,
+    actorRole: options.actorRole,
+    title: "Concept Paper eliminado",
+    description: `${deleted.title} fue retirado de la biblioteca.`,
+    resourceLabel: deleted.program,
+    status: "Eliminado",
+  });
   persistStore();
   return structuredClone(deleted);
 }
@@ -1307,6 +1505,21 @@ export function findProgramManualById(manualId) {
 export function createProgramManual(input = {}) {
   const manual = normalizedProgramManual(input);
   programManuals.unshift(manual);
+  recordPlatformActivity({
+    actionType: "created",
+    module: "manuals",
+    entityType: "program-manual",
+    entityId: manual.id,
+    organizationId: manual.organizationId,
+    organizationName: manual.organizationName,
+    actorId: input.actorId,
+    actorName: input.actorName || input.uploadedBy,
+    actorRole: input.actorRole,
+    title: "Manual cargado",
+    description: `${manual.title} fue agregado a la biblioteca operativa.`,
+    resourceLabel: manual.program,
+    status: "Cargado",
+  });
   persistStore();
   return structuredClone(manual);
 }
@@ -1324,6 +1537,21 @@ export function deleteProgramManual(manualId, options = {}) {
 
   const [deleted] = programManuals.splice(index, 1);
   archiveLibraryDocument("program-manual", deleted, options);
+  recordPlatformActivity({
+    actionType: "deleted",
+    module: "manuals",
+    entityType: "program-manual",
+    entityId: deleted.id,
+    organizationId: deleted.organizationId,
+    organizationName: deleted.organizationName,
+    actorId: options.actorId,
+    actorName: options.actorName,
+    actorRole: options.actorRole,
+    title: "Manual eliminado",
+    description: `${deleted.title} fue retirado de la biblioteca operativa.`,
+    resourceLabel: deleted.program,
+    status: "Eliminado",
+  });
   persistStore();
   return structuredClone(deleted);
 }
@@ -1367,6 +1595,21 @@ export function createFormSubmission(input = {}) {
   } else {
     formSubmissions.unshift(submission);
   }
+  recordPlatformActivity({
+    actionType: index >= 0 ? "updated" : "created",
+    module: "forms",
+    entityType: "submission",
+    entityId: submission.id,
+    organizationId: submission.organizationId,
+    organizationName: submission.organizationName,
+    actorId: input.actorId,
+    actorName: input.actorName,
+    actorRole: input.actorRole,
+    title: index >= 0 ? "Formulario actualizado" : "Formulario recibido",
+    description: `${submission.ownerName || "Un usuario"} cargo informacion para ${submission.program || "un programa"}.`,
+    resourceLabel: `${submission.program || "Programa"} - ${submission.sourceFormName || submission.sourceType || "formulario"}`,
+    status: submission.processing || "Recibido",
+  });
   persistStore();
   return structuredClone(index >= 0 ? formSubmissions[index] : submission);
 }
@@ -1387,6 +1630,21 @@ export function listAttendanceParticipants(filters = {}) {
 export function createAttendanceParticipant(input = {}) {
   const participant = normalizedAttendanceParticipant(input);
   attendanceParticipants.push(participant);
+  recordPlatformActivity({
+    actionType: "created",
+    module: "attendance",
+    entityType: "participant",
+    entityId: participant.id,
+    organizationId: participant.organizationId,
+    organizationName: participant.organizationName,
+    actorId: input.actorId,
+    actorName: input.actorName,
+    actorRole: input.actorRole,
+    title: "Participante agregado",
+    description: `${participant.name} fue agregado a ${participant.program}.`,
+    resourceLabel: `${participant.program} - ${participant.center || "General"}`,
+    status: participant.status || "Activo",
+  });
   persistStore();
   return structuredClone(participant);
 }
@@ -1437,6 +1695,21 @@ export function saveAttendanceSession(input = {}) {
       },
       updatedAt: nowIso(),
     };
+    recordPlatformActivity({
+      actionType: "updated",
+      module: "attendance",
+      entityType: "attendance-session",
+      entityId: attendanceSessions[index].id,
+      organizationId: attendanceSessions[index].organizationId,
+      organizationName: attendanceSessions[index].organizationName,
+      actorId: input.actorId,
+      actorName: input.actorName || input.recordedBy,
+      actorRole: input.actorRole,
+      title: "Solicitud de edicion de asistencia",
+      description: `${attendanceSessions[index].program} recibio una solicitud para editar la semana ${attendanceSessions[index].weekStart}.`,
+      resourceLabel: `${attendanceSessions[index].program} - ${attendanceSessions[index].center || "General"}`,
+      status: "Pendiente",
+    });
     persistStore();
     return structuredClone(attendanceSessions[index]);
   }
@@ -1451,6 +1724,22 @@ export function saveAttendanceSession(input = {}) {
   } else {
     attendanceSessions.unshift({ ...session, locked: true });
   }
+  const savedSession = index >= 0 ? attendanceSessions[index] : attendanceSessions[0];
+  recordPlatformActivity({
+    actionType: index >= 0 ? "updated" : "created",
+    module: "attendance",
+    entityType: "attendance-session",
+    entityId: savedSession.id,
+    organizationId: savedSession.organizationId,
+    organizationName: savedSession.organizationName,
+    actorId: input.actorId,
+    actorName: input.actorName || input.recordedBy,
+    actorRole: input.actorRole,
+    title: index >= 0 ? "Asistencia actualizada" : "Asistencia registrada",
+    description: `${savedSession.program} guardo asistencia para la semana ${savedSession.weekStart}.`,
+    resourceLabel: `${savedSession.program} - ${savedSession.center || "General"}`,
+    status: "Guardado",
+  });
   persistStore();
   return structuredClone(index >= 0 ? attendanceSessions[index] : session);
 }
@@ -1495,6 +1784,21 @@ export function deleteAttendanceParticipant(participantId, options = {}) {
     session.updatedAt = nowIso();
   });
   archiveAttendanceRecord("participant", { participant: deleted, affectedSessions }, options);
+  recordPlatformActivity({
+    actionType: "deleted",
+    module: "attendance",
+    entityType: "participant",
+    entityId: deleted.id,
+    organizationId: deleted.organizationId,
+    organizationName: deleted.organizationName,
+    actorId: options.actorId,
+    actorName: options.actorName,
+    actorRole: options.actorRole,
+    title: "Participante eliminado",
+    description: `${deleted.name} fue retirado de asistencia.`,
+    resourceLabel: deleted.program,
+    status: "Eliminado",
+  });
   persistStore();
   return structuredClone(deleted);
 }
@@ -1539,6 +1843,21 @@ export function deleteAttendanceSession(filters = {}, options = {}) {
   if (index < 0) return null;
   const [deleted] = attendanceSessions.splice(index, 1);
   archiveAttendanceRecord("session", deleted, { ...options, ...filters });
+  recordPlatformActivity({
+    actionType: "deleted",
+    module: "attendance",
+    entityType: "attendance-session",
+    entityId: deleted.id,
+    organizationId: deleted.organizationId,
+    organizationName: deleted.organizationName,
+    actorId: options.actorId,
+    actorName: options.actorName,
+    actorRole: options.actorRole,
+    title: "Sesion de asistencia eliminada",
+    description: `${deleted.program} elimino la semana ${deleted.weekStart}.`,
+    resourceLabel: `${deleted.program} - ${deleted.center || "General"}`,
+    status: "Eliminado",
+  });
   persistStore();
   return structuredClone(deleted);
 }
@@ -1584,6 +1903,21 @@ export function listAttendanceArchive(filters = {}) {
     .map((record) => structuredClone(record));
 }
 
+export function listPlatformActivity(filters = {}) {
+  const { companyId, organizationId, module, limit } = filters;
+  const scopedOrganizationId = organizationId || companyId;
+  const maxItems = Number.isFinite(Number(limit)) ? Math.max(1, Number(limit)) : 120;
+  return platformActivity
+    .filter((entry) => {
+      if (scopedOrganizationId && (entry.organizationId || entry.companyId || DEFAULT_COMPANY_ID) !== scopedOrganizationId) return false;
+      if (module && entry.module !== module) return false;
+      return true;
+    })
+    .sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || "")))
+    .slice(0, maxItems)
+    .map((entry) => structuredClone(entry));
+}
+
 export function queryReports(filters = {}) {
   const { companyId, organizationId, program, programId, province, center, period } = filters;
   return reports
@@ -1619,6 +1953,25 @@ export function createReport(input) {
   });
   const reviewNotifications = createReviewNotificationsForReport(report);
   const supervisorNotification = createSupervisorAuditNotification(report, `${report.owner || "Un usuario"} envio un reporte`, "Facilitador");
+  recordPlatformActivity({
+    actionType: "created",
+    module: "reports",
+    entityType: "report",
+    entityId: report.id,
+    organizationId: report.organizationId,
+    organizationName: report.organizationName,
+    actorId: input.actorId,
+    actorName: input.actorName || report.owner,
+    actorRole: input.actorRole,
+    title: "Reporte creado",
+    description: `${report.owner || "Un usuario"} registro un reporte para ${report.program}.`,
+    resourceLabel: reportLocationLabel(report),
+    status: report.status,
+    metadata: {
+      value: report.value,
+      indicatorId: report.indicatorId,
+    },
+  });
   persistStore();
   return { ...structuredClone(report), reviewNotifications, supervisorNotification };
 }
@@ -1677,6 +2030,21 @@ export function deleteCorrectableReport(reportId, decision = {}) {
     deletionStatus,
     deletionNote,
     previousStatus: deletedReport.status,
+  });
+  recordPlatformActivity({
+    actionType: "deleted",
+    module: "reports",
+    entityType: "report",
+    entityId: deletedReport.id,
+    organizationId: deletedReport.organizationId,
+    organizationName: deletedReport.organizationName,
+    actorId: decision.actorId,
+    actorName: decision.actorName || deletedReport.owner,
+    actorRole: actorRole,
+    title: "Reporte eliminado",
+    description: deletionNote,
+    resourceLabel: reportLocationLabel(deletedReport),
+    status: deletionStatus,
   });
 
   for (let i = notifications.length - 1; i >= 0; i -= 1) {
@@ -1760,6 +2128,21 @@ export function saveReportStatusDecision(reportId, decision = {}) {
     `${decision.actorRole || "Un revisor"} cambio el estado de ${previousStatus} a ${nextStatus}`,
     decision.actorRole || null,
   );
+  recordPlatformActivity({
+    actionType: "updated",
+    module: "reports",
+    entityType: "report",
+    entityId: report.id,
+    organizationId: report.organizationId,
+    organizationName: report.organizationName,
+    actorId: decision.actorId,
+    actorName: decision.actorName || report.owner,
+    actorRole: decision.actorRole,
+    title: "Estado de reporte actualizado",
+    description: `${report.program} cambio de ${previousStatus} a ${nextStatus}.`,
+    resourceLabel: reportLocationLabel(report),
+    status: nextStatus,
+  });
   persistStore();
   return {
     report: structuredClone(report),
@@ -2039,6 +2422,21 @@ export function createChatConversation(input = {}) {
       }),
     );
   });
+  recordPlatformActivity({
+    actionType: "created",
+    module: "chat",
+    entityType: "conversation",
+    entityId: conversation.id,
+    organizationId: conversation.organizationId,
+    organizationName: conversation.organizationName,
+    actorId: input.createdByUserId || input.actorId,
+    actorName: input.actorName || input.createdByUserId,
+    actorRole: input.actorRole,
+    title: conversation.type === "direct" ? "Chat directo creado" : "Conversacion creada",
+    description: normalizeString(conversation.title, "Se abrio una nueva conversacion."),
+    resourceLabel: normalizeString(conversation.contextType || conversation.type, "chat"),
+    status: "Activo",
+  });
   persistStore();
   return findChatConversationById(conversation.id, { organizationId: conversation.organizationId });
 }
@@ -2079,11 +2477,28 @@ export function addChatParticipants(conversationId, input = {}) {
     added.push(structuredClone(participant));
   });
   conversation.updatedAt = timestamp;
+  if (added.length) {
+    recordPlatformActivity({
+      actionType: "updated",
+      module: "chat",
+      entityType: "conversation",
+      entityId: conversationId,
+      organizationId: conversation.organizationId,
+      organizationName: conversation.organizationName,
+      actorId: input.actorId,
+      actorName: input.actorName,
+      actorRole: input.actorRole,
+      title: "Participantes agregados al chat",
+      description: `${added.length} participante${added.length === 1 ? "" : "s"} fueron agregados a la conversacion.`,
+      resourceLabel: normalizeString(conversation.title || conversation.contextType || "chat"),
+      status: "Actualizado",
+    });
+  }
   persistStore();
   return added;
 }
 
-export function removeChatParticipant(conversationId, userId) {
+export function removeChatParticipant(conversationId, userId, input = {}) {
   const participant = chatParticipants.find(
     (item) => item.conversationId === conversationId && item.userId === userId && !item.leftAt,
   );
@@ -2094,6 +2509,21 @@ export function removeChatParticipant(conversationId, userId) {
   const conversation = chatConversations.find((item) => item.id === conversationId);
   if (conversation) {
     conversation.updatedAt = timestamp;
+    recordPlatformActivity({
+      actionType: "updated",
+      module: "chat",
+      entityType: "conversation",
+      entityId: conversationId,
+      organizationId: conversation.organizationId,
+      organizationName: conversation.organizationName,
+      actorId: input.actorId,
+      actorName: input.actorName,
+      actorRole: input.actorRole,
+      title: "Participante removido del chat",
+      description: `${userId} salio o fue removido de la conversacion.`,
+      resourceLabel: normalizeString(conversation.title || conversation.contextType || "chat"),
+      status: "Actualizado",
+    });
   }
   persistStore();
   return structuredClone(participant);
@@ -2125,6 +2555,21 @@ export function updateChatParticipant(conversationId, userId, input = {}) {
   if (conversation) {
     conversation.updatedAt = timestamp;
   }
+  recordPlatformActivity({
+    actionType: "updated",
+    module: "chat",
+    entityType: "participant",
+    entityId: `${conversationId}:${userId}`,
+    organizationId: participant.organizationId,
+    organizationName: participant.organizationName,
+    actorId: input.actorId,
+    actorName: input.actorName,
+    actorRole: input.actorRole,
+    title: "Permisos del chat actualizados",
+    description: `${userId} recibio cambios en su configuracion del chat.`,
+    resourceLabel: normalizeString(conversation?.title || conversation?.contextType || "chat"),
+    status: "Actualizado",
+  });
   persistStore();
   return structuredClone(participant);
 }
@@ -2138,6 +2583,21 @@ export function archiveChatConversation(conversationId, options = {}) {
   if (options.actorId) {
     conversation.archivedByUserId = normalizeString(options.actorId, conversation.archivedByUserId || "");
   }
+  recordPlatformActivity({
+    actionType: "deleted",
+    module: "chat",
+    entityType: "conversation",
+    entityId: conversationId,
+    organizationId: conversation.organizationId,
+    organizationName: conversation.organizationName,
+    actorId: options.actorId,
+    actorName: options.actorName,
+    actorRole: options.actorRole,
+    title: "Conversacion archivada",
+    description: normalizeString(conversation.title, "Se archivo una conversacion."),
+    resourceLabel: normalizeString(conversation.contextType || conversation.type, "chat"),
+    status: "Archivado",
+  });
   persistStore();
   return structuredClone(conversation);
 }
@@ -2153,6 +2613,21 @@ export function updateChatConversation(conversationId, input = {}) {
     conversation.description = normalizeString(input.description, conversation.description || "");
   }
   conversation.updatedAt = timestamp;
+  recordPlatformActivity({
+    actionType: "updated",
+    module: "chat",
+    entityType: "conversation",
+    entityId: conversationId,
+    organizationId: conversation.organizationId,
+    organizationName: conversation.organizationName,
+    actorId: input.actorId,
+    actorName: input.actorName,
+    actorRole: input.actorRole,
+    title: "Conversacion actualizada",
+    description: normalizeString(conversation.title, "Se actualizo una conversacion."),
+    resourceLabel: normalizeString(conversation.contextType || conversation.type, "chat"),
+    status: "Actualizado",
+  });
   persistStore();
   return structuredClone(conversation);
 }
@@ -2340,6 +2815,21 @@ export function createChatMessage(conversationId, input = {}) {
         }),
       );
     });
+  recordPlatformActivity({
+    actionType: "created",
+    module: "chat",
+    entityType: "message",
+    entityId: message.id,
+    organizationId: message.organizationId,
+    organizationName: message.organizationName,
+    actorId: message.senderUserId,
+    actorName: input.senderName || input.actorName || input.senderUserId,
+    actorRole: input.actorRole,
+    title: "Mensaje enviado",
+    description: normalizeString(message.body, "(Sin texto)").slice(0, 180),
+    resourceLabel: normalizeString(conversation.title || conversation.contextType || "chat"),
+    status: message.messageType === "system" ? "Sistema" : "Enviado",
+  });
   persistStore();
   return structuredClone(message);
 }
@@ -2395,6 +2885,28 @@ export function updateChatMessage(conversationId, messageId, input = {}) {
   }
   message.updatedAt = timestamp;
   conversation.updatedAt = timestamp;
+  const activityTitle = Object.prototype.hasOwnProperty.call(input, "isDeleted")
+    ? "Mensaje eliminado"
+    : Object.prototype.hasOwnProperty.call(input, "body")
+      ? "Mensaje editado"
+      : Object.prototype.hasOwnProperty.call(input, "isPinned")
+        ? (input.isPinned ? "Mensaje fijado" : "Mensaje desfijado")
+        : "Reaccion actualizada";
+  recordPlatformActivity({
+    actionType: Object.prototype.hasOwnProperty.call(input, "isDeleted") && input.isDeleted ? "deleted" : "updated",
+    module: "chat",
+    entityType: "message",
+    entityId: messageId,
+    organizationId: message.organizationId,
+    organizationName: message.organizationName,
+    actorId: input.actorId || input.editedByUserId || input.deletedByUserId || input.reactionUserId || input.pinnedByUserId,
+    actorName: input.actorName,
+    actorRole: input.actorRole,
+    title: activityTitle,
+    description: normalizeString(conversation.title || conversation.contextType || "chat"),
+    resourceLabel: normalizeString(conversation.title || conversation.contextType || "chat"),
+    status: Object.prototype.hasOwnProperty.call(input, "isDeleted") && input.isDeleted ? "Eliminado" : "Actualizado",
+  });
   persistStore();
   return structuredClone(message);
 }
