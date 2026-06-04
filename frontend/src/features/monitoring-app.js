@@ -138,6 +138,7 @@ const REMOTE_AUTHORITATIVE_STATE_KEYS = [
 let currentUserRoles = SYSTEM_ROLES.slice();
 let currentUserViews = VIEW_DEFINITIONS.map((view) => view.id);
 let accessRenderRequest = 0;
+let accessWorkspaceRenderSignature = "";
 const deletedAccessUserIds = new Set();
 let activeStatusReportId = null;
 let accessLibraryUploadInFlight = false;
@@ -2855,11 +2856,17 @@ function restoreAccessWorkspaceDraft(snapshot) {
 function renderAccessWorkspace(options = {}) {
   if (!elements.accessUserGrid || !elements.accessRequestCount) return;
   const { force = false } = options;
+  const accessIsActive = (state?.activeView || activeViewName()) === "access";
+  if (!force && !accessIsActive) {
+    return;
+  }
   if (!force && state?.activeView === "access" && (accessLibraryUploadInFlight || hasPendingAccessLibraryFileSelection())) {
     return;
   }
   const renderRequest = ++accessRenderRequest;
-  elements.accessUserGrid.innerHTML = `<p class="item-meta">Cargando accesos y organizaciones...</p>`;
+  if (!elements.accessUserGrid.children.length) {
+    elements.accessUserGrid.innerHTML = `<p class="item-meta">Cargando accesos y organizaciones...</p>`;
+  }
 
   void (async () => {
     const isMaster = isMasterPortal();
@@ -3343,6 +3350,31 @@ function renderAccessWorkspace(options = {}) {
       })
       .join("");
 
+    const nextSignature = JSON.stringify({
+      isMaster,
+      organizations: organizations.map((organization) => ({
+        id: organization.id,
+        name: organization.name,
+        slug: organization.slug,
+        hostnames: organization.hostnames || [],
+        settings: organization.settings || {},
+      })),
+      users: users.map((user) => ({
+        id: user.id,
+        fullName: user.fullName,
+        email: user.email,
+        status: user.status,
+        systemRole: user.systemRole,
+        allowedRoles: [...(user.allowedRoles || [])].sort(),
+        viewPermissions: [...(user.viewPermissions || [])].sort(),
+        mustChangePassword: Boolean(user.mustChangePassword),
+        accessNote: user.accessNote || "",
+      })),
+    });
+    if (!force && nextSignature === accessWorkspaceRenderSignature) {
+      return;
+    }
+    accessWorkspaceRenderSignature = nextSignature;
     const draftSnapshot = captureAccessWorkspaceDraft();
     elements.accessUserGrid.innerHTML = `${summaryMarkup}${cardsMarkup}`;
     decorateAccessWorkspaceUi({ isMaster, organizations });
