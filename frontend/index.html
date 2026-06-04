@@ -25,7 +25,7 @@
         }
       })();
     </script>
-    <link rel="stylesheet" href="styles.css?v=20260602h" />
+    <link rel="stylesheet" href="styles.css?v=20260604a" />
   </head>
   <body>
     <section class="auth-shell" id="authShell">
@@ -262,7 +262,8 @@
       </aside>
 
       <main class="workspace">
-        <header class="topbar">
+        <div class="workspace-stage">
+          <header class="topbar">
           <div>
             <p class="eyebrow" id="topbarEyebrow">Nexora | Convoy of Hope</p>
             <h1 id="pageTitle">Resumen ejecutivo</h1>
@@ -283,9 +284,10 @@
               Nuevo reporte
             </button>
           </div>
-        </header>
+          </header>
 
-        <section class="filters" id="globalFilters" aria-label="Filtros" hidden>
+          <div class="workspace-body">
+            <section class="filters" id="globalFilters" aria-label="Filtros" hidden>
           <label>
             Programa
             <select id="programFilter"></select>
@@ -880,7 +882,7 @@
               </form>
             </section>
           </div>
-        </section>
+            </section>
 
         <section class="view" id="attendanceView" data-view-panel="attendance">
           <div class="attendance-layout">
@@ -1092,6 +1094,8 @@
             <div class="user-access-grid" id="accessUserGrid"></div>
           </section>
         </section>
+          </div>
+        </div>
       </main>
     </div>
 
@@ -1142,7 +1146,7 @@
         }
       })();
     </script>
-    <script type="module" src="src/main.js?v=20260602h"></script>
+    <script type="module" src="src/main.js?v=20260604a"></script>
   </body>
 </html>
 

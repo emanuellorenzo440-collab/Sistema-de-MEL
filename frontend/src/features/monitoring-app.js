@@ -3516,6 +3516,61 @@ function buildAnalysisBotInsights(reports) {
   return insights.slice(0, 4);
 }
 
+function buildAnalyticsExecutiveSummary(reports, periodSeries, programSeries, indicatorSeries, botInsights, chartScope) {
+  const totalReports = reports.length;
+  const trend = buildTrendSummary(periodSeries);
+  const leadingProgram = programSeries[0];
+  const leadingPeriod = periodSeries.slice().sort((left, right) => right.value - left.value)[0];
+  const fragileIndicator =
+    indicatorSeries.find((item) => item.tone === "danger") ||
+    indicatorSeries.find((item) => item.tone === "warning") ||
+    null;
+  const primaryInsight = botInsights[0] || null;
+  const trendLabel =
+    trend?.direction === "up"
+      ? `Sube ${trend.delta}% frente al periodo anterior`
+      : trend?.direction === "down"
+        ? `Baja ${Math.abs(trend.delta)}% frente al periodo anterior`
+        : "Sin cambio fuerte entre los ultimos periodos";
+
+  const title = totalReports
+    ? chartScope === "approved"
+      ? "Lectura ejecutiva validada"
+      : "Lectura operativa exploratoria"
+    : "Aun no hay base suficiente para analisis";
+  const summary = totalReports
+    ? primaryInsight?.summary || "Los datos visibles ya permiten una lectura ejecutiva inicial del comportamiento operativo."
+    : "Carga o aprueba reportes para activar la lectura automatica del tablero.";
+
+  return {
+    title,
+    summary,
+    focus: [
+      {
+        label: "Programa foco",
+        value: leadingProgram?.label || "Sin datos",
+        meta: leadingProgram ? `${leadingProgram.valueText} acumulado` : "Todavia sin comparativa",
+      },
+      {
+        label: "Periodo clave",
+        value: leadingPeriod?.label || "Sin datos",
+        meta: leadingPeriod ? `${leadingPeriod.valueText} reportado` : "Sin periodos consolidados",
+      },
+      {
+        label: "Ritmo",
+        value: trend ? trendLabel : "Sin tendencia aun",
+        meta: trend?.last ? `Ultimo cierre: ${trend.last.label}` : "Necesita al menos dos periodos",
+      },
+      {
+        label: "Atencion inmediata",
+        value: fragileIndicator?.label || "Sin alerta fuerte",
+        meta: fragileIndicator?.meta || "La calidad actual no muestra un indicador critico",
+      },
+    ],
+    action: primaryInsight?.action || "Sigue alimentando reportes y valida la data para fortalecer la lectura automatica.",
+  };
+}
+
 function renderBarSeries(series, emptyMessage) {
   if (!series.length) {
     return `<p class="item-meta">${emptyMessage}</p>`;
@@ -3729,6 +3784,14 @@ function renderCharts() {
           },
         ]
       : buildAnalysisBotInsights(reports);
+  const executiveSummary = buildAnalyticsExecutiveSummary(
+    reports,
+    periodSeries,
+    programSeries,
+    indicatorSeries,
+    botInsights,
+    chartScope,
+  );
 
   const metrics = [
     { label: "Base analitica", value: scopeLabel, delta: scopeDelta, type: chartScope === "approved" ? "good" : "info" },
@@ -3738,7 +3801,31 @@ function renderCharts() {
     { label: "Indicadores con datos", value: activeIndicators, delta: "alimentados por reportes", type: activeIndicators ? "good" : "warning" },
   ];
 
-  elements.chartMetricGrid.innerHTML = metrics
+  elements.chartMetricGrid.innerHTML =
+    `
+      <article class="chart-executive-summary">
+        <div class="chart-executive-copy">
+          <p class="eyebrow">Resumen ejecutivo</p>
+          <h2>${escapeHtml(executiveSummary.title)}</h2>
+          <p>${escapeHtml(executiveSummary.summary)}</p>
+        </div>
+        <div class="chart-summary-grid">
+          ${executiveSummary.focus
+            .map(
+              (item) => `
+                <article class="chart-summary-card">
+                  <span class="chart-summary-label">${escapeHtml(item.label)}</span>
+                  <strong>${escapeHtml(item.value)}</strong>
+                  <p class="item-meta">${escapeHtml(item.meta)}</p>
+                </article>
+              `,
+            )
+            .join("")}
+        </div>
+        <div class="chart-summary-action">${escapeHtml(executiveSummary.action)}</div>
+      </article>
+    ` +
+    metrics
     .map(
       (metric) => `
         <article class="metric-card ${metric.type}">
@@ -4252,6 +4339,21 @@ function injectWorkspaceSummaryStrip(panel, stripId, config = {}) {
   }
 }
 
+function ensureWorkspaceSectionMarker(container, markerId, anchor, config = {}) {
+  if (!(container instanceof HTMLElement) || !(anchor instanceof HTMLElement) || !markerId) return;
+  container.querySelector(`[data-workspace-section="${markerId}"]`)?.remove();
+  const { eyebrow = "", title = "", description = "" } = config;
+  const marker = document.createElement("div");
+  marker.className = "workspace-section-marker";
+  marker.dataset.workspaceSection = markerId;
+  marker.innerHTML = `
+    ${eyebrow ? `<p class="eyebrow">${escapeHtml(eyebrow)}</p>` : ""}
+    ${title ? `<h3>${escapeHtml(title)}</h3>` : ""}
+    ${description ? `<p class="item-meta">${escapeHtml(description)}</p>` : ""}
+  `;
+  anchor.before(marker);
+}
+
 function decorateOperationalCrudUi() {
   enhanceOperationalCrudForms();
 
@@ -4319,6 +4421,10 @@ function decorateReportWorkspaceUi() {
   ensureFieldLabelDecorations(elements.reportForm);
   elements.reportOwner?.setAttribute("placeholder", "Ej. L Lorenzo");
   $("#reportValue")?.setAttribute("placeholder", "0");
+  elements.reportWomen?.setAttribute("placeholder", "0");
+  elements.reportMen?.setAttribute("placeholder", "0");
+  elements.reportAdolescents?.setAttribute("placeholder", "0");
+  elements.reportChildren?.setAttribute("placeholder", "0");
   elements.reportNotes?.setAttribute("placeholder", "Hallazgos, retos, acuerdos o alertas relevantes para seguimiento.");
   ensureSelectPlaceholder(elements.reportProgram, "un programa");
   ensureSelectPlaceholder(elements.reportProvince, "una provincia");
@@ -4333,6 +4439,40 @@ function decorateReportWorkspaceUi() {
   [elements.reportEvidenceNoteGroup, elements.reportEvidenceLinkGroup, elements.reportEvidenceUploadGroup, elements.reportDocumentSection]
     .filter(Boolean)
     .forEach((field) => field.classList.add("report-support-card"));
+  if (reportGrid instanceof HTMLElement) {
+    const contextAnchor = reportGrid.querySelector("label");
+    const participantAnchor = elements.reportWomenField;
+    const evidenceAnchor = elements.reportEvidenceType?.closest("label");
+    const finalReportAnchor = elements.reportDocumentSection;
+    if (contextAnchor instanceof HTMLElement) {
+      ensureWorkspaceSectionMarker(reportGrid, "report-context", contextAnchor, {
+        eyebrow: "1. Contexto del reporte",
+        title: "Ubica el dato dentro del programa correcto",
+        description: "Completa responsable, programa, provincia, centro, periodo e indicador antes de registrar el valor.",
+      });
+    }
+    if (participantAnchor instanceof HTMLElement) {
+      ensureWorkspaceSectionMarker(reportGrid, "report-participants", participantAnchor, {
+        eyebrow: "2. Participacion",
+        title: "Desglose de participantes",
+        description: "Registra aqui el alcance humano del reporte con los campos que apliquen al programa.",
+      });
+    }
+    if (evidenceAnchor instanceof HTMLElement) {
+      ensureWorkspaceSectionMarker(reportGrid, "report-evidence", evidenceAnchor, {
+        eyebrow: "3. Evidencia y observaciones",
+        title: "Soporte del reporte",
+        description: "Adjunta evidencia, enlaces y notas de respaldo para facilitar la revision.",
+      });
+    }
+    if (finalReportAnchor instanceof HTMLElement) {
+      ensureWorkspaceSectionMarker(reportGrid, "report-final", finalReportAnchor, {
+        eyebrow: "4. Entrega final",
+        title: "Formulario o reporte consolidado",
+        description: "Sube el soporte final solo cuando quieras entregar el documento completo junto al reporte.",
+      });
+    }
+  }
   const primaryPanel = elements.reportForm.querySelector(".panel");
   if (primaryPanel) {
     injectWorkspaceSummaryStrip(primaryPanel, "report-primary", {

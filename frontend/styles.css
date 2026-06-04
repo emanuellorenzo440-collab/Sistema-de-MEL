@@ -18,6 +18,8 @@
   --blue: var(--brand-accent);
   --violet: #5867a6;
   --shadow: 0 22px 48px rgba(15, 26, 36, 0.1);
+  --shell-sidebar-width: 292px;
+  --workspace-max-width: 1520px;
 }
 
 * {
@@ -62,8 +64,10 @@ button:disabled {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
+  grid-template-columns: var(--shell-sidebar-width) minmax(0, 1fr);
+  height: 100vh;
   min-height: 100vh;
+  overflow: hidden;
 }
 
 .auth-shell {
@@ -346,11 +350,13 @@ button:disabled {
   background:
     linear-gradient(180deg, rgba(11, 22, 35, 0.98), rgba(18, 28, 43, 0.99)),
     linear-gradient(90deg, rgba(197, 51, 47, 0.18), transparent 28%);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
   color: #f8fbfa;
   display: flex;
   flex-direction: column;
   gap: 26px;
-  padding: 24px;
+  overflow-y: auto;
+  padding: 26px 22px 22px;
   position: sticky;
   top: 0;
   height: 100vh;
@@ -404,6 +410,7 @@ button:disabled {
 .nav-list {
   display: grid;
   gap: 8px;
+  padding-right: 4px;
 }
 
 .nav-item {
@@ -494,24 +501,47 @@ textarea:focus {
 }
 
 .workspace {
-  display: grid;
-  gap: 18px;
-  padding: 28px;
+  align-content: start;
   background:
     radial-gradient(circle at top right, rgba(47, 133, 199, 0.08), transparent 20%),
     linear-gradient(180deg, #f5f7fb 0%, #f3f6fa 100%);
+  height: 100vh;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 24px 28px 36px;
+}
+
+.workspace-stage {
+  align-content: start;
+  display: grid;
+  gap: 20px;
+  margin: 0 auto;
+  min-width: 0;
+  width: min(100%, var(--workspace-max-width));
+}
+
+.workspace-body {
+  align-content: start;
+  display: grid;
+  gap: 20px;
+  min-width: 0;
 }
 
 .topbar {
   align-items: center;
-  background: rgba(255, 255, 255, 0.82);
+  background: rgba(255, 255, 255, 0.88);
   border: 1px solid rgba(216, 224, 232, 0.92);
-  border-radius: 8px;
+  border-radius: 18px;
+  backdrop-filter: blur(18px);
   box-shadow: 0 14px 30px rgba(15, 26, 36, 0.06);
   display: flex;
   justify-content: space-between;
   gap: 18px;
-  padding: 18px 20px;
+  padding: 18px 22px;
+  position: sticky;
+  top: 0;
+  z-index: 50;
 }
 
 .eyebrow {
@@ -550,6 +580,7 @@ h3 {
 .form-actions {
   align-items: center;
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   justify-content: flex-end;
 }
@@ -632,28 +663,99 @@ h3 {
 }
 
 .filters {
-  background: var(--surface);
+  background: rgba(255, 255, 255, 0.92);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 16px;
+  box-shadow: 0 12px 24px rgba(15, 26, 36, 0.04);
   display: grid;
   gap: 14px;
   grid-template-columns: repeat(3, minmax(180px, 1fr));
-  padding: 14px;
+  padding: 16px 18px;
 }
 
 .view {
   display: none;
+  min-width: 0;
 }
 
 .view.active {
+  align-content: start;
   display: grid;
-  gap: 18px;
+  gap: 20px;
+  min-width: 0;
 }
 
 .metric-grid {
   display: grid;
   gap: 14px;
   grid-template-columns: repeat(4, minmax(160px, 1fr));
+}
+
+.chart-executive-summary {
+  background: linear-gradient(180deg, #ffffff, #f7fafc);
+  border: 1px solid #dbe4ec;
+  border-radius: 8px;
+  display: grid;
+  gap: 16px;
+  grid-column: span 4;
+  padding: 18px;
+}
+
+.chart-executive-copy {
+  display: grid;
+  gap: 8px;
+}
+
+.chart-executive-copy h2 {
+  font-size: 1.3rem;
+  margin: 0;
+}
+
+.chart-executive-copy p:last-child {
+  color: var(--muted);
+  margin: 0;
+}
+
+.chart-summary-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
+}
+
+.chart-summary-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  min-height: 112px;
+  padding: 14px;
+}
+
+.chart-summary-label {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.chart-summary-card strong {
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.chart-summary-card .item-meta {
+  margin: 0;
+}
+
+.chart-summary-action {
+  background: #eef4fb;
+  border: 1px solid #d6e4f4;
+  border-radius: 8px;
+  color: #244867;
+  font-size: 0.9rem;
+  font-weight: 700;
+  padding: 12px 14px;
 }
 
 .metric-card,
@@ -665,7 +767,7 @@ h3 {
 .action-item {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 18px;
 }
 
 .metric-card {
@@ -707,25 +809,28 @@ h3 {
 .chart-layout,
 .concept-layout {
   display: grid;
-  gap: 18px;
-  grid-template-columns: minmax(0, 1.55fr) minmax(320px, 0.9fr);
+  align-items: start;
+  gap: 20px;
+  grid-template-columns: minmax(0, 1.55fr) minmax(360px, 0.92fr);
 }
 
 .attendance-layout {
   display: grid;
-  gap: 18px;
-  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+  align-items: start;
+  gap: 20px;
+  grid-template-columns: minmax(0, 1.2fr) minmax(360px, 0.84fr);
 }
 
 .chat-layout {
   display: grid;
-  gap: 18px;
-  grid-template-columns: minmax(280px, 0.7fr) minmax(0, 1.3fr);
+  align-items: start;
+  gap: 20px;
+  grid-template-columns: minmax(320px, 0.8fr) minmax(0, 1.45fr);
 }
 
 .chat-conversation-panel,
 .chat-thread-panel {
-  min-height: 620px;
+  min-height: min(780px, calc(100vh - 190px));
 }
 
 .chat-create-form,
@@ -1044,6 +1149,7 @@ h3 {
   display: grid;
   gap: 12px;
   margin-top: 14px;
+  min-width: 0;
 }
 
 .chat-conversation-list {
@@ -1235,15 +1341,20 @@ h3 {
 
 .panel {
   box-shadow: var(--shadow);
-  padding: 18px;
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  overflow: hidden;
+  padding: 20px;
 }
 
 .panel-header {
-  align-items: center;
+  align-items: flex-start;
   display: flex;
   gap: 12px;
   justify-content: space-between;
-  margin-bottom: 16px;
+  margin-bottom: 0;
+  min-width: 0;
 }
 
 .status-pill {
@@ -1364,19 +1475,24 @@ h3 {
 }
 
 .table-wrap {
+  background: linear-gradient(180deg, #fbfcfe, #f6f9fc);
+  border: 1px solid #dde6ee;
+  border-radius: 14px;
   overflow-x: auto;
+  overflow-y: hidden;
 }
 
 table {
   border-collapse: collapse;
-  min-width: 760px;
+  background: var(--surface);
+  min-width: 720px;
   width: 100%;
 }
 
 th,
 td {
   border-bottom: 1px solid var(--line);
-  padding: 13px 10px;
+  padding: 14px 14px;
   text-align: left;
 }
 
@@ -1393,12 +1509,13 @@ th {
 }
 
 tbody tr:hover {
-  background: #f8faf9;
+  background: #f7fbff;
 }
 
 .form-layout {
   display: grid;
   gap: 18px;
+  min-width: 0;
 }
 
 .compact-form {
@@ -1410,7 +1527,7 @@ tbody tr:hover {
 .form-grid {
   display: grid;
   gap: 14px;
-  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .span-2 {
@@ -1913,6 +2030,20 @@ textarea {
   grid-template-columns: repeat(3, minmax(200px, 1fr));
 }
 
+.workspace-section-marker {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 4px;
+  grid-column: 1 / -1;
+  margin-top: 4px;
+  padding-top: 14px;
+}
+
+.workspace-section-marker h3 {
+  font-size: 1rem;
+  margin: 0;
+}
+
 .report-participant-field,
 .report-support-card {
   background: var(--surface-muted);
@@ -2353,7 +2484,7 @@ textarea {
 }
 
 .program-grid {
-  grid-template-columns: repeat(3, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
 }
 
 .coverage {
@@ -2398,10 +2529,13 @@ textarea {
 
   .app-shell {
     grid-template-columns: 1fr;
+    height: auto;
+    overflow: visible;
   }
 
   .sidebar {
     height: auto;
+    overflow: visible;
     position: relative;
   }
 
@@ -2427,11 +2561,26 @@ textarea {
   .program-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .workspace {
+    height: auto;
+    overflow: visible;
+  }
+
+  .topbar {
+    position: relative;
+    top: auto;
+  }
 }
 
 @media (max-width: 760px) {
   .workspace {
     padding: 18px;
+  }
+
+  .workspace-stage,
+  .workspace-body {
+    gap: 16px;
   }
 
   .auth-shell {
@@ -2490,8 +2639,21 @@ textarea {
   .user-access-group-grid,
   .chart-filter-grid,
   .circular-chart-layout,
-  .stats-grid {
+  .stats-grid,
+  .chart-summary-grid {
     grid-template-columns: 1fr;
+  }
+
+  .panel,
+  .topbar,
+  .filters {
+    border-radius: 14px;
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .chart-executive-summary {
+    grid-column: span 1;
   }
 
   .auth-summary,
