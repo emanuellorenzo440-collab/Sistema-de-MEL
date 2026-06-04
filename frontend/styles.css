@@ -688,7 +688,7 @@ h3 {
 .metric-grid {
   display: grid;
   gap: 14px;
-  grid-template-columns: repeat(4, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
 .chart-executive-summary {
@@ -772,7 +772,8 @@ h3 {
 
 .metric-card {
   min-height: 126px;
-  padding: 16px;
+  box-shadow: 0 12px 24px rgba(15, 26, 36, 0.045);
+  padding: 18px;
 }
 
 .metric-card .value {
@@ -811,14 +812,14 @@ h3 {
   display: grid;
   align-items: start;
   gap: 20px;
-  grid-template-columns: minmax(0, 1.55fr) minmax(360px, 0.92fr);
+  grid-template-columns: minmax(0, 1.7fr) minmax(340px, 0.86fr);
 }
 
 .attendance-layout {
   display: grid;
   align-items: start;
   gap: 20px;
-  grid-template-columns: minmax(0, 1.2fr) minmax(360px, 0.84fr);
+  grid-template-columns: minmax(0, 1.34fr) minmax(340px, 0.78fr);
 }
 
 .chat-layout {
@@ -1482,6 +1483,10 @@ h3 {
   overflow-y: hidden;
 }
 
+.activity-table-wrap {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+}
+
 table {
   border-collapse: collapse;
   background: var(--surface);
@@ -1489,11 +1494,23 @@ table {
   width: 100%;
 }
 
+.activity-table thead th {
+  background: #f8fafc;
+  border-bottom-color: #e6edf3;
+  color: #8192a3;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding-top: 15px;
+  padding-bottom: 15px;
+}
+
 th,
 td {
   border-bottom: 1px solid var(--line);
   padding: 14px 14px;
   text-align: left;
+  vertical-align: middle;
 }
 
 th {
@@ -1510,6 +1527,63 @@ th {
 
 tbody tr:hover {
   background: #f7fbff;
+}
+
+.activity-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.activity-person {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  min-width: 220px;
+}
+
+.activity-avatar {
+  align-items: center;
+  background: linear-gradient(180deg, #294766, #193650);
+  border-radius: 999px;
+  color: #f7fbff;
+  display: inline-flex;
+  flex: 0 0 34px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  height: 34px;
+  justify-content: center;
+  letter-spacing: 0.04em;
+  width: 34px;
+}
+
+.activity-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.activity-copy strong,
+.activity-value {
+  color: #14212d;
+  font-size: 0.92rem;
+}
+
+.activity-copy strong {
+  font-weight: 700;
+}
+
+.activity-time strong {
+  color: #4b5b6b;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.activity-table .item-meta {
+  font-size: 0.78rem;
+}
+
+.activity-table .status-pill {
+  justify-content: center;
+  min-width: 118px;
 }
 
 .form-layout {
@@ -1634,6 +1708,7 @@ textarea {
 .notification-list {
   display: grid;
   gap: 12px;
+  min-width: 0;
 }
 
 .draft-list {
@@ -1663,14 +1738,17 @@ textarea {
 
 .notification-item {
   border-left: 4px solid var(--amber);
+  box-shadow: none;
+  gap: 10px;
+  padding: 16px 18px;
 }
 
 .notification-item.high {
-  background: #fffbeb;
+  background: linear-gradient(180deg, #fffef9, #fff9eb);
 }
 
 .notification-item.chat-alert {
-  background: #eef7f5;
+  background: linear-gradient(180deg, #f5fbfa, #eef7f5);
   border-left-color: var(--teal);
 }
 
@@ -1798,9 +1876,10 @@ textarea {
 }
 
 .program-summary {
-  background: #f8faf9;
+  background: linear-gradient(180deg, #fbfcfe, #f5f8fb);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 16px;
+  box-shadow: 0 10px 20px rgba(15, 26, 36, 0.035);
 }
 
 .result-item,
@@ -1813,7 +1892,8 @@ textarea {
 .concept-detail-grid article {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 16px;
+  box-shadow: 0 10px 20px rgba(15, 26, 36, 0.035);
 }
 
 .concept-card.active {
@@ -1897,6 +1977,12 @@ textarea {
   justify-content: space-between;
 }
 
+.chart-item,
+.submission-item {
+  gap: 14px;
+  padding: 16px;
+}
+
 .bar-track.tall {
   height: 18px;
 }
@@ -1977,6 +2063,25 @@ textarea {
   min-height: 38px;
 }
 
+.review-list {
+  gap: 14px;
+}
+
+.review-item {
+  background: linear-gradient(180deg, #ffffff, #fbfcfd);
+  border: 1px solid #dde6ee;
+  box-shadow: none;
+  gap: 10px;
+  padding: 16px 18px;
+}
+
+.notification-top,
+.review-top {
+  border-bottom: 1px solid #edf2f6;
+  margin-bottom: 2px;
+  padding-bottom: 10px;
+}
+
 .access-action-strip {
   align-items: center;
   background: var(--surface);
@@ -2027,29 +2132,31 @@ textarea {
 
 .report-form-grid {
   align-items: start;
+  column-gap: 16px;
+  row-gap: 18px;
   grid-template-columns: repeat(3, minmax(200px, 1fr));
 }
 
 .workspace-section-marker {
-  border-top: 1px solid var(--line);
+  border-top: 1px solid #e3ebf2;
   display: grid;
   gap: 4px;
   grid-column: 1 / -1;
-  margin-top: 4px;
-  padding-top: 14px;
+  margin-top: 8px;
+  padding-top: 16px;
 }
 
 .workspace-section-marker h3 {
-  font-size: 1rem;
+  font-size: 1.02rem;
   margin: 0;
 }
 
 .report-participant-field,
 .report-support-card {
-  background: var(--surface-muted);
+  background: linear-gradient(180deg, #fcfdff, #f7fafd);
   border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 14px;
+  border-radius: 14px;
+  padding: 16px;
 }
 
 .report-support-card {
@@ -2832,11 +2939,12 @@ textarea {
 .stat-card {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 16px;
+  box-shadow: 0 10px 22px rgba(15, 26, 36, 0.035);
   display: grid;
   gap: 8px;
   min-height: 120px;
-  padding: 14px;
+  padding: 16px;
 }
 
 .stat-card.good {
@@ -2868,10 +2976,11 @@ textarea {
   background: var(--surface);
   border: 1px solid var(--line);
   border-left: 4px solid var(--blue);
-  border-radius: 8px;
+  border-radius: 16px;
+  box-shadow: 0 10px 22px rgba(15, 26, 36, 0.035);
   display: grid;
-  gap: 10px;
-  padding: 14px;
+  gap: 12px;
+  padding: 16px;
 }
 
 .analysis-bot-item.warning {
@@ -2899,12 +3008,12 @@ textarea {
 }
 
 .analysis-bot-action {
-  background: #f3f6f5;
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  background: linear-gradient(180deg, #f5f8fb, #eef4fa);
+  border: 1px solid #d9e5f1;
+  border-radius: 12px;
   font-size: 0.88rem;
   font-weight: 700;
-  padding: 10px 12px;
+  padding: 12px 14px;
 }
 
 .line-chart-shell {

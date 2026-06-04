@@ -1048,6 +1048,16 @@ function reportLocation(report) {
   return [report.period, report.province, report.center].filter(Boolean).join(" · ");
 }
 
+function initialsFromLabel(value = "") {
+  const parts = String(value || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2);
+  if (!parts.length) return "NA";
+  return parts.map((part) => part.charAt(0).toUpperCase()).join("");
+}
+
 function renderFilters() {
   const programs = ["Todos", ...state.programs.map((program) => program.name)];
   const provinces = [
@@ -1270,14 +1280,43 @@ function renderReports() {
   elements.recentReports.innerHTML = reports
     .map((report) => {
       const indicator = indicatorById(report.indicatorId);
+      const ownerLabel = String(report.owner || "Sin responsable").trim();
+      const activityLabel = indicator?.name ?? "Indicador eliminado";
+      const resourceLabel = reportLocation(report) || report.program;
+      const evidenceLabel = String(report.evidence || "").trim() || "Sin evidencia";
+      const relativeDate = formatRelativeTimestamp(report.date);
+      const exactDate = formatShortDateTime(report.date);
       return `
         <tr>
-          <td>${report.date}</td>
-          <td>${report.program}</td>
-          <td>${indicator?.name ?? "Indicador eliminado"}</td>
-          <td>${report.value.toLocaleString("es-DO")}</td>
-          <td>${report.owner}</td>
+          <td>
+            <div class="activity-person">
+              <span class="activity-avatar">${escapeHtml(initialsFromLabel(ownerLabel))}</span>
+              <div class="activity-copy">
+                <strong>${escapeHtml(ownerLabel)}</strong>
+                <span class="item-meta">Responsable del reporte</span>
+              </div>
+            </div>
+          </td>
+          <td>
+            <div class="activity-copy">
+              <strong>${escapeHtml(activityLabel)}</strong>
+              <span class="item-meta">${escapeHtml(report.program)} Â· ${escapeHtml(evidenceLabel)}</span>
+            </div>
+          </td>
+          <td>
+            <div class="activity-copy">
+              <strong>${escapeHtml(resourceLabel)}</strong>
+              <span class="item-meta">${escapeHtml(report.center || report.province || "Cobertura general")}</span>
+            </div>
+          </td>
+          <td><strong class="activity-value">${report.value.toLocaleString("es-DO")}</strong></td>
           <td><span class="status-pill ${classForReportStatus(report.status)}">${report.status}</span></td>
+          <td>
+            <div class="activity-copy activity-time">
+              <strong>${escapeHtml(relativeDate)}</strong>
+              <span class="item-meta">${escapeHtml(exactDate)}</span>
+            </div>
+          </td>
           <td>
             <div class="item-actions report-row-actions">
               ${renderAttachmentLinks(report, true) || `<span class="item-meta">-</span>`}
