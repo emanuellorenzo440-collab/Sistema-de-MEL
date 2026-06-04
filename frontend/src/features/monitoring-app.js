@@ -518,6 +518,39 @@ function ensureSelectPlaceholder(select, label = "una opcion") {
   }
   select.dataset.placeholderReady = "true";
   select.required = true;
+  syncWorkspaceSelectState(select);
+}
+
+function syncWorkspaceSelectState(select) {
+  if (!(select instanceof HTMLSelectElement)) return;
+  select.classList.add("workspace-select");
+  const applyState = () => {
+    const hasPlaceholder = Array.from(select.options).some((option) => option.value === "");
+    select.classList.toggle("is-placeholder-selected", hasPlaceholder && !select.value);
+  };
+  applyState();
+  if (select.dataset.workspaceSelectBound === "true") return;
+  select.addEventListener("change", applyState);
+  select.addEventListener("blur", applyState);
+  select.dataset.workspaceSelectBound = "true";
+}
+
+function decorateWorkspacePanelView(view, options = {}) {
+  if (!(view instanceof HTMLElement)) return;
+  const { scrollTargets = [] } = options;
+  view.classList.add("workspace-module-view");
+  view.querySelectorAll(".panel").forEach((panel) => {
+    panel.classList.add("workspace-panel-shell");
+    panel.querySelector(".panel-header")?.classList.add("workspace-panel-header");
+  });
+  scrollTargets.forEach((entry) => {
+    const target = entry?.node || entry;
+    if (!(target instanceof HTMLElement)) return;
+    target.classList.add("workspace-scroll-surface");
+    if (entry?.tone) {
+      target.classList.add(`workspace-scroll-surface-${entry.tone}`);
+    }
+  });
 }
 
 function modalizeWorkspaceForm(form, mountTarget, config = {}) {
@@ -2934,7 +2967,7 @@ function renderAccessWorkspace(options = {}) {
       ? `
         <form class="user-access-card concept-upload-card" id="createOrganizationForm">
         <div class="user-access-top">
-          <div>
+          <div class="concept-card-head">
             <p class="eyebrow">Portal maestro Nexora</p>
             <h3>Registrar nueva organizacion</h3>
           </div>
@@ -4214,6 +4247,7 @@ function enhanceAccessCreateForms() {
   }
   ensureSelectPlaceholder(elements.accessUserGrid?.querySelector('#createConceptPaperForm [name="program"]'), "un programa");
   ensureSelectPlaceholder(elements.accessUserGrid?.querySelector('#createProgramManualForm [name="program"]'), "un programa");
+  elements.accessUserGrid?.querySelectorAll("select").forEach((select) => syncWorkspaceSelectState(select));
   ensureFieldLabelDecorations(createManagedUserForm);
   ensureFieldLabelDecorations(elements.accessUserGrid?.querySelector("#createOrganizationForm"));
   ensureFieldLabelDecorations(elements.accessUserGrid?.querySelector("#createConceptPaperForm"));
@@ -4286,8 +4320,14 @@ function injectAccessActionStrip(isMasterPortalView, organizations = []) {
 function decorateAccessWorkspaceUi(options = {}) {
   if (!elements.accessUserGrid) return;
   const { isMaster = false, organizations = [] } = options;
+  decorateWorkspacePanelView($("#accessView"), {
+    scrollTargets: [{ node: elements.accessUserGrid, tone: "wide" }],
+  });
+  elements.accessUserGrid.classList.add("workspace-board-stack");
   enhanceAccessCreateForms();
   injectAccessActionStrip(isMaster, organizations);
+  elements.accessUserGrid.querySelectorAll(".user-access-group-grid").forEach((grid) => grid.classList.add("workspace-card-grid"));
+  elements.accessUserGrid.querySelectorAll(".user-access-card").forEach((card) => card.classList.add("workspace-record-card"));
   if (isMaster) {
     modalizeAccessForm(elements.accessUserGrid.querySelector("#createOrganizationForm"), {
       modalId: "create-organization",
@@ -4335,6 +4375,7 @@ function enhanceOperationalCrudForms() {
     elements.programPopulationInput?.setAttribute("placeholder", "Ej. Adolescentes, mujeres y familias participantes.");
     elements.programFocusInput?.setAttribute("placeholder", "Describe el enfoque operativo, la promesa del programa y sus resultados esperados.");
     elements.programCentersInput?.setAttribute("placeholder", "Una linea por centro. Usa el formato: Provincia | Nombre del centro");
+    elements.programCrudForm.classList.add("workspace-form-stack");
     ensureFieldLabelDecorations(elements.programCrudForm);
   }
 
@@ -4342,6 +4383,7 @@ function enhanceOperationalCrudForms() {
     elements.programCenterNameInput?.setAttribute("placeholder", "Ej. Centro Agricola Monte Plata");
     ensureSelectPlaceholder(elements.programCenterProgramInput, "un programa");
     ensureSelectPlaceholder(elements.programCenterProvinceInput, "una provincia");
+    elements.programCenterForm.classList.add("workspace-form-stack");
     ensureFieldLabelDecorations(elements.programCenterForm);
   }
 }
@@ -4427,6 +4469,16 @@ function ensureWorkspaceSectionMarker(container, markerId, anchor, config = {}) 
 
 function decorateOperationalCrudUi() {
   enhanceOperationalCrudForms();
+  decorateWorkspacePanelView($("#programsView"), {
+    scrollTargets: [
+      { node: elements.programGrid, tone: "wide" },
+      { node: elements.programCenterGrid, tone: "wide" },
+      { node: elements.indicatorBoard, tone: "wide" },
+    ],
+  });
+  [elements.programGrid, elements.programCenterGrid, elements.indicatorBoard]
+    .filter(Boolean)
+    .forEach((node) => node.classList.add("workspace-board-stack"));
 
   const indicatorPanel = elements.indicatorBoard?.closest(".panel");
   if (indicatorPanel) {
@@ -4463,6 +4515,23 @@ function decorateOperationalCrudUi() {
       title: "Crear o editar programa",
       description: "Captura cobertura, enfoque y provincias en una sola ventana con validación clara.",
     });
+    const programGrid = elements.programCrudForm?.querySelector(".form-grid");
+    const coreAnchor = programGrid?.querySelector("label");
+    const coverageAnchor = elements.programPopulationInput?.closest("label");
+    if (programGrid instanceof HTMLElement && coreAnchor instanceof HTMLElement) {
+      ensureWorkspaceSectionMarker(programGrid, "program-core", coreAnchor, {
+        eyebrow: "1. Base del programa",
+        title: "Define identidad, liderazgo y capacidad",
+        description: "Registra el nombre, liderazgo y volumen estimado antes de bajar al detalle territorial.",
+      });
+    }
+    if (programGrid instanceof HTMLElement && coverageAnchor instanceof HTMLElement) {
+      ensureWorkspaceSectionMarker(programGrid, "program-coverage", coverageAnchor, {
+        eyebrow: "2. Cobertura y enfoque",
+        title: "Ordena provincias, poblacion y centros",
+        description: "Mantén la huella operativa del programa en un solo bloque para lectura y mantenimiento más rápidos.",
+      });
+    }
   }
 
   const centerPanel = elements.programCenterGrid?.closest(".panel");
@@ -4588,10 +4657,20 @@ function decorateChartsWorkspaceUi() {
 }
 
 function decorateAttendanceWorkspaceUi() {
-  if (!($("#attendanceView") instanceof HTMLElement)) return;
-  $("#attendanceView")?.classList.add("workspace-board-view");
+  const attendanceView = $("#attendanceView");
+  if (!(attendanceView instanceof HTMLElement)) return;
+  attendanceView.classList.add("workspace-board-view");
+  decorateWorkspacePanelView(attendanceView, {
+    scrollTargets: [
+      { node: elements.attendanceList, tone: "wide" },
+      { node: elements.attendanceChart, tone: "tight" },
+    ],
+  });
   ensureFieldLabelDecorations(elements.participantForm);
   elements.participantNameInput?.setAttribute("placeholder", "Ej. Maria Perez");
+  ensureSelectPlaceholder(elements.attendanceProgramSelect, "un programa");
+  ensureSelectPlaceholder(elements.attendanceCenterInput, "un centro");
+  attendanceView.querySelector(".attendance-controls")?.classList.add("workspace-inline-controls");
   const attendancePanel = elements.attendanceList?.closest(".panel");
   if (attendancePanel) {
     attendancePanel.classList.add("workspace-panel-emphasis");
@@ -4616,6 +4695,13 @@ function decorateDesignWorkspaceUi() {
   const designView = $("#designView");
   if (!(designView instanceof HTMLElement)) return;
   designView.classList.add("workspace-board-view");
+  decorateWorkspacePanelView(designView, {
+    scrollTargets: [
+      { node: $("#expectedResults"), tone: "tight" },
+      { node: $("#indicatorSuggestions"), tone: "tight" },
+    ],
+  });
+  syncWorkspaceSelectState(elements.designProgramSelect);
   designView.querySelectorAll(".result-list, .suggestion-list").forEach((node) => node.classList.add("workspace-board-stack"));
   const panels = designView.querySelectorAll(".panel");
   if (panels[0]) {
@@ -4640,6 +4726,12 @@ function decorateConceptWorkspaceUi() {
   const conceptView = $("#conceptsView");
   if (!(conceptView instanceof HTMLElement)) return;
   conceptView.classList.add("workspace-board-view");
+  decorateWorkspacePanelView(conceptView, {
+    scrollTargets: [
+      { node: elements.conceptPaperList, tone: "tight" },
+      { node: elements.conceptPaperDetail, tone: "tight" },
+    ],
+  });
   elements.conceptPaperList?.classList.add("workspace-board-stack");
   elements.conceptPaperDetail?.classList.add("workspace-board-stack", "concept-detail-surface");
   const panels = conceptView.querySelectorAll(".panel");

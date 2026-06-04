@@ -487,6 +487,23 @@ textarea {
   width: 100%;
 }
 
+select.workspace-select {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #7e90a2 50%),
+    linear-gradient(135deg, #7e90a2 50%, transparent 50%);
+  background-position:
+    calc(100% - 19px) calc(50% - 3px),
+    calc(100% - 13px) calc(50% - 3px);
+  background-repeat: no-repeat;
+  background-size: 6px 6px, 6px 6px;
+  padding-right: 38px;
+}
+
+select.workspace-select.is-placeholder-selected {
+  color: #8394a4;
+}
+
 .role-box select {
   background: rgba(255, 255, 255, 0.08);
   border-color: rgba(141, 215, 255, 0.22);
@@ -1356,6 +1373,52 @@ h3 {
   justify-content: space-between;
   margin-bottom: 0;
   min-width: 0;
+}
+
+.workspace-module-view {
+  align-content: start;
+}
+
+.workspace-panel-shell {
+  background: linear-gradient(180deg, #ffffff, #fbfcfd);
+  border: 1px solid #dbe4ec;
+  border-radius: 18px;
+}
+
+.workspace-panel-header {
+  border-bottom: 1px solid #edf2f6;
+  padding-bottom: 14px;
+}
+
+.workspace-inline-controls {
+  background: linear-gradient(180deg, #fcfdff, #f7fafc);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.workspace-scroll-surface {
+  align-content: start;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 6px;
+}
+
+.workspace-scroll-surface-wide {
+  max-height: min(64vh, 760px);
+}
+
+.workspace-scroll-surface-tight {
+  max-height: min(52vh, 620px);
+}
+
+.workspace-card-grid {
+  align-items: start;
+}
+
+.workspace-record-card {
+  background: linear-gradient(180deg, #ffffff, #fbfcfd);
+  border-color: #dde6ee;
 }
 
 .status-pill {
