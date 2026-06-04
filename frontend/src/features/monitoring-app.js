@@ -521,6 +521,76 @@ function ensureSelectPlaceholder(select, label = "una opcion") {
   syncWorkspaceSelectState(select);
 }
 
+function workspaceFieldContainer(control) {
+  if (!(control instanceof HTMLElement)) return null;
+  return control.closest("label, .evidence-field, .chat-attachment-field, .access-chip.access-wide");
+}
+
+function syncWorkspaceFieldState(control, options = {}) {
+  if (!(control instanceof HTMLElement)) return;
+  if (control instanceof HTMLInputElement && ["hidden", "checkbox", "radio"].includes(control.type)) return;
+  const { force = false } = options;
+  const form = control.closest("form");
+  const wrapper = workspaceFieldContainer(control);
+  const canValidate = typeof control.checkValidity === "function";
+  const shouldShow = force || control.dataset.validationTouched === "true" || form?.classList.contains("is-validation-visible");
+  if (!canValidate) return;
+  const valueText = "value" in control ? String(control.value || "").trim() : "";
+  const isInvalid = shouldShow && !control.checkValidity();
+  const isValid = shouldShow && !isInvalid && valueText.length > 0;
+  control.classList.toggle("workspace-control-invalid", isInvalid);
+  control.classList.toggle("workspace-control-valid", isValid);
+  wrapper?.classList.toggle("workspace-field-invalid", isInvalid);
+  wrapper?.classList.toggle("workspace-field-valid", isValid);
+  if (isInvalid && control.validationMessage) {
+    wrapper?.setAttribute("data-field-message", control.validationMessage);
+  } else {
+    wrapper?.removeAttribute("data-field-message");
+  }
+}
+
+function enhanceWorkspaceFormFeedback(form) {
+  if (!(form instanceof HTMLFormElement)) return;
+  form.classList.add("workspace-form-shell");
+  const controls = Array.from(form.querySelectorAll("input, select, textarea"));
+  controls.forEach((control) => {
+    if (control instanceof HTMLSelectElement) syncWorkspaceSelectState(control);
+    syncWorkspaceFieldState(control);
+  });
+  if (form.dataset.workspaceValidationBound === "true") return;
+  form.addEventListener(
+    "invalid",
+    (event) => {
+      const control = event.target;
+      if (!(control instanceof HTMLElement)) return;
+      form.classList.add("is-validation-visible");
+      control.dataset.validationTouched = "true";
+      syncWorkspaceFieldState(control, { force: true });
+    },
+    true,
+  );
+  form.addEventListener("input", (event) => {
+    const control = event.target;
+    if (!(control instanceof HTMLElement)) return;
+    if (control.dataset.validationTouched === "true" || form.classList.contains("is-validation-visible")) {
+      syncWorkspaceFieldState(control, { force: true });
+    }
+  });
+  form.addEventListener("change", (event) => {
+    const control = event.target;
+    if (!(control instanceof HTMLElement)) return;
+    control.dataset.validationTouched = "true";
+    syncWorkspaceFieldState(control, { force: true });
+  });
+  form.addEventListener("focusout", (event) => {
+    const control = event.target;
+    if (!(control instanceof HTMLElement)) return;
+    control.dataset.validationTouched = "true";
+    syncWorkspaceFieldState(control, { force: true });
+  });
+  form.dataset.workspaceValidationBound = "true";
+}
+
 function syncWorkspaceSelectState(select) {
   if (!(select instanceof HTMLSelectElement)) return;
   select.classList.add("workspace-select");
@@ -577,6 +647,7 @@ function modalizeWorkspaceForm(form, mountTarget, config = {}) {
     </div>
   `;
   form.classList.add("modalized-form");
+  enhanceWorkspaceFormFeedback(form);
   shell.querySelector(".app-modal-scroll")?.append(form);
   mountTarget.append(shell);
 }
@@ -1302,6 +1373,90 @@ function renderRisks() {
 
 function renderReports() {
   const reports = getFilteredReports().slice().sort((a, b) => b.date.localeCompare(a.date));
+  const lastReport = reports[0] || null;
+  const approvedCount = reports.filter((report) => isApprovedReportStatus(report.status)).length;
+  const pendingCount = reports.filter((report) => isPendingApprovalStatus(report.status)).length;
+  const rejectedCount = reports.filter((report) => String(report.status || "").toLowerCase() === "devuelto").length;
+  const totalReportedValue = reports.reduce((sum, report) => sum + Number(report.value || 0), 0);
+  const uniquePrograms = new Set(reports.map((report) => String(report.program || "").trim()).filter(Boolean)).size;
+  const overviewCards = [
+    {
+      label: "Ultima captura",
+      value: lastReport ? formatRelativeTimestamp(lastReport.date) : "Sin datos",
+      meta: lastReport ? `${lastReport.program} - ${lastReport.owner || "Sin responsable"}` : "Todavia no hay reportes visibles",
+      tone: "info",
+    },
+    {
+      label: "Pendientes",
+      value: String(pendingCount),
+      meta: pendingCount ? "esperando revision o aprobacion" : "sin cola operativa",
+      tone: pendingCount ? "warning" : "good",
+    },
+    {
+      label: "Programas activos",
+      value: String(uniquePrograms),
+      meta: uniquePrograms ? "con actividad en los filtros actuales" : "sin movimiento visible",
+      tone: "neutral",
+    },
+    {
+      label: "Valor reportado",
+      value: totalReportedValue.toLocaleString("es-DO"),
+      meta: `${approvedCount} aprobados - ${rejectedCount} devueltos`,
+      tone: approvedCount > 0 ? "good" : "neutral",
+    },
+  ];
+
+  if (elements.activityOverviewGrid) {
+    elements.activityOverviewGrid.innerHTML = overviewCards
+      .map(
+        (card) => `
+          <article class="activity-overview-card ${card.tone}">
+            <p class="eyebrow">${escapeHtml(card.label)}</p>
+            <div class="activity-overview-value">${escapeHtml(card.value)}</div>
+            <p class="item-meta">${escapeHtml(card.meta)}</p>
+          </article>
+        `,
+      )
+      .join("");
+  }
+
+  if (elements.recentActivityFeed) {
+    elements.recentActivityFeed.innerHTML = reports.length
+      ? reports
+          .slice(0, 5)
+          .map((report) => {
+            const indicator = indicatorById(report.indicatorId);
+            const ownerLabel = String(report.owner || "Sin responsable").trim();
+            const evidenceLabel = String(report.evidence || "").trim() || "Sin evidencia";
+            const statusClass = classForReportStatus(report.status);
+            return `
+              <article class="activity-feed-card">
+                <div class="activity-feed-top">
+                  <div class="activity-person">
+                    <span class="activity-avatar">${escapeHtml(initialsFromLabel(ownerLabel))}</span>
+                    <div class="activity-copy">
+                      <strong>${escapeHtml(ownerLabel)}</strong>
+                      <span class="item-meta">${escapeHtml(report.program || "Programa")}</span>
+                    </div>
+                  </div>
+                  <span class="status-pill ${escapeHtml(statusClass)}">${escapeHtml(report.status || "Sin estado")}</span>
+                </div>
+                <div class="activity-feed-body">
+                  <strong>${escapeHtml(indicator?.name || "Indicador eliminado")}</strong>
+                  <p class="item-meta">${escapeHtml(reportLocation(report) || report.program || "Cobertura general")}</p>
+                </div>
+                <div class="activity-feed-meta">
+                  <span class="activity-feed-chip">Valor: ${escapeHtml(Number(report.value || 0).toLocaleString("es-DO"))}</span>
+                  <span class="activity-feed-chip">${escapeHtml(evidenceLabel)}</span>
+                  <span class="activity-feed-chip">${escapeHtml(formatShortDateTime(report.date))}</span>
+                </div>
+              </article>
+            `;
+          })
+          .join("")
+      : `<article class="activity-feed-empty"><p class="item-meta">Todavia no hay actividad reciente para mostrar.</p></article>`;
+  }
+
   if (!reports.length) {
     elements.recentReports.innerHTML = `
       <tr>
@@ -1926,10 +2081,14 @@ function renderConceptPapers() {
           ? `<button class="ghost-link" data-open-concept-document="${escapeHtml(paper.id)}" type="button">${openLabel}</button>`
           : `<span class="item-meta">Sin archivo</span>`;
         return `
-        <article class="concept-card ${paper.id === activePaper?.id ? "active" : ""}">
-          <div>
+        <article class="concept-card workspace-library-row ${paper.id === activePaper?.id ? "active" : ""}">
+          <div class="workspace-library-copy">
             <p class="eyebrow">${paper.year} · ${paper.status}</p>
             <h3>${paper.title}</h3>
+            <div class="workspace-inline-metrics">
+              <span>${paper.fileName || "Sin archivo"}</span>
+              <span>${paper.beneficiaries || "Sin meta declarada"}</span>
+            </div>
             <p class="item-meta">${paper.program} · ${paper.presenter}</p>
           </div>
           <div class="concept-actions">
@@ -1956,10 +2115,14 @@ function renderConceptPapers() {
             ? `<button class="ghost-link" data-open-program-manual="${escapeHtml(manual.id)}" type="button">Abrir PDF</button>`
             : `<span class="item-meta">Sin archivo</span>`;
           return `
-            <article class="concept-card">
-              <div>
+            <article class="concept-card workspace-library-row">
+              <div class="workspace-library-copy">
                 <p class="eyebrow">${escapeHtml(manual.year || "")} · Manual · Version ${escapeHtml(manual.version || "1.0")}</p>
                 <h3>${escapeHtml(manual.title || manual.fileName || "Manual de programa")}</h3>
+                <div class="workspace-inline-metrics">
+                  <span>Biblioteca operativa</span>
+                  <span>${escapeHtml(manual.notes || "PDF institucional")}</span>
+                </div>
                 <p class="item-meta">${escapeHtml(manual.program || "Programa")} · ${escapeHtml(manual.fileName || "manual.pdf")}</p>
               </div>
               <div class="concept-actions">
@@ -2333,7 +2496,13 @@ function renderAttendance() {
             const radioName = `attendance-${participantId}`;
             return `
             <div class="attendance-row" data-attendance-row="${participantId}">
-              <span>${escapeHtml(entry.name)}</span>
+              <div class="workspace-identity-cell">
+                <span class="workspace-identity-badge">${initialsFromLabel(entry.name)}</span>
+                <div class="workspace-library-copy">
+                  <strong>${escapeHtml(entry.name)}</strong>
+                  <span class="item-meta">${escapeHtml(state.attendanceProgram)} &middot; ${escapeHtml(attendanceCenterValue())}</span>
+                </div>
+              </div>
               <div class="attendance-choice-group" role="radiogroup" aria-label="Asistencia de ${escapeHtml(entry.name)}">
                 ${["present", "absent", "excused"]
                   .map(
@@ -2385,18 +2554,20 @@ function renderDesignStudio() {
   const suggestions = buildSuggestedIndicators(program);
 
   elements.expectedResults.innerHTML = `
-    <article class="program-summary">
+    <article class="program-summary workspace-record-card">
       <h3>${program.name}</h3>
       <p>${program.focus}</p>
       <div class="coverage">
         <span>${program.primaryPopulation}</span>
         <span>${program.provinces.join(", ")}</span>
+        <span>${program.beneficiaries.toLocaleString("es-DO")} meta</span>
+        <span>${registeredCenters().filter((center) => center.program === program.name).length} centros</span>
       </div>
     </article>
     ${program.expectedResults
       .map(
         (result, index) => `
-          <article class="result-item">
+          <article class="result-item workspace-record-card">
             <span class="result-number">${index + 1}</span>
             <p>${result}</p>
           </article>
@@ -2408,9 +2579,13 @@ function renderDesignStudio() {
   elements.indicatorSuggestions.innerHTML = suggestions
     .map(
       (indicator) => `
-        <article class="suggestion-item">
-          <div>
+        <article class="suggestion-item workspace-record-card">
+          <div class="workspace-library-copy">
             <h3>${indicator.name}</h3>
+            <div class="workspace-inline-metrics">
+              <span>${indicator.unit}</span>
+              <span>Meta ${indicator.target.toLocaleString("es-DO")}</span>
+            </div>
             <p class="item-meta">${indicator.source} · Meta sugerida: ${indicator.target.toLocaleString("es-DO")} ${indicator.unit}</p>
           </div>
           <span class="status-pill neutral">${indicator.owner}</span>
@@ -2678,15 +2853,20 @@ function renderPrograms() {
         indicators.reduce((sum, indicator) => sum + indicator.target, 0),
       );
       return `
-        <article class="program-item">
+        <article class="program-item workspace-record-card workspace-program-card">
           <div class="program-top">
-            <div>
+            <div class="workspace-library-copy">
               <h3>${program.name}</h3>
               <p class="item-meta">Lider: ${program.lead}</p>
             </div>
             <span class="status-pill ${statusForProgress(progress)}">${progress}%</span>
           </div>
           <p>${program.focus}</p>
+          <div class="workspace-inline-metrics">
+            <span>${indicators.length} indicadores</span>
+            <span>${registeredCenters().filter((center) => center.program === program.name).length} centros</span>
+            <span>${program.beneficiaries.toLocaleString("es-DO")} meta</span>
+          </div>
           <div class="result-preview">
             ${(program.expectedResults || []).slice(0, 2).map((result) => `<span>${result}</span>`).join("")}
           </div>
@@ -2717,6 +2897,63 @@ function renderProgramCenters() {
   }
 
   const centers = registeredCenters();
+  if (!centers.length) {
+    elements.programCenterGrid.innerHTML = `<p class="item-meta">Todavia no hay centros registrados.</p>`;
+    return;
+  }
+  elements.programCenterGrid.innerHTML = `
+    <div class="table-wrap workspace-table-wrap">
+      <table class="workspace-data-table">
+        <thead>
+          <tr>
+            <th>Programa</th>
+            <th>Provincia</th>
+            <th>Centro</th>
+            <th>Tipo</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${centers
+            .map(
+              (center) => `
+                <tr>
+                  <td>
+                    <div class="workspace-library-copy">
+                      <strong>${escapeHtml(center.program)}</strong>
+                      <span class="item-meta">Cobertura activa</span>
+                    </div>
+                  </td>
+                  <td>${escapeHtml(center.province)}</td>
+                  <td>${escapeHtml(center.name)}</td>
+                  <td><span class="status-pill neutral">Centro</span></td>
+                  <td>
+                    <div class="item-actions workspace-actions-inline">
+                      ${
+                        canManage
+                          ? `
+                            <button type="button" data-edit-program-center="${escapeHtml(center.id)}">Editar</button>
+                            <button
+                              type="button"
+                              data-delete-program-center="${escapeHtml(center.id)}"
+                              data-delete-program-center-program="${escapeHtml(center.program)}"
+                              data-delete-program-center-province="${escapeHtml(center.province)}"
+                              data-delete-program-center-name="${escapeHtml(center.name)}"
+                            >Eliminar</button>
+                          `
+                          : `<span class="item-meta">Solo lectura</span>`
+                      }
+                    </div>
+                  </td>
+                </tr>
+              `,
+            )
+            .join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+  return;
   elements.programCenterGrid.innerHTML = centers.length
     ? centers
         .map(
@@ -4277,6 +4514,7 @@ function modalizeAccessForm(form, config = {}) {
     </div>
   `;
   form.classList.add("modalized-form");
+  enhanceWorkspaceFormFeedback(form);
   shell.querySelector(".app-modal-scroll")?.append(form);
   elements.accessUserGrid?.append(shell);
 }
@@ -4328,6 +4566,7 @@ function decorateAccessWorkspaceUi(options = {}) {
   injectAccessActionStrip(isMaster, organizations);
   elements.accessUserGrid.querySelectorAll(".user-access-group-grid").forEach((grid) => grid.classList.add("workspace-card-grid"));
   elements.accessUserGrid.querySelectorAll(".user-access-card").forEach((card) => card.classList.add("workspace-record-card"));
+  elements.accessUserGrid.querySelectorAll("form").forEach((form) => enhanceWorkspaceFormFeedback(form));
   if (isMaster) {
     modalizeAccessForm(elements.accessUserGrid.querySelector("#createOrganizationForm"), {
       modalId: "create-organization",

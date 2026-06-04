@@ -339,32 +339,44 @@
             </section>
           </div>
 
-          <section class="panel">
+          <section class="panel activity-panel">
             <div class="panel-header">
               <div>
-                <p class="eyebrow">Reportes recientes</p>
-                <h2>Actividad de campo</h2>
+                <p class="eyebrow">Actividad reciente</p>
+                <h2>Operacion y captura mas reciente</h2>
               </div>
               <button class="ghost-action" id="exportButton" type="button">
                 <span aria-hidden="true">⇩</span>
                 Exportar CSV
               </button>
             </div>
-            <div class="table-wrap activity-table-wrap">
-              <table class="activity-table">
-                <thead>
-                  <tr>
-                    <th>Quien</th>
-                    <th>Actividad</th>
-                    <th>Recurso</th>
-                    <th>Valor</th>
-                    <th>Estado</th>
-                    <th>Cuando</th>
-                    <th>Acciones</th>
-                  </tr>
-                </thead>
-                <tbody id="recentReports"></tbody>
-              </table>
+            <div class="activity-overview-grid" id="activityOverviewGrid"></div>
+            <div class="activity-surface">
+              <section class="activity-feed-panel">
+                <div class="activity-feed-head">
+                  <div>
+                    <p class="eyebrow">Seguimiento</p>
+                    <h3>Lectura operativa</h3>
+                  </div>
+                </div>
+                <div class="activity-feed" id="recentActivityFeed"></div>
+              </section>
+              <div class="table-wrap activity-table-wrap">
+                <table class="activity-table">
+                  <thead>
+                    <tr>
+                      <th>Quien</th>
+                      <th>Actividad</th>
+                      <th>Recurso</th>
+                      <th>Valor</th>
+                      <th>Estado</th>
+                      <th>Cuando</th>
+                      <th>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody id="recentReports"></tbody>
+                </table>
+              </div>
             </div>
           </section>
         </section>

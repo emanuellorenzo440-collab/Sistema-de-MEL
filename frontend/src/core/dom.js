@@ -132,6 +132,8 @@ export const elements = {
   clearAttendanceParticipantsButton: $("#clearAttendanceParticipantsButton"),
   resetAttendanceProgramButton: $("#resetAttendanceProgramButton"),
   attendanceChart: $("#attendanceChart"),
+  activityOverviewGrid: $("#activityOverviewGrid"),
+  recentActivityFeed: $("#recentActivityFeed"),
   conceptCount: $("#conceptCount"),
   conceptPaperList: $("#conceptPaperList"),
   conceptDetailTitle: $("#conceptDetailTitle"),
