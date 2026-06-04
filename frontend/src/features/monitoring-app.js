@@ -547,6 +547,34 @@ function modalizeWorkspaceForm(form, mountTarget, config = {}) {
   mountTarget.append(shell);
 }
 
+function modalizeWorkspaceSection(section, mountTarget, config = {}) {
+  if (!(section instanceof HTMLElement) || section.closest("[data-access-modal]")) return;
+  if (!(mountTarget instanceof HTMLElement)) return;
+  const { modalId, eyebrow = "", title = "", description = "" } = config;
+  if (!modalId) return;
+  const shell = document.createElement("section");
+  shell.className = "app-modal-shell hidden";
+  shell.dataset.accessModal = modalId;
+  shell.setAttribute("aria-hidden", "true");
+  shell.innerHTML = `
+    <div class="app-modal-backdrop" data-close-access-modal="${escapeHtml(modalId)}"></div>
+    <div class="app-modal-card" role="dialog" aria-modal="true" aria-labelledby="${escapeHtml(modalId)}Title">
+      <div class="app-modal-header">
+        <div>
+          ${eyebrow ? `<p class="eyebrow">${escapeHtml(eyebrow)}</p>` : ""}
+          <h3 id="${escapeHtml(modalId)}Title" class="app-modal-title">${escapeHtml(title)}</h3>
+          ${description ? `<p class="item-meta app-modal-description">${escapeHtml(description)}</p>` : ""}
+        </div>
+        <button class="icon-button" type="button" data-close-access-modal="${escapeHtml(modalId)}" aria-label="Cerrar ventana">&times;</button>
+      </div>
+      <div class="app-modal-scroll"></div>
+    </div>
+  `;
+  section.classList.add("modalized-section");
+  shell.querySelector(".app-modal-scroll")?.append(section);
+  mountTarget.append(shell);
+}
+
 function reportParticipantValue(report = {}, fieldKey = "") {
   const breakdown = report?.participantBreakdown || {};
   if (fieldKey === "adolescents") {
@@ -1718,6 +1746,15 @@ function renderIndicators() {
       ? state.indicators
       : state.indicators.filter((indicator) => indicator.program === state.filters.program);
 
+  if (!programIndicators.length) {
+    elements.indicatorBoard.innerHTML = `<p class="item-meta">${
+      state.filters.program === "Todos"
+        ? "Todavia no hay indicadores registrados. Crea el primero para empezar el seguimiento."
+        : `Todavia no hay indicadores para ${escapeHtml(state.filters.program)}.`
+    }</p>`;
+    return;
+  }
+
   elements.indicatorBoard.innerHTML = programIndicators
     .map((indicator) => {
       const progress = percent(indicator.value, indicator.target);
@@ -2556,6 +2593,10 @@ function renderActions() {
 
 function renderPrograms() {
   decorateOperationalCrudUi();
+  if (!state.programs.length) {
+    elements.programGrid.innerHTML = `<p class="item-meta">Todavia no hay programas registrados. Crea uno para habilitar reportes, indicadores y centros.</p>`;
+    return;
+  }
   elements.programGrid.innerHTML = state.programs
     .map((program) => {
       const indicators = state.indicators.filter((indicator) => indicator.program === program.name);
@@ -2779,6 +2820,7 @@ function renderAccessWorkspace(options = {}) {
     return;
   }
   const renderRequest = ++accessRenderRequest;
+  elements.accessUserGrid.innerHTML = `<p class="item-meta">Cargando accesos y organizaciones...</p>`;
 
   void (async () => {
     const isMaster = isMasterPortal();
@@ -4172,6 +4214,39 @@ function injectOperationalActionStrip(panel, config = {}) {
   }
 }
 
+function injectWorkspaceSummaryStrip(panel, stripId, config = {}) {
+  if (!(panel instanceof HTMLElement) || !stripId) return;
+  panel.querySelector(`[data-workspace-strip="${stripId}"]`)?.remove();
+  const {
+    eyebrow = "",
+    title = "",
+    description = "",
+    primaryLabel = "",
+    modalId = "",
+    tone = "primary-action",
+    compact = false,
+  } = config;
+  const strip = document.createElement("section");
+  strip.className = `access-action-strip workspace-summary-strip${compact ? " compact" : ""}`;
+  strip.dataset.workspaceStrip = stripId;
+  strip.innerHTML = `
+    <div>
+      ${eyebrow ? `<p class="eyebrow">${escapeHtml(eyebrow)}</p>` : ""}
+      ${title ? `<h2>${escapeHtml(title)}</h2>` : ""}
+      ${description ? `<p class="item-meta">${escapeHtml(description)}</p>` : ""}
+    </div>
+    <div class="item-actions wrap">
+      ${primaryLabel && modalId ? `<button class="${escapeHtml(tone)}" type="button" data-open-access-modal="${escapeHtml(modalId)}">${escapeHtml(primaryLabel)}</button>` : ""}
+    </div>
+  `;
+  const target = panel.querySelector(".panel-header");
+  if (target) {
+    target.insertAdjacentElement("afterend", strip);
+  } else {
+    panel.prepend(strip);
+  }
+}
+
 function decorateOperationalCrudUi() {
   enhanceOperationalCrudForms();
 
@@ -4230,6 +4305,134 @@ function decorateOperationalCrudUi() {
       eyebrow: "Centros",
       title: "Crear o editar centro",
       description: "Relaciona centro, programa y provincia desde un popup consistente con el resto del sistema.",
+    });
+  }
+}
+
+function decorateReportWorkspaceUi() {
+  if (!(elements.reportForm instanceof HTMLFormElement)) return;
+  ensureFieldLabelDecorations(elements.reportForm);
+  elements.reportOwner?.setAttribute("placeholder", "Ej. L Lorenzo");
+  $("#reportValue")?.setAttribute("placeholder", "0");
+  elements.reportNotes?.setAttribute("placeholder", "Hallazgos, retos, acuerdos o alertas relevantes para seguimiento.");
+  ensureSelectPlaceholder(elements.reportProgram, "un programa");
+  ensureSelectPlaceholder(elements.reportProvince, "una provincia");
+  ensureSelectPlaceholder(elements.reportCenter, "un centro");
+  ensureSelectPlaceholder(elements.reportIndicator, "un indicador");
+  elements.reportForm.classList.add("workspace-form-stack", "report-form-shell");
+  const reportGrid = elements.reportForm.querySelector(".form-grid");
+  reportGrid?.classList.add("report-form-grid");
+  [elements.reportWomenField, elements.reportMenField, elements.reportAdolescentsField, elements.reportChildrenField]
+    .filter(Boolean)
+    .forEach((field) => field.classList.add("report-participant-field"));
+  [elements.reportEvidenceNoteGroup, elements.reportEvidenceLinkGroup, elements.reportEvidenceUploadGroup, elements.reportDocumentSection]
+    .filter(Boolean)
+    .forEach((field) => field.classList.add("report-support-card"));
+  const primaryPanel = elements.reportForm.querySelector(".panel");
+  if (primaryPanel) {
+    injectWorkspaceSummaryStrip(primaryPanel, "report-primary", {
+      eyebrow: "Captura guiada",
+      title: "Completa el reporte con evidencia y soporte final",
+      description: "Usa el formulario principal para el dato operativo y abre el asistente cuando quieras cargar formularios completos o borradores.",
+      primaryLabel: "Asistente de formularios",
+      modalId: "report-assistant-modal",
+      compact: true,
+    });
+  }
+  if (elements.reportAssistantPanel) {
+    modalizeWorkspaceSection(elements.reportAssistantPanel, elements.reportForm, {
+      modalId: "report-assistant-modal",
+      eyebrow: "Asistente de formularios",
+      title: "Subir y autocompletar reportes",
+      description: "Carga formularios completos, revisa borradores y envíalos a revisión sin salir del flujo principal.",
+    });
+  }
+}
+
+function decorateChartsWorkspaceUi() {
+  const chartView = $("#chartsView");
+  if (!(chartView instanceof HTMLElement)) return;
+  chartView.classList.add("analytics-view-shell");
+  const filterPanel = chartView.querySelector(".panel");
+  if (filterPanel) {
+    injectWorkspaceSummaryStrip(filterPanel, "charts-filter", {
+      eyebrow: "Exploración ejecutiva",
+      title: "Configura la lectura visual de tus reportes",
+      description: "Ajusta la base analítica y el tipo de gráfico antes de pasar a la comparación por indicadores, periodos y programas.",
+      compact: true,
+    });
+  }
+  chartView.querySelectorAll(".chart-stack, .stats-grid, .analysis-bot-list, .submission-list").forEach((node) => {
+    node.classList.add("workspace-board-stack");
+  });
+}
+
+function decorateAttendanceWorkspaceUi() {
+  if (!($("#attendanceView") instanceof HTMLElement)) return;
+  ensureFieldLabelDecorations(elements.participantForm);
+  elements.participantNameInput?.setAttribute("placeholder", "Ej. Maria Perez");
+  const attendancePanel = elements.attendanceList?.closest(".panel");
+  if (attendancePanel) {
+    injectWorkspaceSummaryStrip(attendancePanel, "attendance-main", {
+      eyebrow: "Operacion semanal",
+      title: "Control de asistencia por programa",
+      description: "Organiza la captura semanal con filtros arriba y registra nuevos participantes desde un popup dedicado.",
+      primaryLabel: "Nuevo participante",
+      modalId: "attendance-participant-modal",
+      compact: true,
+    });
+    modalizeWorkspaceForm(elements.participantForm, attendancePanel, {
+      modalId: "attendance-participant-modal",
+      eyebrow: "Asistencia",
+      title: "Agregar participante",
+      description: "Registra un nuevo nombre en la lista del programa sin perder la semana actual ni el contexto de asistencia.",
+    });
+  }
+}
+
+function decorateDesignWorkspaceUi() {
+  const designView = $("#designView");
+  if (!(designView instanceof HTMLElement)) return;
+  designView.classList.add("workspace-board-view");
+  designView.querySelectorAll(".result-list, .suggestion-list").forEach((node) => node.classList.add("workspace-board-stack"));
+  const panels = designView.querySelectorAll(".panel");
+  if (panels[0]) {
+    injectWorkspaceSummaryStrip(panels[0], "design-results", {
+      eyebrow: "Marco del programa",
+      title: "Resultados esperados",
+      description: "Resume foco, población objetivo y resultados para construir una matriz M&E más consistente.",
+      compact: true,
+    });
+  }
+  if (panels[1]) {
+    injectWorkspaceSummaryStrip(panels[1], "design-suggestions", {
+      eyebrow: "Sugerencias automáticas",
+      title: "Indicadores sugeridos",
+      description: "Usa estas propuestas como punto de partida antes de crear o ajustar indicadores del programa.",
+      compact: true,
+    });
+  }
+}
+
+function decorateConceptWorkspaceUi() {
+  const conceptView = $("#conceptsView");
+  if (!(conceptView instanceof HTMLElement)) return;
+  conceptView.classList.add("workspace-board-view");
+  const panels = conceptView.querySelectorAll(".panel");
+  if (panels[0]) {
+    injectWorkspaceSummaryStrip(panels[0], "concept-library", {
+      eyebrow: "Biblioteca operativa",
+      title: "Documentos por programa",
+      description: "Consulta concept papers y manuales desde una biblioteca más clara, pensada para exploración y uso rápido.",
+      compact: true,
+    });
+  }
+  if (panels[1]) {
+    injectWorkspaceSummaryStrip(panels[1], "concept-detail", {
+      eyebrow: "Lectura técnica",
+      title: "Resumen del documento activo",
+      description: "Revisa el alcance del documento y, cuando aplique, úsalo como base para Diseño M&E.",
+      compact: true,
     });
   }
 }
@@ -4409,6 +4612,43 @@ function showToast(message) {
   elements.toast.textContent = message;
   elements.toast.classList.add("show");
   window.setTimeout(() => elements.toast.classList.remove("show"), 2600);
+}
+
+function submitButtonForForm(form) {
+  if (!(form instanceof HTMLFormElement)) return null;
+  return form.querySelector('button[type="submit"], input[type="submit"]');
+}
+
+function resolveBusyControl(control) {
+  if (control instanceof HTMLFormElement) return submitButtonForForm(control);
+  return control instanceof HTMLButtonElement || control instanceof HTMLInputElement ? control : null;
+}
+
+function setBusyState(control, pendingText = "") {
+  const target = resolveBusyControl(control);
+  if (!target) return () => {};
+  const originalText = target.textContent;
+  const originalValue = "value" in target ? target.value : "";
+  const originalDisabled = Boolean(target.disabled);
+  target.disabled = true;
+  target.dataset.busy = "true";
+  if (pendingText) {
+    if ("value" in target && target instanceof HTMLInputElement) target.value = pendingText;
+    else target.textContent = pendingText;
+  }
+  return () => {
+    target.disabled = originalDisabled;
+    delete target.dataset.busy;
+    if ("value" in target && target instanceof HTMLInputElement) target.value = originalValue;
+    else target.textContent = originalText;
+  };
+}
+
+function setBusyStateForElements(items = [], pendingText = "") {
+  const restores = items
+    .map((item) => setBusyState(item, pendingText))
+    .filter((restore) => typeof restore === "function");
+  return () => restores.slice().reverse().forEach((restore) => restore());
 }
 
 function createLocalReviewNotifications(report) {
@@ -5709,7 +5949,9 @@ function renderChatWorkspace() {
           },
         )
         .join("")
-    : `<div class="chat-empty-state">No hay conversaciones todavia.</div>`;
+    : `<div class="chat-empty-state">${
+        chatSyncInFlight ? "Cargando conversaciones..." : "No hay conversaciones todavia."
+      }</div>`;
 
   elements.chatConversationTitle.textContent = activeConversation ? chatConversationTitle(activeConversation) : "Selecciona una conversacion";
   elements.chatConversationMeta.textContent = activeConversation
@@ -5830,7 +6072,13 @@ function renderChatWorkspace() {
             },
           )
           .join("")
-      : `<div class="chat-empty-state">${normalizedQuery || activeChatMessageFilters().senderUserId || activeChatMessageFilters().hasAttachments !== "all" || activeChatMessageFilters().date ? "No hay mensajes que coincidan con los filtros." : "Todavia no hay mensajes en esta conversacion."}</div>`
+      : `<div class="chat-empty-state">${
+          normalizedQuery || activeChatMessageFilters().senderUserId || activeChatMessageFilters().hasAttachments !== "all" || activeChatMessageFilters().date
+            ? "No hay mensajes que coincidan con los filtros."
+            : chatSyncInFlight
+              ? "Cargando mensajes..."
+              : "Todavia no hay mensajes en esta conversacion."
+        }</div>`
     : `<div class="chat-empty-state">Selecciona una conversacion para ver mensajes.</div>`;
 
   if (elements.chatComposerInput) {
@@ -6424,21 +6672,26 @@ async function deleteActiveChatConversation() {
   }
   const confirmed = window.confirm("Este chat se eliminara de la lista activa para todos los participantes. Deseas continuar?");
   if (!confirmed) return;
+  const releaseBusy = setBusyState(elements.chatDeleteButton, "Eliminando chat...");
   stopChatTyping({ conversationId: conversation.id });
-  await deleteApiChatConversation(conversation.id);
-  chatReplyMessageId = "";
-  if (state.chatPresenceByConversation?.[conversation.id]) {
-    delete state.chatPresenceByConversation[conversation.id];
+  try {
+    await deleteApiChatConversation(conversation.id);
+    chatReplyMessageId = "";
+    if (state.chatPresenceByConversation?.[conversation.id]) {
+      delete state.chatPresenceByConversation[conversation.id];
+    }
+    await refreshChatFromApi({ includeMessages: false });
+    if (state.chatActiveConversationId === conversation.id) {
+      state.chatActiveConversationId = state.chatConversations[0]?.id || "";
+    }
+    if (state.chatActiveConversationId) {
+      await loadChatConversation(state.chatActiveConversationId, { markRead: true });
+    }
+    renderChatWorkspace();
+    showToast(`Chat "${chatConversationTitle(conversation)}" eliminado.`);
+  } finally {
+    releaseBusy();
   }
-  await refreshChatFromApi({ includeMessages: false });
-  if (state.chatActiveConversationId === conversation.id) {
-    state.chatActiveConversationId = state.chatConversations[0]?.id || "";
-  }
-  if (state.chatActiveConversationId) {
-    await loadChatConversation(state.chatActiveConversationId, { markRead: true });
-  }
-  renderChatWorkspace();
-  showToast("Chat eliminado.");
 }
 
 function canRenameActiveChatConversation(conversation = activeChatConversation()) {
@@ -6484,19 +6737,24 @@ async function leaveActiveChatConversation() {
   }
   const confirmed = window.confirm("Saldras de este chat y dejara de aparecer en tu lista activa. Deseas continuar?");
   if (!confirmed) return;
+  const releaseBusy = setBusyState(elements.chatLeaveButton, "Saliendo...");
   stopChatTyping({ conversationId: conversation.id });
-  await removeApiChatParticipant(conversation.id, currentUser?.id);
-  clearChatReplyTarget();
-  if (state.chatPresenceByConversation?.[conversation.id]) {
-    delete state.chatPresenceByConversation[conversation.id];
+  try {
+    await removeApiChatParticipant(conversation.id, currentUser?.id);
+    clearChatReplyTarget();
+    if (state.chatPresenceByConversation?.[conversation.id]) {
+      delete state.chatPresenceByConversation[conversation.id];
+    }
+    await refreshChatFromApi({ includeMessages: false });
+    state.chatActiveConversationId = state.chatConversations[0]?.id || "";
+    if (state.chatActiveConversationId) {
+      await loadChatConversation(state.chatActiveConversationId, { markRead: true });
+    }
+    renderChatWorkspace();
+    showToast(`Saliste de ${chatConversationTitle(conversation)}.`);
+  } finally {
+    releaseBusy();
   }
-  await refreshChatFromApi({ includeMessages: false });
-  state.chatActiveConversationId = state.chatConversations[0]?.id || "";
-  if (state.chatActiveConversationId) {
-    await loadChatConversation(state.chatActiveConversationId, { markRead: true });
-  }
-  renderChatWorkspace();
-  showToast("Saliste del chat.");
 }
 
 async function sendCurrentChatMessage() {
@@ -6517,10 +6775,7 @@ async function sendCurrentChatMessage() {
     return;
   }
   chatMessageSendInFlight = true;
-  const submitButton = elements.chatComposerForm?.querySelector('button[type="submit"]');
-  if (submitButton) {
-    submitButton.disabled = true;
-  }
+  const releaseBusy = setBusyState(elements.chatComposerForm, chatEditingMessageId ? "Guardando..." : "Enviando...");
   try {
     const editingTarget = editingChatMessage();
     const editingMessageId = editingTarget?.id || "";
@@ -6559,9 +6814,7 @@ async function sendCurrentChatMessage() {
     }
   } finally {
     chatMessageSendInFlight = false;
-    if (submitButton) {
-      submitButton.disabled = false;
-    }
+    releaseBusy();
   }
 }
 
@@ -7168,42 +7421,51 @@ async function submitDraftReports() {
 
 async function addReport(formData) {
   if (!requirePersistentApi("el guardado del reporte")) return false;
+  const releaseBusy = setBusyState(elements.reportForm, "Enviando reporte...");
   const owner = String(formData.get("owner") || "").trim();
   const programName = String(formData.get("program") || "").trim();
   const province = String(formData.get("province") || "").trim();
   const period = String(formData.get("period") || "").trim();
   if (!owner) {
+    releaseBusy();
     showToast("Debes indicar la persona responsable del reporte.");
     return false;
   }
   if (!programName || !state.programs.some((item) => item.name === programName)) {
+    releaseBusy();
     showToast("Selecciona un programa valido para el reporte.");
     return false;
   }
   if (!province) {
+    releaseBusy();
     showToast("Selecciona una provincia valida para el reporte.");
     return false;
   }
   if (!isValidPeriodValue(period)) {
+    releaseBusy();
     showToast("Selecciona un periodo valido con formato YYYY-MM.");
     return false;
   }
   const indicator = state.indicators.find((item) => item.name === formData.get("indicator"));
   if (!indicator) {
+    releaseBusy();
     showToast("Selecciona un indicador valido.");
     return false;
   }
   if (indicator.program !== programName) {
+    releaseBusy();
     showToast("El indicador seleccionado no pertenece al programa elegido.");
     return false;
   }
   const value = Number(formData.get("value"));
   if (!Number.isFinite(value) || value < 0) {
+    releaseBusy();
     showToast("El dato reportado debe ser un numero igual o mayor que cero.");
     return false;
   }
   const selectedCenter = String(formData.get("center") || "").trim();
   if (!selectedCenter || selectedCenter === NO_CENTER_OPTION) {
+    releaseBusy();
     showToast("Selecciona un centro registrado para ese programa y provincia.");
     return false;
   }
@@ -7229,18 +7491,22 @@ async function addReport(formData) {
     }
     attachedDocuments = await attachmentsFromFiles(attachedFiles, formData.get("owner"), "report-attachments");
   } catch (error) {
+    releaseBusy();
     showToast(error.message || "No pude adjuntar el documento.");
     return false;
   }
   if (evidenceType === "link" && !evidenceDetail) {
+    releaseBusy();
     showToast("Pega el enlace de evidencia antes de enviar el reporte.");
     return false;
   }
   if (evidenceType === "link" && evidenceDetail && !isValidUrlValue(evidenceDetail)) {
+    releaseBusy();
     showToast("Cuando la evidencia sea un enlace, pega una URL valida que empiece con http:// o https://.");
     return false;
   }
   if ((evidenceType === "photo" || evidenceType === "file") && !evidenceAttachments.length) {
+    releaseBusy();
     showToast("Adjunta al menos un archivo cuando la evidencia sea foto o archivo.");
     return false;
   }
@@ -7278,12 +7544,18 @@ async function addReport(formData) {
     await createApiReport(newReport);
     await refreshReportsAndNotificationsFromApi();
     renderAll();
-    showToast(evidenceAttachments.length || attachedDocuments.length ? "Reporte y documentos enviados a revision." : "Reporte enviado a coordinacion para primera aprobacion.");
+    showToast(
+      evidenceAttachments.length || attachedDocuments.length
+        ? `Reporte de ${programName} y sus documentos enviados a revision.`
+        : `Reporte de ${programName} enviado a coordinacion para primera aprobacion.`,
+    );
     return true;
   } catch (error) {
     console.error(error);
     showToast(error.message || "No pude guardar el reporte en la API.");
     return false;
+  } finally {
+    releaseBusy();
   }
 }
 
@@ -7823,6 +8095,7 @@ function fillIndicatorForm(indicator) {
 }
 
 async function saveIndicatorFromForm(formData) {
+  const releaseBusy = setBusyState(elements.indicatorCrudForm, "Guardando indicador...");
   const indicatorId = formData.get("id");
   const payload = {
     id: indicatorId || undefined,
@@ -7849,10 +8122,12 @@ async function saveIndicatorFromForm(formData) {
     closeAccessModal("indicator-form");
     renderAll();
     resetIndicatorForm();
-    showToast(indicatorId ? "Indicador actualizado." : "Indicador creado.");
+    showToast(indicatorId ? `Indicador "${saved.name}" actualizado.` : `Indicador "${saved.name}" creado.`);
   } catch (error) {
     console.error(error);
     showToast(error.message || "No pude guardar el indicador.");
+  } finally {
+    releaseBusy();
   }
 }
 
@@ -8170,6 +8445,7 @@ function reportActivityMessage(report, nextStatus, note = "") {
 }
 
 saveProgramFromForm = async function (formData) {
+  const releaseBusy = setBusyState(elements.programCrudForm, "Guardando programa...");
   const programId = formData.get("id");
   const selectedProvinces = formData.getAll("provinces").map((item) => String(item || "").trim()).filter(Boolean);
   const centers = parseProgramCentersInput(formData.get("centers"));
@@ -8191,6 +8467,7 @@ saveProgramFromForm = async function (formData) {
   };
 
   if (!payload.provinces.length) {
+    releaseBusy();
     showToast("Selecciona al menos una provincia para el programa.");
     return;
   }
@@ -8238,15 +8515,19 @@ saveProgramFromForm = async function (formData) {
       `${currentUser?.fullName || activeRole()} ${programId ? "actualizo" : "registro"} el programa ${saved.name}. Provincias: ${(saved.provinces || []).join(", ") || "Sin provincias"}.`,
     );
     resetProgramForm();
-    showToast(programId ? "Programa actualizado." : "Programa creado.");
+    showToast(programId ? `Programa "${saved.name}" actualizado.` : `Programa "${saved.name}" creado.`);
   } catch (error) {
     console.error(error);
     showToast(error.message || "No pude guardar el programa.");
+  } finally {
+    releaseBusy();
   }
 };
 
 saveProgramCenterFromForm = async function (formData) {
+  const releaseBusy = setBusyState(elements.programCenterForm, "Guardando centro...");
   if (!canManageProgramCenters()) {
+    releaseBusy();
     showToast("No tienes permiso para administrar centros.");
     return;
   }
@@ -8262,6 +8543,7 @@ saveProgramCenterFromForm = async function (formData) {
 
   const validationMessage = validateProgramCenterPayload(payload);
   if (validationMessage) {
+    releaseBusy();
     showToast(validationMessage);
     return;
   }
@@ -8281,10 +8563,12 @@ saveProgramCenterFromForm = async function (formData) {
       saved.programId || saved.program,
       `${currentUser?.fullName || activeRole()} ${centerId ? "actualizo" : "agrego"} el centro ${saved.name} en ${saved.province} para ${saved.program}.`,
     );
-    showToast("Centro guardado.");
+    showToast(centerId ? `Centro "${saved.name}" actualizado.` : `Centro "${saved.name}" creado para ${saved.program}.`);
   } catch (error) {
     console.error(error);
     showToast(error.message || "No pude guardar el centro.");
+  } finally {
+    releaseBusy();
   }
 };
 
@@ -8482,7 +8766,7 @@ saveReviewDecision = async function (report, nextStatus, note = "") {
   saveState();
 };
 
-deleteReportFromUi = async function (reportId) {
+deleteReportFromUi = async function (reportId, trigger = null) {
   const report = state.reports.find((item) => item.id === reportId);
   if (!report) {
     showToast("No encontre el reporte.");
@@ -8505,6 +8789,10 @@ deleteReportFromUi = async function (reportId) {
   const deletionNote = supervisorDelete
     ? "Reporte eliminado por supervision desde la administracion."
     : "Reporte eliminado para subir una version corregida.";
+  const releaseBusy = setBusyState(
+    trigger,
+    supervisorDelete ? "Eliminando reporte..." : "Quitando reporte...",
+  );
 
   try {
     if (isApiConfigured()) {
@@ -8525,10 +8813,16 @@ deleteReportFromUi = async function (reportId) {
     }
     activeStatusReportId = null;
     renderAll();
-    showToast(supervisorDelete ? "Reporte eliminado y registrado en auditoria." : "Reporte eliminado. Ya puedes subirlo nuevamente corregido.");
+    showToast(
+      supervisorDelete
+        ? `Reporte de ${report.program} eliminado y registrado en auditoria.`
+        : `Reporte de ${report.program} eliminado. Ya puedes subirlo nuevamente corregido.`,
+    );
   } catch (error) {
     console.error(error);
     showToast(error.message || "No pude eliminar el reporte.");
+  } finally {
+    releaseBusy();
   }
 };
 
@@ -9055,7 +9349,7 @@ function bindEvents() {
   elements.recentReports.addEventListener("click", (event) => {
     const deleteReportId = event.target.closest("[data-delete-report]")?.dataset.deleteReport;
     if (!deleteReportId) return;
-    void deleteReportFromUi(deleteReportId);
+    void deleteReportFromUi(deleteReportId, event.target.closest("button"));
   });
 
   elements.attendanceProgramSelect?.addEventListener("change", () => {
@@ -9267,7 +9561,7 @@ function bindEvents() {
       }
 
       if (deleteReportId) {
-        void deleteReportFromUi(deleteReportId);
+        void deleteReportFromUi(deleteReportId, event.target.closest("button"));
         return;
       }
 
@@ -9527,6 +9821,11 @@ function bindEvents() {
     if (!report) return;
 
     void (async () => {
+      const triggerButton = event.target.closest("button");
+      const releaseBusy = setBusyState(
+        triggerButton,
+        approveId ? "Actualizando..." : returnId ? "Solicitando..." : "",
+      );
       try {
         if (approveId) {
           const nextStatus = nextApprovalStatusForReport(report);
@@ -9553,6 +9852,8 @@ function bindEvents() {
       } catch (error) {
         console.error(error);
         showToast(error.message || "No pude actualizar la revision.");
+      } finally {
+        releaseBusy();
       }
     })();
   });
@@ -9573,6 +9874,12 @@ function bindEvents() {
         return;
       }
       void (async () => {
+        const indicator = state.indicators.find((item) => item.id === deleteId);
+        const confirmed = window.confirm(
+          `Eliminar ${indicator?.name || "este indicador"} quitara su meta del seguimiento operativo. Deseas continuar?`,
+        );
+        if (!confirmed) return;
+        const releaseBusy = setBusyState(event.target.closest("button"), "Eliminando...");
         try {
           if (isApiConfigured()) {
             await deleteApiIndicator(deleteId, actorPayload());
@@ -9580,10 +9887,12 @@ function bindEvents() {
           removeById(state.indicators, deleteId);
           saveState();
           renderAll();
-          showToast("Indicador eliminado.");
+          showToast(`Indicador "${indicator?.name || deleteId}" eliminado.`);
         } catch (error) {
           console.error(error);
           showToast(error.message || "No pude eliminar el indicador.");
+        } finally {
+          releaseBusy();
         }
       })();
     }
@@ -9620,6 +9929,11 @@ function bindEvents() {
         return;
       }
       void (async () => {
+        const confirmed = window.confirm(
+          `Eliminar ${targetProgram.name} tambien cerrara sus centros y su chat operativo. Solo continua si ya no lo usaras. Deseas seguir?`,
+        );
+        if (!confirmed) return;
+        const releaseBusy = setBusyState(event.target.closest("button"), "Eliminando...");
         try {
           if (isApiConfigured()) {
             await deleteApiProgram(targetProgram.id, actorPayload());
@@ -9631,10 +9945,12 @@ function bindEvents() {
             targetProgram.id || targetProgram.name,
             `${currentUser?.fullName || activeRole()} elimino el programa ${targetProgram.name} del catalogo operativo.`,
           );
-          showToast("Programa eliminado.");
+          showToast(`Programa "${targetProgram.name}" eliminado.`);
         } catch (error) {
           console.error(error);
           showToast(error.message || "No pude eliminar el programa.");
+        } finally {
+          releaseBusy();
         }
       })();
     }
@@ -9659,6 +9975,11 @@ function bindEvents() {
         return;
       }
       void (async () => {
+        const confirmed = window.confirm(
+          `Eliminar el centro ${deleteName || "seleccionado"} en ${deleteProvince || "la provincia actual"} lo sacara del catalogo operativo. Deseas continuar?`,
+        );
+        if (!confirmed) return;
+        const releaseBusy = setBusyState(event.target.closest("button"), "Eliminando...");
         const previousCenters = state.programCenters.slice();
         const matchesTarget = (center) =>
           center.id === deleteId ||
@@ -9687,7 +10008,7 @@ function bindEvents() {
             deleteProgram,
             `${currentUser?.fullName || activeRole()} elimino el centro ${deleteName} en ${deleteProvince} para ${deleteProgram}.`,
           );
-          showToast("Centro eliminado.");
+          showToast(`Centro "${deleteName || "seleccionado"}" eliminado.`);
         } catch (error) {
           if (error.status === 404) {
             if (isApiConfigured()) {
@@ -9696,7 +10017,7 @@ function bindEvents() {
             window.dispatchEvent(new CustomEvent("mel:manual-refresh"));
             saveState();
             renderAll();
-            showToast("Centro eliminado.");
+            showToast(`Centro "${deleteName || "seleccionado"}" eliminado.`);
             return;
           }
           state.programCenters = previousCenters;
@@ -9704,6 +10025,8 @@ function bindEvents() {
           renderAll();
           console.error(error);
           showToast(error.message || "No pude eliminar el centro.");
+        } finally {
+          releaseBusy();
         }
       })();
     }
@@ -9747,6 +10070,7 @@ function bindEvents() {
       })) return;
       const formData = new FormData(form);
       void (async () => {
+        const releaseBusy = setBusyState(form, "Creando organizacion...");
         try {
           const hostnames = parseOrganizationHostnames(formData.get("hostnames") || "");
           const enabledModules = formData.getAll("enabledModules").map((item) => String(item));
@@ -9779,10 +10103,12 @@ function bindEvents() {
           closeAccessModal("create-organization");
           form.reset();
           renderAccessWorkspace({ force: true });
-          showToast(`Organizacion ${createdOrganization.organization.name} y admin inicial creados.`);
+          showToast(`Organizacion ${createdOrganization.organization.name} y su admin inicial creados.`);
         } catch (error) {
           console.error(error);
           showToast(error.message || "No pude crear la organizacion.");
+        } finally {
+          releaseBusy();
         }
       })();
       return;
@@ -9857,9 +10183,11 @@ function bindEvents() {
 
     if (event.target.id === "createManagedUserForm") {
       event.preventDefault();
-      if (!validateModalForm(event.target)) return;
-      const formData = new FormData(event.target);
+      const form = event.target;
+      if (!validateModalForm(form)) return;
+      const formData = new FormData(form);
       void (async () => {
+        const releaseBusy = setBusyState(form, "Creando usuario...");
         try {
           const systemRole = String(formData.get("systemRole") || "Facilitador");
           const createdUser = await createManagedUser({
@@ -9877,12 +10205,14 @@ function bindEvents() {
             `${currentUser?.fullName || activeRole()} creo el acceso de ${createdUser.fullName} (${createdUser.systemRole}) con estado ${createdUser.status || formData.get("status") || "active"}.`,
           );
           closeAccessModal("create-user");
-          event.target.reset();
+          form.reset();
           renderAccessWorkspace();
-          showToast("Usuario creado.");
+          showToast(`Usuario ${createdUser.fullName} creado.`);
         } catch (error) {
           console.error(error);
           showToast(error.message || "No pude crear el usuario.");
+        } finally {
+          releaseBusy();
         }
       })();
       return;
@@ -9898,6 +10228,7 @@ function bindEvents() {
       const organizationId = organizationForm.dataset.organizationForm;
       const formData = new FormData(organizationForm);
       void (async () => {
+        const releaseBusy = setBusyState(organizationForm, "Guardando organizacion...");
         try {
           const hostnames = parseOrganizationHostnames(formData.get("hostnames") || "");
           const enabledModules = formData.getAll("enabledModules").map((item) => String(item));
@@ -9931,6 +10262,8 @@ function bindEvents() {
         } catch (error) {
           console.error(error);
           showToast(error.message || "No pude actualizar la organizacion.");
+        } finally {
+          releaseBusy();
         }
       })();
       return;
@@ -9946,6 +10279,7 @@ function bindEvents() {
     const viewPermissions = formData.getAll("viewPermissions").map((item) => String(item));
 
     void (async () => {
+      const releaseBusy = setBusyState(form, "Guardando acceso...");
       try {
         const updatedUser = await updateManagedUserAccess(userId, {
           fullName: formData.get("fullName"),
@@ -9964,10 +10298,12 @@ function bindEvents() {
         );
         await syncAuthenticatedAccess();
         renderAll();
-        showToast("Acceso actualizado.");
+        showToast(`Acceso de ${updatedUser.fullName} actualizado.`);
       } catch (error) {
         console.error(error);
         showToast(error.message || "No pude actualizar el acceso.");
+      } finally {
+        releaseBusy();
       }
     })();
   });
@@ -9996,14 +10332,21 @@ function bindEvents() {
     const userId = deleteButton.dataset.deleteAccess;
     if (!userId || deleteButton.disabled) return;
     if (!requirePersistentApi("la eliminacion del acceso")) return;
+    const userCard = deleteButton.closest("[data-user-access-form]");
+    const userName =
+      String(userCard?.querySelector('input[name="fullName"]')?.value || "").trim() ||
+      String(userCard?.querySelector("h3")?.textContent || "").trim() ||
+      "este usuario";
+    const confirmed = window.confirm(
+      `Eliminar definitivamente el acceso de ${userName} cerrara su entrada al sistema. Deseas continuar?`,
+    );
+    if (!confirmed) return;
 
     void (async () => {
-      const userCard = deleteButton.closest("[data-user-access-form]");
+      const releaseBusy = setBusyState(deleteButton, "Eliminando...");
       try {
         deletedAccessUserIds.add(userId);
         userCard?.remove();
-        deleteButton.disabled = true;
-        deleteButton.textContent = "Eliminando...";
         const deletedUser = await deleteManagedUser(userId);
         await sendAreaChatActivity(
           "access",
@@ -10011,14 +10354,14 @@ function bindEvents() {
         );
         await syncAuthenticatedAccess();
         renderAccessWorkspace();
-        showToast("Usuario eliminado definitivamente.");
+        showToast(`Usuario ${deletedUser.fullName || deletedUser.email} eliminado definitivamente.`);
       } catch (error) {
         console.error(error);
         deletedAccessUserIds.delete(userId);
-        deleteButton.disabled = false;
-        deleteButton.textContent = "Eliminar definitivo";
         renderAccessWorkspace();
         showToast(error.message || "No pude eliminar el usuario.");
+      } finally {
+        releaseBusy();
       }
     })();
   });
