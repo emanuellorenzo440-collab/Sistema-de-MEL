@@ -675,7 +675,10 @@ export async function initializeAccessLobby({ onAuthenticated, onSignedOut } = {
   if (resetRequestMessage) resetRequestMessage.hidden = true;
   await updateLobbyVisibility();
 
-  onAuthStateChange(async () => {
+  onAuthStateChange(async (detail = {}) => {
+    if (["remote-users-listed", "remote-users-synced"].includes(String(detail.type || ""))) {
+      return;
+    }
     await updateLobbyVisibility({ refreshCurrentSession: true, showRefreshErrorToast: false });
   });
 }

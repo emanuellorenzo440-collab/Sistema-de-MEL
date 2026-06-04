@@ -285,8 +285,27 @@ async function upsertRemoteUser(remoteUser, eventType = "remote-user-synced") {
   return nextUser;
 }
 
+function managedUsersSignature(users = []) {
+  return JSON.stringify(
+    (users || []).map((user) => ({
+      id: user.id || null,
+      email: normalizeEmail(user.email),
+      fullName: String(user.fullName || "").trim(),
+      status: user.status || null,
+      systemRole: user.systemRole || null,
+      organizationId: user.organizationId || null,
+      allowedRoles: [...(user.allowedRoles || [])].sort(),
+      viewPermissions: [...(user.viewPermissions || [])].sort(),
+      mustChangePassword: Boolean(user.mustChangePassword),
+      updatedAt: user.updatedAt || null,
+    })),
+  );
+}
+
 async function replaceLocalManagedUsers(remoteUsers = [], eventType = "remote-users-synced") {
   const state = await ensureAuthState();
+  const previousUsersSignature = managedUsersSignature(state.users);
+  const previousSessionSignature = JSON.stringify(state.session || null);
   const existingPasswordHashes = new Map(state.users.map((user) => [user.email, user.passwordHash || ""]));
   const nextUsers = remoteUsers.map((remoteUser) => {
     const nextUser = mapRemoteUser(remoteUser);
@@ -303,6 +322,11 @@ async function replaceLocalManagedUsers(remoteUsers = [], eventType = "remote-us
     } else {
       state.session.activeRole = normalizeRoleLabel(state.session.activeRole || sessionUser.systemRole);
     }
+  }
+  const nextUsersSignature = managedUsersSignature(nextUsers);
+  const nextSessionSignature = JSON.stringify(state.session || null);
+  if (previousUsersSignature === nextUsersSignature && previousSessionSignature === nextSessionSignature) {
+    return state.users;
   }
   return writeStoredAuthState(state, eventType).users;
 }
