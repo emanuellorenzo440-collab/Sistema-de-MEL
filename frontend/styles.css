@@ -829,7 +829,7 @@ h3 {
   display: grid;
   align-items: start;
   gap: 20px;
-  grid-template-columns: minmax(0, 1.7fr) minmax(340px, 0.86fr);
+  grid-template-columns: minmax(0, 1.28fr) minmax(360px, 0.92fr);
 }
 
 .attendance-layout {
@@ -1999,9 +1999,9 @@ textarea {
 }
 
 .concept-actions {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
   gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
 }
 
 .library-group {
@@ -2174,6 +2174,92 @@ textarea {
 .workspace-summary-strip h2 {
   font-size: 1.1rem;
   margin-bottom: 4px;
+}
+
+.concept-layout .panel,
+.concept-list,
+.concept-detail,
+.concept-card,
+.concept-summary,
+.concept-detail-grid article {
+  min-width: 0;
+}
+
+.concept-list,
+.concept-detail {
+  align-content: start;
+}
+
+.concept-card,
+.concept-summary {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+}
+
+.concept-card {
+  background: linear-gradient(180deg, #ffffff, #fbfcfe);
+  border-radius: 18px;
+}
+
+.concept-card.active {
+  border-color: #d85a53;
+  box-shadow:
+    inset 4px 0 0 #d85a53,
+    0 14px 28px rgba(15, 26, 36, 0.05);
+}
+
+.concept-card h3,
+.concept-card .item-meta,
+.concept-summary p,
+.concept-summary h3,
+.concept-detail-grid h3,
+.concept-detail-grid li,
+.coverage span {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.concept-actions > * {
+  width: 100%;
+}
+
+.concept-summary {
+  background: linear-gradient(180deg, #ffffff, #f8fbfd);
+  border-radius: 18px;
+}
+
+.coverage {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.coverage span {
+  background: #f4f7fb;
+  border: 1px solid #dde6ee;
+  border-radius: 12px;
+  color: #4c6276;
+  font-size: 0.84rem;
+  font-weight: 750;
+  padding: 12px 14px;
+}
+
+.concept-detail-grid article {
+  display: grid;
+  gap: 10px;
+}
+
+.concept-layout .panel-header {
+  align-items: center;
+  gap: 14px;
+}
+
+.concept-layout .panel-header > div {
+  min-width: 0;
+}
+
+.concept-layout #useConceptButton {
+  flex-shrink: 0;
 }
 
 .workspace-board-view .panel,
@@ -2659,16 +2745,18 @@ textarea {
 
 .coverage {
   display: grid;
-  gap: 8px;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .coverage span {
-  background: #f3f6f5;
-  border-radius: 8px;
-  color: var(--muted);
-  font-size: 0.85rem;
-  font-weight: 800;
-  padding: 9px 10px;
+  background: #f4f7fb;
+  border: 1px solid #dde6ee;
+  border-radius: 12px;
+  color: #4c6276;
+  font-size: 0.84rem;
+  font-weight: 750;
+  padding: 12px 14px;
 }
 
 .toast {
@@ -2740,6 +2828,16 @@ textarea {
   .topbar {
     position: relative;
     top: auto;
+  }
+}
+
+@media (max-width: 1380px) {
+  .concept-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .coverage {
+    grid-template-columns: 1fr;
   }
 }
 
