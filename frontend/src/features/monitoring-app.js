@@ -3898,6 +3898,11 @@ function renderAll() {
   renderPrograms();
   renderProgramCenters();
   renderAccessWorkspace();
+  decorateReportWorkspaceUi();
+  decorateChartsWorkspaceUi();
+  decorateAttendanceWorkspaceUi();
+  decorateDesignWorkspaceUi();
+  decorateConceptWorkspaceUi();
   switchView(state.activeView || firstAllowedView(), { persist: false, resetScroll: false });
 }
 
@@ -4353,6 +4358,10 @@ function decorateChartsWorkspaceUi() {
   const chartView = $("#chartsView");
   if (!(chartView instanceof HTMLElement)) return;
   chartView.classList.add("analytics-view-shell");
+  elements.chartMetricGrid?.classList.add("workspace-metric-strip");
+  elements.chartStatsGrid?.classList.add("workspace-board-stack");
+  elements.analysisBotList?.classList.add("workspace-board-stack");
+  elements.submissionList?.classList.add("workspace-board-stack");
   const filterPanel = chartView.querySelector(".panel");
   if (filterPanel) {
     injectWorkspaceSummaryStrip(filterPanel, "charts-filter", {
@@ -4369,10 +4378,12 @@ function decorateChartsWorkspaceUi() {
 
 function decorateAttendanceWorkspaceUi() {
   if (!($("#attendanceView") instanceof HTMLElement)) return;
+  $("#attendanceView")?.classList.add("workspace-board-view");
   ensureFieldLabelDecorations(elements.participantForm);
   elements.participantNameInput?.setAttribute("placeholder", "Ej. Maria Perez");
   const attendancePanel = elements.attendanceList?.closest(".panel");
   if (attendancePanel) {
+    attendancePanel.classList.add("workspace-panel-emphasis");
     injectWorkspaceSummaryStrip(attendancePanel, "attendance-main", {
       eyebrow: "Operacion semanal",
       title: "Control de asistencia por programa",
@@ -4418,6 +4429,8 @@ function decorateConceptWorkspaceUi() {
   const conceptView = $("#conceptsView");
   if (!(conceptView instanceof HTMLElement)) return;
   conceptView.classList.add("workspace-board-view");
+  elements.conceptPaperList?.classList.add("workspace-board-stack");
+  elements.conceptPaperDetail?.classList.add("workspace-board-stack", "concept-detail-surface");
   const panels = conceptView.querySelectorAll(".panel");
   if (panels[0]) {
     injectWorkspaceSummaryStrip(panels[0], "concept-library", {
