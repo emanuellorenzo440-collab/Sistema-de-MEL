@@ -1390,6 +1390,20 @@ function isSystemAdminRole(role = activeRole()) {
   return normalizeRoleLabel(role) === "Supervision M&E";
 }
 
+function activeFilterSummary() {
+  const program = state.filters.program && state.filters.program !== "Todos" ? state.filters.program : "Todos los programas";
+  const province = state.filters.province && state.filters.province !== "Todas" ? state.filters.province : "Todas las provincias";
+  const period = state.filters.period && state.filters.period !== "Todos" ? state.filters.period : "Todos los periodos";
+  return { program, province, period };
+}
+
+function activityStatusCopy(statusClass = "") {
+  if (statusClass === "danger") return "Eliminacion";
+  if (statusClass === "warning") return "Pendiente";
+  if (statusClass === "good") return "Alta";
+  return "Actualizacion";
+}
+
 function accessStatusLabel(status = "") {
   const normalized = String(status || "").trim();
   if (normalized === "pending_verification") return "Pendiente verificación";
@@ -5154,6 +5168,627 @@ function decorateConceptWorkspaceUi() {
     });
   }
 }
+
+renderMetrics = function () {
+  const reports = getFilteredReports();
+  const totalValue = state.indicators.reduce((sum, indicator) => sum + indicator.value, 0);
+  const totalTarget = state.indicators.reduce((sum, indicator) => sum + indicator.target, 0);
+  const overallProgress = percent(totalValue, totalTarget);
+  const pending = state.reports.filter((report) => isPendingApprovalStatus(report.status)).length;
+  const riskCount = state.indicators.filter((indicator) => percent(indicator.value, indicator.target) < 70).length;
+  const participants = reports.reduce((sum, report) => sum + reportParticipantTotal(report), 0);
+  const activeIndicators = state.indicators.filter((indicator) => state.filters.program === "Todos" || indicator.program === state.filters.program).length;
+  const { program, province, period } = activeFilterSummary();
+  const metrics = [
+    { label: "Cumplimiento global", value: `${overallProgress}%`, delta: `avance consolidado de ${program.toLowerCase()}`, type: statusForProgress(overallProgress) },
+    { label: "Reportes visibles", value: reports.length, delta: `${period.toLowerCase()} segun filtros activos`, type: "info" },
+    { label: "Pendientes de validar", value: pending, delta: "en cola de supervision", type: pending > 0 ? "warning" : "good" },
+    { label: "Participantes", value: participants.toLocaleString("es-DO"), delta: riskCount ? `${riskCount} indicadores piden atencion` : "desglose reportado estable", type: riskCount ? "warning" : "good" },
+  ];
+
+  elements.metricGrid.innerHTML = `
+    <article class="chart-executive-summary dashboard-workspace-summary">
+      <div class="chart-executive-copy dashboard-summary-copy">
+        <p class="eyebrow">Resumen operativo</p>
+        <h2>Estado consolidado del tablero</h2>
+        <p>Vista activa para ${escapeHtml(program)}, ${escapeHtml(province)} y ${escapeHtml(period.toLowerCase())}.</p>
+      </div>
+      <div class="chart-summary-grid dashboard-summary-grid">
+        <article class="chart-summary-card dashboard-summary-card">
+          <span class="chart-summary-label">Indicadores activos</span>
+          <strong>${escapeHtml(String(activeIndicators))}</strong>
+          <p class="item-meta">Miden el avance del alcance filtrado</p>
+        </article>
+        <article class="chart-summary-card dashboard-summary-card">
+          <span class="chart-summary-label">Valor acumulado</span>
+          <strong>${escapeHtml(totalValue.toLocaleString("es-DO"))}</strong>
+          <p class="item-meta">Contra una meta de ${escapeHtml(totalTarget.toLocaleString("es-DO"))}</p>
+        </article>
+        <article class="chart-summary-card dashboard-summary-card">
+          <span class="chart-summary-label">Riesgos visibles</span>
+          <strong>${escapeHtml(String(riskCount))}</strong>
+          <p class="item-meta">${riskCount ? "Indicadores por debajo del umbral" : "Sin alertas criticas ahora mismo"}</p>
+        </article>
+      </div>
+      <div class="chart-summary-action dashboard-summary-action">Usa los filtros superiores para cambiar de una lectura territorial amplia a una mesa de trabajo por programa.</div>
+    </article>
+    <div class="dashboard-metric-grid workspace-metric-strip">
+      ${metrics
+        .map(
+          (metric) => `
+            <article class="metric-card dashboard-metric-card ${metric.type}">
+              <div class="dashboard-metric-head">
+                <p class="eyebrow">${escapeHtml(metric.label)}</p>
+                <span class="status-pill ${escapeHtml(metric.type)}">${escapeHtml(activityStatusCopy(metric.type))}</span>
+              </div>
+              <div class="value">${escapeHtml(String(metric.value))}</div>
+              <div class="delta">${escapeHtml(metric.delta)}</div>
+            </article>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+};
+
+renderProgramChart = function () {
+  const { program, province, period } = activeFilterSummary();
+  elements.programChart.innerHTML = `
+    <section class="workspace-section-marker dashboard-program-control-bar" data-dashboard-section="programs">
+      <p class="eyebrow">Portafolio por programa</p>
+      <h3>Comparativa operativa</h3>
+      <p class="item-meta">Cruza progreso, reportes aprobados y acciones directas para ${escapeHtml(program)}, ${escapeHtml(province)} y ${escapeHtml(period.toLowerCase())}.</p>
+    </section>
+    <div class="workspace-board-stack dashboard-program-stack">
+      ${state.programs
+        .map((programItem) => {
+          const indicators = state.indicators.filter((indicator) => indicator.program === programItem.name);
+          const approvedReportCount = state.reports.filter(
+            (report) => report.program === programItem.name && isApprovedReportStatus(report.status),
+          ).length;
+          const value = indicators.reduce((sum, indicator) => sum + indicator.value, 0);
+          const target = indicators.reduce((sum, indicator) => sum + indicator.target, 0);
+          const progress = percent(value, target);
+          const risk = statusForProgress(progress);
+          const centerCount = registeredCenters().filter((center) => center.program === programItem.name).length;
+          return `
+            <article class="bar-row dashboard-program-row dashboard-panel-surface ${risk}">
+              <div class="dashboard-program-identity">
+                <div class="bar-name">${escapeHtml(programItem.name)}</div>
+                <div class="workspace-inline-metrics dashboard-program-meta">
+                  <span>${indicators.length} indicador${indicators.length === 1 ? "" : "es"}</span>
+                  <span>${approvedReportCount} aprobado${approvedReportCount === 1 ? "" : "s"}</span>
+                  <span>${centerCount} centro${centerCount === 1 ? "" : "s"}</span>
+                </div>
+              </div>
+              <div class="bar-content dashboard-program-content">
+                <div class="dashboard-program-bar-head">
+                  <span class="status-pill ${risk}">${progress}%</span>
+                  <span class="item-meta">${value.toLocaleString("es-DO")} de ${target.toLocaleString("es-DO")} acumulado</span>
+                </div>
+                <div class="bar-track" aria-label="${progress}% de avance">
+                  <div class="bar-fill ${risk}" style="width: ${progress}%"></div>
+                </div>
+                <div class="bar-meta dashboard-program-foot">
+                  <span>Fuente consolidada por indicadores del programa</span>
+                  <span>${escapeHtml(programItem.focus || "Sin enfoque definido")}</span>
+                </div>
+                ${
+                  isSystemAdminRole()
+                    ? `<div class="item-actions wrap bar-source-actions dashboard-program-actions">
+                        <button class="ghost-action" type="button" data-open-program-indicators="${escapeHtml(programItem.name)}">Ajustar indicadores</button>
+                        <button class="ghost-action" type="button" data-open-program-reports="${escapeHtml(programItem.name)}">Revisar o eliminar reportes</button>
+                      </div>`
+                    : ""
+                }
+              </div>
+              <div class="bar-value dashboard-program-value">${progress}%</div>
+            </article>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+};
+
+renderRisks = function () {
+  const risks = state.indicators
+    .map((indicator) => ({ ...indicator, progress: percent(indicator.value, indicator.target) }))
+    .filter((indicator) => indicator.progress < 75)
+    .sort((a, b) => a.progress - b.progress);
+
+  elements.riskList.innerHTML = risks.length
+    ? risks
+        .map(
+          (indicator) => `
+            <article class="risk-item dashboard-risk-row ${indicator.progress < 60 ? "danger" : ""}">
+              <div class="dashboard-risk-copy">
+                <strong>${escapeHtml(indicator.name)}</strong>
+                <span class="risk-meta">${escapeHtml(indicator.program)} · ${indicator.progress}% de ${escapeHtml(String(indicator.target))} ${escapeHtml(indicator.unit)}</span>
+              </div>
+              <div class="dashboard-risk-meta">
+                <span class="status-pill ${indicator.progress < 60 ? "danger" : "warning"}">${indicator.progress < 60 ? "Critico" : "Seguimiento"}</span>
+              </div>
+            </article>
+          `,
+        )
+        .join("")
+    : `<article class="activity-feed-empty dashboard-risk-empty"><p class="item-meta">No hay indicadores criticos con los filtros actuales.</p></article>`;
+};
+
+renderReports = function () {
+  const reports = getFilteredReports().slice().sort((a, b) => b.date.localeCompare(a.date));
+  const activity = dashboardActivityRecords();
+  const lastActivity = activity[0] || null;
+  const pendingCount = reports.filter((report) => isPendingApprovalStatus(report.status)).length;
+  const uniqueActors = new Set(activity.map((entry) => entry.actorLabel).filter(Boolean)).size;
+  const uniqueModules = new Set(activity.map((entry) => entry.moduleLabel).filter(Boolean)).size;
+  const createdCount = activity.filter((entry) => entry.statusClass === "good").length;
+  const updatedCount = activity.filter((entry) => entry.statusClass === "info").length;
+  const deletedCount = activity.filter((entry) => entry.statusClass === "danger").length;
+  const overviewCards = [
+    {
+      label: "Ultimo movimiento",
+      value: lastActivity ? lastActivity.relativeDate : "Sin datos",
+      meta: lastActivity ? `${lastActivity.actorLabel} - ${lastActivity.moduleLabel}` : "Todavia no hay actividad visible",
+      tone: "info",
+    },
+    {
+      label: "Usuarios activos",
+      value: String(uniqueActors),
+      meta: uniqueActors ? "con movimientos recientes en la plataforma" : "sin actividad de usuarios",
+      tone: uniqueActors ? "good" : "neutral",
+    },
+    {
+      label: "Modulos tocados",
+      value: String(uniqueModules),
+      meta: uniqueModules ? "areas con cambios reales registrados" : "sin movimiento visible",
+      tone: "neutral",
+    },
+    {
+      label: "Cambios registrados",
+      value: String(activity.length),
+      meta: `${createdCount} altas - ${updatedCount} cambios - ${deletedCount} eliminaciones - ${pendingCount} pendientes`,
+      tone: activity.length ? "warning" : "neutral",
+    },
+  ];
+
+  if (elements.activityOverviewGrid) {
+    elements.activityOverviewGrid.innerHTML = `
+      <article class="chart-executive-summary activity-workspace-summary">
+        <div class="chart-executive-copy">
+          <p class="eyebrow">Actividad operativa</p>
+          <h2>Bitacora reciente del sistema</h2>
+          <p>Consulta movimientos por usuario, modulo y recurso sin perder de vista los pendientes de validacion.</p>
+        </div>
+        <div class="chart-summary-grid activity-summary-grid">
+          ${overviewCards
+            .map(
+              (card) => `
+                <article class="activity-overview-card chart-summary-card ${card.tone}">
+                  <span class="chart-summary-label">${escapeHtml(card.label)}</span>
+                  <strong class="activity-overview-value">${escapeHtml(card.value)}</strong>
+                  <p class="item-meta">${escapeHtml(card.meta)}</p>
+                </article>
+              `,
+            )
+            .join("")}
+        </div>
+        <div class="chart-summary-action">La tabla de abajo mantiene las acciones, soportes y borrado de reportes donde aplique.</div>
+      </article>
+    `;
+  }
+
+  if (elements.recentActivityFeed) {
+    elements.recentActivityFeed.innerHTML = activity.length
+      ? activity
+          .slice(0, 5)
+          .map(
+            (entry) => `
+              <article class="activity-feed-card dashboard-activity-card">
+                <div class="activity-feed-top">
+                  <div class="activity-person">
+                    <span class="activity-avatar">${escapeHtml(initialsFromLabel(entry.actorLabel))}</span>
+                    <div class="activity-copy">
+                      <strong>${escapeHtml(entry.actorLabel)}</strong>
+                      <span class="item-meta">${escapeHtml(entry.actorMeta)}</span>
+                    </div>
+                  </div>
+                  <div class="dashboard-activity-badges">
+                    <span class="status-pill ${escapeHtml(entry.statusClass)}">${escapeHtml(entry.statusLabel)}</span>
+                    <span class="status-pill neutral">${escapeHtml(activityStatusCopy(entry.statusClass))}</span>
+                  </div>
+                </div>
+                <div class="activity-feed-body">
+                  <strong>${escapeHtml(entry.title)}</strong>
+                  <p class="item-meta">${escapeHtml(entry.description)}</p>
+                </div>
+                <div class="activity-feed-meta">
+                  <span class="activity-feed-chip">${escapeHtml(entry.resourceLabel)}</span>
+                  ${entry.resourceMeta ? `<span class="activity-feed-chip">${escapeHtml(entry.resourceMeta)}</span>` : ""}
+                  <span class="activity-feed-chip">${escapeHtml(entry.moduleLabel)}</span>
+                  <span class="activity-feed-chip">${escapeHtml(entry.exactDate)}</span>
+                </div>
+              </article>
+            `,
+          )
+          .join("")
+      : `<article class="activity-feed-empty"><p class="item-meta">Todavia no hay actividad reciente para mostrar.</p></article>`;
+  }
+
+  if (!activity.length) {
+    elements.recentReports.innerHTML = `
+      <tr>
+        <td colspan="7" class="empty-cell">Todavia no hay actividad registrada.</td>
+      </tr>
+    `;
+    return;
+  }
+
+  elements.recentReports.innerHTML = activity
+    .map((entry) => {
+      const relatedReport = entry.relatedReport;
+      return `
+        <tr class="activity-table-row activity-table-row-${escapeHtml(entry.statusClass)}">
+          <td class="activity-table-actor">
+            <div class="activity-person">
+              <span class="activity-avatar">${escapeHtml(initialsFromLabel(entry.actorLabel))}</span>
+              <div class="activity-copy">
+                <strong>${escapeHtml(entry.actorLabel)}</strong>
+                <span class="item-meta">${escapeHtml(entry.actorMeta)}</span>
+              </div>
+            </div>
+          </td>
+          <td class="activity-table-event">
+            <div class="activity-copy dashboard-table-copy">
+              <strong>${escapeHtml(entry.title)}</strong>
+              <span class="item-meta">${escapeHtml(entry.description)}</span>
+            </div>
+          </td>
+          <td class="activity-table-resource">
+            <div class="activity-copy dashboard-table-copy">
+              <strong>${escapeHtml(entry.resourceLabel)}</strong>
+              <span class="item-meta">${escapeHtml(entry.resourceMeta || "Registro institucional")}</span>
+            </div>
+          </td>
+          <td class="activity-table-action">
+            <div class="activity-copy activity-action-copy dashboard-table-copy">
+              <strong>${escapeHtml(entry.moduleLabel)}</strong>
+              <span class="item-meta">${escapeHtml(activityStatusCopy(entry.statusClass))}</span>
+            </div>
+          </td>
+          <td class="activity-table-status"><span class="status-pill ${escapeHtml(entry.statusClass)}">${escapeHtml(entry.statusLabel)}</span></td>
+          <td class="activity-table-time">
+            <div class="activity-copy activity-time dashboard-table-copy">
+              <strong>${escapeHtml(entry.relativeDate)}</strong>
+              <span class="item-meta">${escapeHtml(entry.exactDate)}</span>
+            </div>
+          </td>
+          <td class="activity-table-actions">
+            <div class="item-actions report-row-actions workspace-actions-inline">
+              ${
+                relatedReport
+                  ? renderAttachmentLinks(relatedReport, true) || `<span class="item-meta">${escapeHtml(entry.moduleLabel)}</span>`
+                  : `<span class="item-meta">${escapeHtml(entry.moduleLabel)}</span>`
+              }
+              ${
+                relatedReport && canDeleteReport(relatedReport)
+                  ? `<button class="ghost-action danger-action" type="button" data-delete-report="${relatedReport.id}">Eliminar</button>`
+                  : ""
+              }
+            </div>
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
+};
+
+decorateReportWorkspaceUi = function () {
+  if (!(elements.reportForm instanceof HTMLFormElement)) return;
+  ensureFieldLabelDecorations(elements.reportForm);
+  elements.reportOwner?.setAttribute("placeholder", "Ej. L Lorenzo");
+  $("#reportValue")?.setAttribute("placeholder", "0");
+  elements.reportWomen?.setAttribute("placeholder", "0");
+  elements.reportMen?.setAttribute("placeholder", "0");
+  elements.reportAdolescents?.setAttribute("placeholder", "0");
+  elements.reportChildren?.setAttribute("placeholder", "0");
+  elements.reportNotes?.setAttribute("placeholder", "Hallazgos, retos, acuerdos o alertas relevantes para seguimiento.");
+  ensureSelectPlaceholder(elements.reportProgram, "un programa");
+  ensureSelectPlaceholder(elements.reportProvince, "una provincia");
+  ensureSelectPlaceholder(elements.reportCenter, "un centro");
+  ensureSelectPlaceholder(elements.reportIndicator, "un indicador");
+  elements.reportForm.classList.add("workspace-form-stack", "report-form-shell");
+  elements.reportForm.dataset.workspaceMode = "reporting";
+  const reportGrid = elements.reportForm.querySelector(".form-grid");
+  reportGrid?.classList.add("report-form-grid", "workspace-report-grid", "workspace-board-stack");
+  elements.reportForm.querySelectorAll("select, input, textarea").forEach((control) => {
+    if (!(control instanceof HTMLElement)) return;
+    control.classList.add("workspace-report-control");
+  });
+  [elements.reportWomenField, elements.reportMenField, elements.reportAdolescentsField, elements.reportChildrenField]
+    .filter(Boolean)
+    .forEach((field) => field.classList.add("report-participant-field", "dashboard-field-card"));
+  [elements.reportEvidenceNoteGroup, elements.reportEvidenceLinkGroup, elements.reportEvidenceUploadGroup, elements.reportDocumentSection]
+    .filter(Boolean)
+    .forEach((field) => field.classList.add("report-support-card", "workspace-panel-shell"));
+  if (reportGrid instanceof HTMLElement) {
+    const contextAnchor = reportGrid.querySelector("label");
+    const participantAnchor = elements.reportWomenField;
+    const evidenceAnchor = elements.reportEvidenceType?.closest("label");
+    const finalReportAnchor = elements.reportDocumentSection;
+    if (contextAnchor instanceof HTMLElement) {
+      ensureWorkspaceSectionMarker(reportGrid, "report-context", contextAnchor, {
+        eyebrow: "1. Contexto del reporte",
+        title: "Ubica el dato dentro del programa correcto",
+        description: "Completa responsable, programa, provincia, centro, periodo e indicador antes de registrar el valor.",
+      });
+    }
+    if (participantAnchor instanceof HTMLElement) {
+      ensureWorkspaceSectionMarker(reportGrid, "report-participants", participantAnchor, {
+        eyebrow: "2. Participacion",
+        title: "Desglose de participantes",
+        description: "Registra aqui el alcance humano del reporte con los campos que apliquen al programa.",
+      });
+    }
+    if (evidenceAnchor instanceof HTMLElement) {
+      ensureWorkspaceSectionMarker(reportGrid, "report-evidence", evidenceAnchor, {
+        eyebrow: "3. Evidencia y observaciones",
+        title: "Soporte del reporte",
+        description: "Adjunta evidencia, enlaces y notas de respaldo para facilitar la revision.",
+      });
+    }
+    if (finalReportAnchor instanceof HTMLElement) {
+      ensureWorkspaceSectionMarker(reportGrid, "report-final", finalReportAnchor, {
+        eyebrow: "4. Entrega final",
+        title: "Formulario o reporte consolidado",
+        description: "Sube el soporte final solo cuando quieras entregar el documento completo junto al reporte.",
+      });
+    }
+  }
+  const primaryPanel = elements.reportForm.querySelector(".panel");
+  if (primaryPanel) {
+    primaryPanel.classList.add("workspace-panel-emphasis", "report-primary-panel");
+    injectWorkspaceSummaryStrip(primaryPanel, "report-primary", {
+      eyebrow: "Captura guiada",
+      title: "Completa el reporte con evidencia y soporte final",
+      description: "Usa el formulario principal para el dato operativo y abre el asistente cuando quieras cargar formularios completos o borradores.",
+      primaryLabel: "Asistente de formularios",
+      modalId: "report-assistant-modal",
+      compact: true,
+    });
+  }
+  if (elements.reportAssistantPanel) {
+    elements.reportAssistantPanel.classList.add("workspace-board-stack", "report-assistant-panel");
+    elements.reportAssistantPanel.querySelectorAll(".panel, .panel-header, .item-actions").forEach((node) => {
+      if (!(node instanceof HTMLElement)) return;
+      node.classList.add("report-assistant-surface");
+    });
+    modalizeWorkspaceSection(elements.reportAssistantPanel, elements.reportForm, {
+      modalId: "report-assistant-modal",
+      eyebrow: "Asistente de formularios",
+      title: "Subir y autocompletar reportes",
+      description: "Carga formularios completos, revisa borradores y envialos a revision sin salir del flujo principal.",
+    });
+  }
+};
+
+decorateChartsWorkspaceUi = function () {
+  const chartView = $("#chartsView");
+  if (!(chartView instanceof HTMLElement)) return;
+  chartView.classList.add("analytics-view-shell");
+  chartView.dataset.workspaceMode = "analytics";
+  elements.chartMetricGrid?.classList.add("workspace-metric-strip");
+  elements.chartStatsGrid?.classList.add("workspace-board-stack");
+  elements.analysisBotList?.classList.add("workspace-board-stack");
+  elements.submissionList?.classList.add("workspace-board-stack");
+  [elements.indicatorCharts, elements.periodCharts, elements.programCharts, elements.trendCharts]
+    .filter(Boolean)
+    .forEach((node) => node.classList.add("workspace-board-stack", "analytics-chart-surface"));
+  const filterPanel = chartView.querySelector(".panel");
+  if (filterPanel) {
+    filterPanel.classList.add("workspace-panel-emphasis", "analytics-filter-panel");
+    injectWorkspaceSummaryStrip(filterPanel, "charts-filter", {
+      eyebrow: "Exploracion ejecutiva",
+      title: "Configura la lectura visual de tus reportes",
+      description: "Ajusta la base analitica y el tipo de grafico antes de pasar a la comparacion por indicadores, periodos y programas.",
+      compact: true,
+    });
+    filterPanel.querySelectorAll("select, button").forEach((control) => {
+      if (!(control instanceof HTMLElement)) return;
+      control.classList.add("analytics-control");
+    });
+  }
+  chartView.querySelectorAll(".chart-stack, .stats-grid, .analysis-bot-list, .submission-list").forEach((node) => {
+    node.classList.add("workspace-board-stack");
+  });
+};
+
+renderCharts = function () {
+  if (isApiConfigured()) {
+    if (elements.indicatorChartTypeSelect) {
+      elements.indicatorChartTypeSelect.value = state.chartPreferences?.indicatorType || "bars";
+    }
+    if (elements.periodChartTypeSelect) {
+      elements.periodChartTypeSelect.value = state.chartPreferences?.periodType || "donut";
+    }
+    if (elements.chartDataScopeSelect) {
+      elements.chartDataScopeSelect.value = getChartDataScope();
+    }
+    return;
+  }
+  const visibleReports = getFilteredReports();
+  const reports = getAnalyticsReports();
+  const chartScope = getChartDataScope();
+  const totalReports = reports.length;
+  const excludedReports = Math.max(visibleReports.length - reports.length, 0);
+  const totalUploaded = state.formSubmissions.length;
+  const totalValue = reports.reduce((sum, report) => sum + Number(report.value || 0), 0);
+  const indicatorSeries = buildIndicatorChartSeries(reports);
+  const periodSeries = buildPeriodChartSeries(reports);
+  const programSeries = buildProgramChartSeries(reports);
+  const stats = buildAutomaticStats(reports);
+  const activeIndicators = indicatorSeries.length;
+  const indicatorType = state.chartPreferences?.indicatorType || "bars";
+  const periodType = state.chartPreferences?.periodType || "donut";
+  const scopeLabel = chartScope === "approved" ? "Solo aprobados" : "Todos visibles";
+  const scopeDelta =
+    chartScope === "approved"
+      ? excludedReports
+        ? `${excludedReports} pendientes o devueltos fuera del analisis`
+        : "sin excluir reportes por estado"
+      : "incluye reportes pendientes y en correccion";
+  const noApprovedYet = chartScope === "approved" && !reports.length && visibleReports.length > 0;
+  const dataMessage =
+    noApprovedYet
+      ? "Hay reportes con los filtros actuales, pero todavia ninguno aprobado para analisis ejecutivo."
+      : chartScope === "approved"
+        ? "Cuando existan reportes aprobados con los filtros actuales, aqui veras el comportamiento por indicador."
+        : "Cuando existan reportes con los filtros actuales, aqui veras el comportamiento por indicador.";
+  const periodMessage =
+    noApprovedYet
+      ? "Aprueba al menos un reporte visible para activar la lectura ejecutiva por periodo."
+      : chartScope === "approved"
+        ? "Cuando existan reportes aprobados o formularios validados, aqui apareceran los resultados por periodo."
+        : "Cuando subas formularios o reportes de datos, aqui apareceran los resultados por periodo.";
+  const programMessage =
+    noApprovedYet
+      ? "La comparativa se activara cuando los reportes visibles hayan pasado validacion."
+      : "Cuando existan reportes de distintos programas, aqui veras la comparativa agregada.";
+  const trendMessage =
+    noApprovedYet
+      ? "La tendencia aparecera cuando exista al menos un reporte aprobado dentro de los filtros."
+      : "A medida que entren reportes, aqui veras la tendencia del tiempo.";
+  const botInsights =
+    noApprovedYet
+      ? [
+          {
+            tone: "info",
+            title: "Pendiente de validacion ejecutiva",
+            summary: "Hay reportes visibles, pero la vista actual solo analiza reportes aprobados para proteger la calidad de lectura.",
+            action: "Aprueba reportes o cambia la base del analisis a todos los reportes visibles si quieres explorar datos operativos.",
+          },
+        ]
+      : buildAnalysisBotInsights(reports);
+  const executiveSummary = buildAnalyticsExecutiveSummary(
+    reports,
+    periodSeries,
+    programSeries,
+    indicatorSeries,
+    botInsights,
+    chartScope,
+  );
+
+  const metrics = [
+    { label: "Base analitica", value: scopeLabel, delta: scopeDelta, type: chartScope === "approved" ? "good" : "info" },
+    { label: "Datos analizados", value: totalReports, delta: chartScope === "approved" ? "reportes aprobados con filtros activos" : "registros con filtros activos", type: "info" },
+    { label: "Formularios subidos", value: totalUploaded, delta: "archivos procesados", type: totalUploaded ? "good" : "warning" },
+    { label: "Valor acumulado", value: totalValue.toLocaleString("es-DO"), delta: "suma reportada con filtros", type: totalValue ? "good" : "neutral" },
+    { label: "Indicadores con datos", value: activeIndicators, delta: "alimentados por reportes", type: activeIndicators ? "good" : "warning" },
+  ];
+
+  elements.chartMetricGrid.innerHTML = `
+    <article class="chart-executive-summary analytics-workspace-summary">
+      <div class="chart-executive-copy analytics-summary-copy">
+        <p class="eyebrow">Resumen ejecutivo</p>
+        <h2>${escapeHtml(executiveSummary.title)}</h2>
+        <p>${escapeHtml(executiveSummary.summary)}</p>
+      </div>
+      <div class="chart-summary-grid analytics-summary-grid">
+        ${executiveSummary.focus
+          .map(
+            (item) => `
+              <article class="chart-summary-card analytics-summary-card">
+                <span class="chart-summary-label">${escapeHtml(item.label)}</span>
+                <strong>${escapeHtml(item.value)}</strong>
+                <p class="item-meta">${escapeHtml(item.meta)}</p>
+              </article>
+            `,
+          )
+          .join("")}
+      </div>
+      <div class="chart-summary-action analytics-summary-action">${escapeHtml(executiveSummary.action)}</div>
+    </article>
+    <div class="analytics-metric-board workspace-metric-strip">
+      ${metrics
+        .map(
+          (metric) => `
+            <article class="metric-card analytics-metric-card ${metric.type}">
+              <div class="dashboard-metric-head">
+                <p class="eyebrow">${escapeHtml(metric.label)}</p>
+                <span class="status-pill ${escapeHtml(metric.type)}">${escapeHtml(activityStatusCopy(metric.type))}</span>
+              </div>
+              <div class="value">${escapeHtml(String(metric.value))}</div>
+              <div class="delta">${escapeHtml(metric.delta)}</div>
+            </article>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+
+  elements.indicatorCharts.innerHTML = renderSeriesByType(indicatorSeries, indicatorType, dataMessage);
+  elements.periodCharts.innerHTML = renderSeriesByType(periodSeries, periodType, periodMessage);
+  elements.programCharts.innerHTML = renderSeriesByType(programSeries, programSeries.length > 1 ? "donut" : "bars", programMessage);
+  elements.trendCharts.innerHTML = renderLineSeries(periodSeries, trendMessage);
+
+  elements.chartStatsGrid.innerHTML = stats
+    .map(
+      (stat) => `
+        <article class="stat-card analytics-stat-card ${stat.tone}">
+          <div class="dashboard-metric-head">
+            <p class="eyebrow">${escapeHtml(stat.label)}</p>
+            <span class="status-pill ${escapeHtml(stat.tone)}">${escapeHtml(activityStatusCopy(stat.tone))}</span>
+          </div>
+          <div class="value">${escapeHtml(String(stat.value))}</div>
+          <div class="delta">${escapeHtml(stat.meta)}</div>
+        </article>
+      `,
+    )
+    .join("");
+
+  elements.analysisBotList.innerHTML = botInsights
+    .map(
+      (insight) => `
+        <article class="analysis-bot-item analytics-insight-card ${insight.tone}">
+          <div class="analysis-bot-head">
+            <strong>${escapeHtml(insight.title)}</strong>
+            <span class="status-pill ${insight.tone}">${insight.tone === "danger" ? "Alta prioridad" : insight.tone === "warning" ? "Atencion" : insight.tone === "good" ? "Oportunidad" : "Analisis"}</span>
+          </div>
+          <p>${escapeHtml(insight.summary)}</p>
+          <div class="analysis-bot-action">${escapeHtml(insight.action)}</div>
+        </article>
+      `,
+    )
+    .join("");
+
+  elements.submissionList.innerHTML = state.formSubmissions.length
+    ? state.formSubmissions
+        .slice()
+        .sort((a, b) => b.importedAt.localeCompare(a.importedAt))
+        .map(
+          (submission) => `
+            <article class="submission-item analytics-submission-row">
+              <div class="chart-row-head">
+                <div>
+                  <h3>${escapeHtml(submission.formTitle)}</h3>
+                  <p class="item-meta">${escapeHtml(submission.program)} · ${escapeHtml(submission.fileName)}</p>
+                </div>
+                <span class="status-pill ${submission.processing === "automatico" ? "good" : "info"}">
+                  ${submission.processing === "automatico" ? `${submission.reportCount} registros` : "Soporte"}
+                </span>
+              </div>
+              <div class="workspace-inline-metrics analytics-submission-meta">
+                <span>Subido: ${escapeHtml(submission.importedAt.slice(0, 10))}</span>
+                <span>Periodo: ${escapeHtml(submission.period)}</span>
+                <span>Tipo: ${escapeHtml((submission.sourceType || "csv").toUpperCase())}</span>
+              </div>
+            </article>
+          `,
+        )
+        .join("")
+    : `<p class="item-meta">Todavia no se han subido formularios completados.</p>`;
+};
 
 function viewNeedsInteractionProtection(viewName = state?.activeView || activeViewName()) {
   return ["chat", "access", "programs"].includes(viewName);
