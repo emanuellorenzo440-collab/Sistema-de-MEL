@@ -1918,6 +1918,12 @@ export function listPlatformActivity(filters = {}) {
     .map((entry) => structuredClone(entry));
 }
 
+export function createPlatformActivity(entry = {}) {
+  recordPlatformActivity(entry);
+  persistStore();
+  return structuredClone(platformActivity[0] || null);
+}
+
 export function queryReports(filters = {}) {
   const { companyId, organizationId, program, programId, province, center, period } = filters;
   return reports

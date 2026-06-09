@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import {
   createConceptPaper,
   createAttendanceParticipant,
+  createPlatformActivity,
   createIndicator,
   createProgram,
   createProgramCenter,
@@ -1605,6 +1606,49 @@ export async function handlePlatformActivityList(request, response, url) {
     .sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || "")))
     .slice(0, limit);
   sendJson(response, 200, { data: combined, filters });
+}
+
+export async function handlePlatformActivityCreate(request, response) {
+  const actor = requireAuthenticatedUser(request, response);
+  if (!actor) return;
+  let payload;
+  try {
+    payload = await readJsonBody(request);
+  } catch (error) {
+    const apiError = jsonBodyReadError(error, "El cuerpo de la actividad no es JSON valido.");
+    sendJson(response, apiError.status, apiError.body);
+    return;
+  }
+
+  const module = String(payload.module || "").trim().toLowerCase();
+  const entityType = String(payload.entityType || "").trim().toLowerCase();
+  const title = String(payload.title || "").trim();
+  if (!module || !entityType || !title) {
+    sendJson(response, 400, {
+      error: "Faltan campos obligatorios para registrar la actividad.",
+      details: {
+        missing: [
+          ...(!module ? ["module"] : []),
+          ...(!entityType ? ["entityType"] : []),
+          ...(!title ? ["title"] : []),
+        ],
+      },
+    });
+    return;
+  }
+
+  const activity = createPlatformActivity({
+    ...payloadWithActor(request, payload),
+    module,
+    entityType,
+    title,
+    description: String(payload.description || "").trim(),
+    resourceLabel: String(payload.resourceLabel || "").trim(),
+    status: String(payload.status || "").trim() || "Registrado",
+    actionType: String(payload.actionType || "").trim().toLowerCase() || "updated",
+    metadata: payload.metadata && typeof payload.metadata === "object" ? payload.metadata : {},
+  });
+  sendJson(response, 201, { data: activity });
 }
 
 export async function handleNotificationRead(request, response, notificationId) {
@@ -3389,6 +3433,11 @@ async function router(request, response) {
 
   if (request.method === "GET" && pathname === "/api/v1/platform-activity") {
     await handlePlatformActivityList(request, response, url);
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/v1/platform-activity") {
+    await handlePlatformActivityCreate(request, response);
     return;
   }
 

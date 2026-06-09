@@ -408,6 +408,14 @@ export async function fetchApiPlatformActivity(filters = {}) {
   return response.data || [];
 }
 
+export async function createApiPlatformActivity(activity) {
+  const response = await requestJson("platform-activity", {
+    method: "POST",
+    body: JSON.stringify(activity),
+  });
+  return response.data;
+}
+
 export async function markApiNotificationRead(notificationId, payload = {}) {
   const response = await requestJson("notifications/" + encodeURIComponent(notificationId) + "/read", {
     method: "PATCH",

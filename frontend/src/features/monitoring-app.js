@@ -29,6 +29,7 @@ import {
   createApiChatMessage,
   createApiConceptPaper,
   createApiOrganization,
+  createApiPlatformActivity,
   createApiAttendanceParticipant,
   createApiFormSubmission,
   createApiIndicator,
@@ -105,6 +106,7 @@ const MAX_CONCEPT_PAPER_BYTES = MAX_UPLOAD_FILE_BYTES;
 const MAX_PROGRAM_MANUAL_BYTES = MAX_UPLOAD_FILE_BYTES;
 const NO_CENTER_OPTION = "Sin centros registrados";
 const ACCESS_SYNC_INTERVAL_MS = 15000;
+const ACTIVITY_SYNC_INTERVAL_MS = 5000;
 const CHAT_SYNC_INTERVAL_MS = 4000;
 const CHAT_PRESENCE_INTERVAL_MS = 6000;
 const CHAT_TYPING_IDLE_MS = 4500;
@@ -149,6 +151,7 @@ let stateSyncListenerBound = false;
 let startupSyncPromise = null;
 let pendingInteractiveRender = false;
 let accessSyncIntervalId = null;
+let activitySyncIntervalId = null;
 let accessSyncInFlight = false;
 let chatSyncIntervalId = null;
 let chatSyncInFlight = false;
@@ -2207,7 +2210,7 @@ function renderConceptPapers() {
         const documentHref = conceptPaperFileUrl(paper) || (paper.path ? localFileUrl(paper.path) : "");
         const openLabel = /pdf/i.test(`${paper.mimeType || ""} ${paper.fileName || ""}`) ? "Abrir PDF" : "Abrir documento";
         const openDocument = documentHref
-          ? `<a class="ghost-link" href="${escapeHtml(documentHref)}" target="_blank" rel="noreferrer">${openLabel}</a>`
+          ? `<button class="ghost-link" data-open-concept-document="${escapeHtml(paper.id)}" data-document-url="${escapeHtml(documentHref)}" type="button">${openLabel}</button>`
           : paper.dataUrl
           ? `<button class="ghost-link" data-open-concept-document="${escapeHtml(paper.id)}" type="button">${openLabel}</button>`
           : `<span class="item-meta">Sin archivo</span>`;
@@ -2241,7 +2244,7 @@ function renderConceptPapers() {
         .map((manual) => {
           const documentHref = programManualFileUrl(manual);
           const openDocument = documentHref
-            ? `<a class="ghost-link" href="${escapeHtml(documentHref)}" target="_blank" rel="noreferrer">Abrir PDF</a>`
+            ? `<button class="ghost-link" data-open-program-manual="${escapeHtml(manual.id)}" data-document-url="${escapeHtml(documentHref)}" type="button">Abrir PDF</button>`
             : manual.dataUrl
             ? `<button class="ghost-link" data-open-program-manual="${escapeHtml(manual.id)}" type="button">Abrir PDF</button>`
             : `<span class="item-meta">Sin archivo</span>`;
@@ -4514,6 +4517,14 @@ function ensureAccessSyncMonitor() {
   }, ACCESS_SYNC_INTERVAL_MS);
 }
 
+function ensureActivitySyncMonitor() {
+  if (activitySyncIntervalId !== null) return;
+  activitySyncIntervalId = window.setInterval(() => {
+    if (document.hidden || !isApiConfigured() || isMasterPortal()) return;
+    void refreshPlatformActivityFromApi().catch((error) => console.error("No pude sincronizar la actividad reciente.", error));
+  }, ACTIVITY_SYNC_INTERVAL_MS);
+}
+
 function ensureChatSyncMonitor() {
   if (chatSyncIntervalId !== null) return;
   chatSyncIntervalId = window.setInterval(() => {
@@ -5422,6 +5433,23 @@ async function refreshPlatformActivityFromApi() {
   if (!isApiConfigured()) return;
   state.platformActivity = await fetchApiPlatformActivity({ limit: 120 });
   saveState({ persistRemoteSlices: true });
+  renderReports();
+}
+
+async function registerPlatformActivity(payload = {}) {
+  if (!isApiConfigured()) return null;
+  const savedEntry = await createApiPlatformActivity({
+    ...payload,
+    ...actorPayload(),
+  });
+  if (savedEntry) {
+    state.platformActivity = [savedEntry, ...(state.platformActivity || []).filter((entry) => entry?.id !== savedEntry.id)]
+      .sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || "")))
+      .slice(0, 120);
+    saveState({ persistRemoteSlices: true });
+    renderReports();
+  }
+  return savedEntry;
 }
 
 async function refreshAttendanceFromApi() {
@@ -8676,6 +8704,22 @@ function downloadFormTemplate(formId) {
   const form = state.monitoringForms.find((item) => item.id === formId);
   if (!form) return;
   downloadCsv(formRows(form), `${slugify(form.title)}.csv`);
+  void registerPlatformActivity({
+    actionType: "updated",
+    module: "forms",
+    entityType: "form-template",
+    entityId: form.id,
+    title: "Formulario descargado",
+    description: `${currentUser?.fullName || "Un usuario"} descargo el formulario "${form.title}" en CSV.`,
+    resourceLabel: form.program || form.title,
+    status: "Descargado",
+    metadata: {
+      formId: form.id,
+      formTitle: form.title,
+      program: form.program,
+      format: "csv",
+    },
+  }).catch((error) => console.error("No pude registrar la descarga del formulario.", error));
   showToast("Formulario preparado para descarga.");
 }
 
@@ -8690,6 +8734,22 @@ function downloadWordTemplate(formId) {
   link.download = `${slugify(form.title)}.doc`;
   link.click();
   URL.revokeObjectURL(url);
+  void registerPlatformActivity({
+    actionType: "updated",
+    module: "forms",
+    entityType: "form-template",
+    entityId: form.id,
+    title: "Formulario descargado",
+    description: `${currentUser?.fullName || "Un usuario"} descargo el formulario "${form.title}" en Word.`,
+    resourceLabel: form.program || form.title,
+    status: "Descargado",
+    metadata: {
+      formId: form.id,
+      formTitle: form.title,
+      program: form.program,
+      format: "word",
+    },
+  }).catch((error) => console.error("No pude registrar la descarga del formulario Word.", error));
   showToast("Formulario Word preparado.");
 }
 
@@ -8709,6 +8769,22 @@ function downloadPdfTemplate(formId) {
   window.setTimeout(() => {
     pdfWindow.print();
   }, 250);
+  void registerPlatformActivity({
+    actionType: "updated",
+    module: "forms",
+    entityType: "form-template",
+    entityId: form.id,
+    title: "Formulario abierto para PDF",
+    description: `${currentUser?.fullName || "Un usuario"} abrio el formulario "${form.title}" para exportarlo a PDF.`,
+    resourceLabel: form.program || form.title,
+    status: "Abierto",
+    metadata: {
+      formId: form.id,
+      formTitle: form.title,
+      program: form.program,
+      format: "pdf",
+    },
+  }).catch((error) => console.error("No pude registrar la apertura del PDF.", error));
   showToast("Se abrio la vista para guardar en PDF.");
 }
 
@@ -8723,7 +8799,58 @@ function downloadAllForms() {
   }
 
   downloadCsv(rows, `${slugify(program.name)}-formularios.csv`);
+  void registerPlatformActivity({
+    actionType: "updated",
+    module: "forms",
+    entityType: "form-template-bundle",
+    entityId: `program-${slugify(program.name)}`,
+    title: "Paquete de formularios descargado",
+    description: `${currentUser?.fullName || "Un usuario"} descargo el paquete de formularios de ${program.name}.`,
+    resourceLabel: program.name,
+    status: "Descargado",
+    metadata: {
+      program: program.name,
+      format: "csv-bundle",
+      totalForms: forms.length,
+    },
+  }).catch((error) => console.error("No pude registrar la descarga del paquete de formularios.", error));
   showToast("Formularios preparados para descarga.");
+}
+
+function openTrackedDocument(documentUrl, options = {}) {
+  const {
+    fallbackName = "documento",
+    activityTitle = "Documento abierto",
+    activityDescription = `${currentUser?.fullName || "Un usuario"} abrio un documento institucional.`,
+    module = "concepts",
+    entityType = "document",
+    entityId = "",
+    resourceLabel = fallbackName,
+    metadata = {},
+  } = options;
+  if (!documentUrl) {
+    showToast(`No pude abrir ${fallbackName}.`);
+    return;
+  }
+  const opened = window.open(documentUrl, "_blank", "noopener,noreferrer");
+  if (!opened) {
+    showToast("El navegador bloqueo la nueva pestana. Permite ventanas emergentes para abrir el documento.");
+    return;
+  }
+  if (String(documentUrl).startsWith("blob:")) {
+    window.setTimeout(() => URL.revokeObjectURL(documentUrl), 60_000);
+  }
+  void registerPlatformActivity({
+    actionType: "updated",
+    module,
+    entityType,
+    entityId,
+    title: activityTitle,
+    description: activityDescription,
+    resourceLabel,
+    status: "Abierto",
+    metadata,
+  }).catch((error) => console.error("No pude registrar la apertura del documento.", error));
 }
 
 async function createIndicatorsFromProgram() {
@@ -10479,18 +10606,46 @@ function bindEvents() {
     const openDocumentId = event.target.closest("[data-open-concept-document]")?.dataset.openConceptDocument;
     if (openDocumentId) {
       const paper = state.conceptPapers.find((item) => item.id === openDocumentId);
-      if (paper?.dataUrl) {
-        openDataUrlDocument(paper.dataUrl, paper.fileName || paper.title || "Concept Paper");
-      }
+      const trigger = event.target.closest("[data-open-concept-document]");
+      const documentUrl = trigger?.dataset.documentUrl || conceptPaperFileUrl(paper) || (paper?.dataUrl ? blobUrlFromDataUrl(paper.dataUrl) : "");
+      openTrackedDocument(documentUrl, {
+        fallbackName: paper?.fileName || paper?.title || "Concept Paper",
+        activityTitle: "Concept Paper abierto",
+        activityDescription: `${currentUser?.fullName || "Un usuario"} abrio el Concept Paper "${paper?.title || paper?.fileName || "sin titulo"}".`,
+        module: "concepts",
+        entityType: "concept-paper",
+        entityId: paper?.id || openDocumentId,
+        resourceLabel: paper?.program || paper?.title || "Concept Paper",
+        metadata: {
+          conceptPaperId: paper?.id || openDocumentId,
+          title: paper?.title || "",
+          fileName: paper?.fileName || "",
+          program: paper?.program || "",
+        },
+      });
       return;
     }
 
     const openManualId = event.target.closest("[data-open-program-manual]")?.dataset.openProgramManual;
     if (openManualId) {
       const manual = (state.programManuals || []).find((item) => item.id === openManualId);
-      if (manual?.dataUrl) {
-        openDataUrlDocument(manual.dataUrl, manual.fileName || manual.title || "Manual de programa");
-      }
+      const trigger = event.target.closest("[data-open-program-manual]");
+      const documentUrl = trigger?.dataset.documentUrl || programManualFileUrl(manual) || (manual?.dataUrl ? blobUrlFromDataUrl(manual.dataUrl) : "");
+      openTrackedDocument(documentUrl, {
+        fallbackName: manual?.fileName || manual?.title || "Manual de programa",
+        activityTitle: "Manual abierto",
+        activityDescription: `${currentUser?.fullName || "Un usuario"} abrio el manual "${manual?.title || manual?.fileName || "sin titulo"}".`,
+        module: "manuals",
+        entityType: "program-manual",
+        entityId: manual?.id || openManualId,
+        resourceLabel: manual?.program || manual?.title || "Manual de programa",
+        metadata: {
+          manualId: manual?.id || openManualId,
+          title: manual?.title || "",
+          fileName: manual?.fileName || "",
+          program: manual?.program || "",
+        },
+      });
       return;
     }
 
@@ -11097,6 +11252,10 @@ function bindEvents() {
 
 export function createMonitoringApp() {
   function stopOperationalMonitors() {
+    if (activitySyncIntervalId !== null) {
+      window.clearInterval(activitySyncIntervalId);
+      activitySyncIntervalId = null;
+    }
     if (chatSyncIntervalId !== null) {
       window.clearInterval(chatSyncIntervalId);
       chatSyncIntervalId = null;
@@ -11186,6 +11345,7 @@ export function createMonitoringApp() {
         renderAll();
         return;
       }
+      ensureActivitySyncMonitor();
       ensureChatSyncMonitor();
       ensureChatPresenceMonitor();
       await syncStartupData({ showErrorToast: true });
@@ -11204,6 +11364,7 @@ export function createMonitoringApp() {
         renderAll();
         return;
       }
+      ensureActivitySyncMonitor();
       ensureChatSyncMonitor();
       ensureChatPresenceMonitor();
       await syncStartupData({ showErrorToast: true });
@@ -11216,6 +11377,10 @@ export function createMonitoringApp() {
       if (accessSyncIntervalId !== null) {
         window.clearInterval(accessSyncIntervalId);
         accessSyncIntervalId = null;
+      }
+      if (activitySyncIntervalId !== null) {
+        window.clearInterval(activitySyncIntervalId);
+        activitySyncIntervalId = null;
       }
       if (chatSyncIntervalId !== null) {
         window.clearInterval(chatSyncIntervalId);
