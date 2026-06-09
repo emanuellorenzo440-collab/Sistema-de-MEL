@@ -4986,7 +4986,7 @@ function decorateReportWorkspaceUi() {
   ensureSelectPlaceholder(elements.reportProvince, "una provincia");
   ensureSelectPlaceholder(elements.reportCenter, "un centro");
   ensureSelectPlaceholder(elements.reportIndicator, "un indicador");
-  elements.reportForm.classList.add("workspace-form-stack", "report-form-shell");
+  elements.reportForm.classList.add("workspace-form-stack", "report-form-shell", "report-workspace-shell", "dashboard-workspace-form");
   const reportGrid = elements.reportForm.querySelector(".form-grid");
   reportGrid?.classList.add("report-form-grid");
   [elements.reportWomenField, elements.reportMenField, elements.reportAdolescentsField, elements.reportChildrenField]
@@ -5053,11 +5053,11 @@ function decorateReportWorkspaceUi() {
 function decorateChartsWorkspaceUi() {
   const chartView = $("#chartsView");
   if (!(chartView instanceof HTMLElement)) return;
-  chartView.classList.add("analytics-view-shell");
-  elements.chartMetricGrid?.classList.add("workspace-metric-strip");
-  elements.chartStatsGrid?.classList.add("workspace-board-stack");
-  elements.analysisBotList?.classList.add("workspace-board-stack");
-  elements.submissionList?.classList.add("workspace-board-stack");
+  chartView.classList.add("analytics-view-shell", "dashboard-workspace-shell", "analytics-workspace-shell");
+  elements.chartMetricGrid?.classList.add("workspace-metric-strip", "analytics-top-strip");
+  elements.chartStatsGrid?.classList.add("workspace-board-stack", "analytics-stat-grid");
+  elements.analysisBotList?.classList.add("workspace-board-stack", "analytics-insight-grid");
+  elements.submissionList?.classList.add("workspace-board-stack", "analytics-submission-grid");
   const filterPanel = chartView.querySelector(".panel");
   if (filterPanel) {
     injectWorkspaceSummaryStrip(filterPanel, "charts-filter", {
@@ -5187,36 +5187,41 @@ renderMetrics = function () {
   ];
 
   elements.metricGrid.innerHTML = `
-    <article class="chart-executive-summary dashboard-workspace-summary">
+    <article class="chart-executive-summary dashboard-workspace-summary workspace-command-center">
       <div class="chart-executive-copy dashboard-summary-copy">
-        <p class="eyebrow">Resumen operativo</p>
-        <h2>Estado consolidado del tablero</h2>
-        <p>Vista activa para ${escapeHtml(program)}, ${escapeHtml(province)} y ${escapeHtml(period.toLowerCase())}.</p>
+        <div class="workspace-section-marker dashboard-command-bar" data-dashboard-section="monitoring-overview">
+          <p class="eyebrow">Resumen operativo</p>
+          <h2>Estado consolidado del tablero</h2>
+          <p>Vista activa para ${escapeHtml(program)}, ${escapeHtml(province)} y ${escapeHtml(period.toLowerCase())}.</p>
+        </div>
       </div>
-      <div class="chart-summary-grid dashboard-summary-grid">
-        <article class="chart-summary-card dashboard-summary-card">
+      <div class="chart-summary-grid dashboard-summary-grid workspace-compact-summary-grid">
+        <article class="chart-summary-card dashboard-summary-card workspace-summary-tile">
           <span class="chart-summary-label">Indicadores activos</span>
           <strong>${escapeHtml(String(activeIndicators))}</strong>
           <p class="item-meta">Miden el avance del alcance filtrado</p>
         </article>
-        <article class="chart-summary-card dashboard-summary-card">
+        <article class="chart-summary-card dashboard-summary-card workspace-summary-tile">
           <span class="chart-summary-label">Valor acumulado</span>
           <strong>${escapeHtml(totalValue.toLocaleString("es-DO"))}</strong>
           <p class="item-meta">Contra una meta de ${escapeHtml(totalTarget.toLocaleString("es-DO"))}</p>
         </article>
-        <article class="chart-summary-card dashboard-summary-card">
+        <article class="chart-summary-card dashboard-summary-card workspace-summary-tile">
           <span class="chart-summary-label">Riesgos visibles</span>
           <strong>${escapeHtml(String(riskCount))}</strong>
           <p class="item-meta">${riskCount ? "Indicadores por debajo del umbral" : "Sin alertas criticas ahora mismo"}</p>
         </article>
       </div>
-      <div class="chart-summary-action dashboard-summary-action">Usa los filtros superiores para cambiar de una lectura territorial amplia a una mesa de trabajo por programa.</div>
+      <div class="chart-summary-action dashboard-summary-action workspace-summary-action-bar">
+        <span class="status-pill info">${escapeHtml(period)}</span>
+        <span>Usa los filtros superiores para pasar de una lectura territorial amplia a una mesa de trabajo por programa.</span>
+      </div>
     </article>
-    <div class="dashboard-metric-grid workspace-metric-strip">
+    <div class="dashboard-metric-grid workspace-metric-strip monitoring-kpi-strip">
       ${metrics
         .map(
           (metric) => `
-            <article class="metric-card dashboard-metric-card ${metric.type}">
+            <article class="metric-card dashboard-metric-card workspace-kpi-card ${metric.type}">
               <div class="dashboard-metric-head">
                 <p class="eyebrow">${escapeHtml(metric.label)}</p>
                 <span class="status-pill ${escapeHtml(metric.type)}">${escapeHtml(activityStatusCopy(metric.type))}</span>
@@ -5234,12 +5239,19 @@ renderMetrics = function () {
 renderProgramChart = function () {
   const { program, province, period } = activeFilterSummary();
   elements.programChart.innerHTML = `
-    <section class="workspace-section-marker dashboard-program-control-bar" data-dashboard-section="programs">
-      <p class="eyebrow">Portafolio por programa</p>
-      <h3>Comparativa operativa</h3>
-      <p class="item-meta">Cruza progreso, reportes aprobados y acciones directas para ${escapeHtml(program)}, ${escapeHtml(province)} y ${escapeHtml(period.toLowerCase())}.</p>
+    <section class="workspace-section-marker dashboard-program-control-bar workspace-toolbar-surface" data-dashboard-section="programs">
+      <div class="dashboard-program-control-copy">
+        <p class="eyebrow">Portafolio por programa</p>
+        <h3>Comparativa operativa</h3>
+        <p class="item-meta">Cruza progreso, reportes aprobados y acciones directas para ${escapeHtml(program)}, ${escapeHtml(province)} y ${escapeHtml(period.toLowerCase())}.</p>
+      </div>
+      <div class="workspace-inline-metrics dashboard-program-control-metrics">
+        <span>${escapeHtml(program)}</span>
+        <span>${escapeHtml(province)}</span>
+        <span>${escapeHtml(period)}</span>
+      </div>
     </section>
-    <div class="workspace-board-stack dashboard-program-stack">
+    <div class="workspace-board-stack dashboard-program-stack workspace-program-board">
       ${state.programs
         .map((programItem) => {
           const indicators = state.indicators.filter((indicator) => indicator.program === programItem.name);
@@ -5252,10 +5264,10 @@ renderProgramChart = function () {
           const risk = statusForProgress(progress);
           const centerCount = registeredCenters().filter((center) => center.program === programItem.name).length;
           return `
-            <article class="bar-row dashboard-program-row dashboard-panel-surface ${risk}">
+            <article class="bar-row dashboard-program-row dashboard-panel-surface workspace-list-row ${risk}">
               <div class="dashboard-program-identity">
                 <div class="bar-name">${escapeHtml(programItem.name)}</div>
-                <div class="workspace-inline-metrics dashboard-program-meta">
+                <div class="workspace-inline-metrics dashboard-program-meta dashboard-chip-strip">
                   <span>${indicators.length} indicador${indicators.length === 1 ? "" : "es"}</span>
                   <span>${approvedReportCount} aprobado${approvedReportCount === 1 ? "" : "s"}</span>
                   <span>${centerCount} centro${centerCount === 1 ? "" : "s"}</span>
@@ -5269,13 +5281,13 @@ renderProgramChart = function () {
                 <div class="bar-track" aria-label="${progress}% de avance">
                   <div class="bar-fill ${risk}" style="width: ${progress}%"></div>
                 </div>
-                <div class="bar-meta dashboard-program-foot">
+                <div class="bar-meta dashboard-program-foot workspace-inline-metrics">
                   <span>Fuente consolidada por indicadores del programa</span>
                   <span>${escapeHtml(programItem.focus || "Sin enfoque definido")}</span>
                 </div>
                 ${
                   isSystemAdminRole()
-                    ? `<div class="item-actions wrap bar-source-actions dashboard-program-actions">
+                    ? `<div class="item-actions wrap bar-source-actions dashboard-program-actions workspace-actions-inline dashboard-action-row">
                         <button class="ghost-action" type="button" data-open-program-indicators="${escapeHtml(programItem.name)}">Ajustar indicadores</button>
                         <button class="ghost-action" type="button" data-open-program-reports="${escapeHtml(programItem.name)}">Revisar o eliminar reportes</button>
                       </div>`
@@ -5301,7 +5313,7 @@ renderRisks = function () {
     ? risks
         .map(
           (indicator) => `
-            <article class="risk-item dashboard-risk-row ${indicator.progress < 60 ? "danger" : ""}">
+            <article class="risk-item dashboard-risk-row dashboard-panel-surface workspace-list-row ${indicator.progress < 60 ? "danger" : ""}">
               <div class="dashboard-risk-copy">
                 <strong>${escapeHtml(indicator.name)}</strong>
                 <span class="risk-meta">${escapeHtml(indicator.program)} · ${indicator.progress}% de ${escapeHtml(String(indicator.target))} ${escapeHtml(indicator.unit)}</span>
@@ -5313,7 +5325,7 @@ renderRisks = function () {
           `,
         )
         .join("")
-    : `<article class="activity-feed-empty dashboard-risk-empty"><p class="item-meta">No hay indicadores criticos con los filtros actuales.</p></article>`;
+    : `<article class="activity-feed-empty dashboard-risk-empty dashboard-panel-surface"><p class="item-meta">No hay indicadores criticos con los filtros actuales.</p></article>`;
 };
 
 renderReports = function () {
@@ -5355,17 +5367,19 @@ renderReports = function () {
 
   if (elements.activityOverviewGrid) {
     elements.activityOverviewGrid.innerHTML = `
-      <article class="chart-executive-summary activity-workspace-summary">
-        <div class="chart-executive-copy">
-          <p class="eyebrow">Actividad operativa</p>
-          <h2>Bitacora reciente del sistema</h2>
-          <p>Consulta movimientos por usuario, modulo y recurso sin perder de vista los pendientes de validacion.</p>
+      <article class="chart-executive-summary activity-workspace-summary dashboard-workspace-summary">
+        <div class="chart-executive-copy dashboard-summary-copy">
+          <div class="workspace-section-marker activity-command-bar" data-dashboard-section="activity-overview">
+            <p class="eyebrow">Actividad operativa</p>
+            <h2>Bitacora reciente del sistema</h2>
+            <p>Consulta movimientos por usuario, modulo y recurso sin perder de vista los pendientes de validacion.</p>
+          </div>
         </div>
-        <div class="chart-summary-grid activity-summary-grid">
+        <div class="chart-summary-grid activity-summary-grid dashboard-summary-grid workspace-compact-summary-grid">
           ${overviewCards
             .map(
               (card) => `
-                <article class="activity-overview-card chart-summary-card ${card.tone}">
+                <article class="activity-overview-card chart-summary-card dashboard-summary-card workspace-summary-tile ${card.tone}">
                   <span class="chart-summary-label">${escapeHtml(card.label)}</span>
                   <strong class="activity-overview-value">${escapeHtml(card.value)}</strong>
                   <p class="item-meta">${escapeHtml(card.meta)}</p>
@@ -5374,7 +5388,10 @@ renderReports = function () {
             )
             .join("")}
         </div>
-        <div class="chart-summary-action">La tabla de abajo mantiene las acciones, soportes y borrado de reportes donde aplique.</div>
+        <div class="chart-summary-action dashboard-summary-action workspace-summary-action-bar">
+          <span class="status-pill ${pendingCount ? "warning" : "good"}">${pendingCount ? `${pendingCount} pendientes` : "Al dia"}</span>
+          <span>La tabla de abajo mantiene acciones, soportes y borrado de reportes donde aplique.</span>
+        </div>
       </article>
     `;
   }
@@ -5385,7 +5402,7 @@ renderReports = function () {
           .slice(0, 5)
           .map(
             (entry) => `
-              <article class="activity-feed-card dashboard-activity-card">
+              <article class="activity-feed-card dashboard-activity-card dashboard-panel-surface workspace-list-row">
                 <div class="activity-feed-top">
                   <div class="activity-person">
                     <span class="activity-avatar">${escapeHtml(initialsFromLabel(entry.actorLabel))}</span>
@@ -5403,7 +5420,7 @@ renderReports = function () {
                   <strong>${escapeHtml(entry.title)}</strong>
                   <p class="item-meta">${escapeHtml(entry.description)}</p>
                 </div>
-                <div class="activity-feed-meta">
+                <div class="activity-feed-meta dashboard-chip-strip">
                   <span class="activity-feed-chip">${escapeHtml(entry.resourceLabel)}</span>
                   ${entry.resourceMeta ? `<span class="activity-feed-chip">${escapeHtml(entry.resourceMeta)}</span>` : ""}
                   <span class="activity-feed-chip">${escapeHtml(entry.moduleLabel)}</span>
@@ -5429,7 +5446,7 @@ renderReports = function () {
     .map((entry) => {
       const relatedReport = entry.relatedReport;
       return `
-        <tr class="activity-table-row activity-table-row-${escapeHtml(entry.statusClass)}">
+        <tr class="activity-table-row dashboard-table-row activity-table-row-${escapeHtml(entry.statusClass)}">
           <td class="activity-table-actor">
             <div class="activity-person">
               <span class="activity-avatar">${escapeHtml(initialsFromLabel(entry.actorLabel))}</span>
@@ -5465,7 +5482,7 @@ renderReports = function () {
             </div>
           </td>
           <td class="activity-table-actions">
-            <div class="item-actions report-row-actions workspace-actions-inline">
+            <div class="item-actions report-row-actions workspace-actions-inline dashboard-action-row">
               ${
                 relatedReport
                   ? renderAttachmentLinks(relatedReport, true) || `<span class="item-meta">${escapeHtml(entry.moduleLabel)}</span>`
@@ -5501,17 +5518,17 @@ decorateReportWorkspaceUi = function () {
   elements.reportForm.classList.add("workspace-form-stack", "report-form-shell");
   elements.reportForm.dataset.workspaceMode = "reporting";
   const reportGrid = elements.reportForm.querySelector(".form-grid");
-  reportGrid?.classList.add("report-form-grid", "workspace-report-grid", "workspace-board-stack");
+  reportGrid?.classList.add("report-form-grid", "workspace-report-grid", "workspace-board-stack", "report-workspace-grid", "dashboard-density-grid");
   elements.reportForm.querySelectorAll("select, input, textarea").forEach((control) => {
     if (!(control instanceof HTMLElement)) return;
-    control.classList.add("workspace-report-control");
+    control.classList.add("workspace-report-control", "report-control-compact");
   });
   [elements.reportWomenField, elements.reportMenField, elements.reportAdolescentsField, elements.reportChildrenField]
     .filter(Boolean)
-    .forEach((field) => field.classList.add("report-participant-field", "dashboard-field-card"));
+    .forEach((field) => field.classList.add("report-participant-field", "dashboard-field-card", "workspace-kpi-tile"));
   [elements.reportEvidenceNoteGroup, elements.reportEvidenceLinkGroup, elements.reportEvidenceUploadGroup, elements.reportDocumentSection]
     .filter(Boolean)
-    .forEach((field) => field.classList.add("report-support-card", "workspace-panel-shell"));
+    .forEach((field) => field.classList.add("report-support-card", "workspace-panel-shell", "report-support-surface", "dashboard-panel-surface"));
   if (reportGrid instanceof HTMLElement) {
     const contextAnchor = reportGrid.querySelector("label");
     const participantAnchor = elements.reportWomenField;
@@ -5548,21 +5565,21 @@ decorateReportWorkspaceUi = function () {
   }
   const primaryPanel = elements.reportForm.querySelector(".panel");
   if (primaryPanel) {
-    primaryPanel.classList.add("workspace-panel-emphasis", "report-primary-panel");
+    primaryPanel.classList.add("workspace-panel-emphasis", "report-primary-panel", "report-workspace-panel", "dashboard-panel-surface");
     injectWorkspaceSummaryStrip(primaryPanel, "report-primary", {
-      eyebrow: "Captura guiada",
-      title: "Completa el reporte con evidencia y soporte final",
-      description: "Usa el formulario principal para el dato operativo y abre el asistente cuando quieras cargar formularios completos o borradores.",
+      eyebrow: "Mesa de captura",
+      title: "Registra el dato, soporte y entrega final desde un mismo workspace",
+      description: "La captura principal concentra contexto, participantes y evidencias para que la validacion ocurra con menos saltos de pantalla.",
       primaryLabel: "Asistente de formularios",
       modalId: "report-assistant-modal",
       compact: true,
     });
   }
   if (elements.reportAssistantPanel) {
-    elements.reportAssistantPanel.classList.add("workspace-board-stack", "report-assistant-panel");
+    elements.reportAssistantPanel.classList.add("workspace-board-stack", "report-assistant-panel", "report-assistant-workspace", "dashboard-density-grid");
     elements.reportAssistantPanel.querySelectorAll(".panel, .panel-header, .item-actions").forEach((node) => {
       if (!(node instanceof HTMLElement)) return;
-      node.classList.add("report-assistant-surface");
+      node.classList.add("report-assistant-surface", "dashboard-panel-surface", "workspace-toolbar-surface");
     });
     modalizeWorkspaceSection(elements.reportAssistantPanel, elements.reportForm, {
       modalId: "report-assistant-modal",
@@ -5584,23 +5601,23 @@ decorateChartsWorkspaceUi = function () {
   elements.submissionList?.classList.add("workspace-board-stack");
   [elements.indicatorCharts, elements.periodCharts, elements.programCharts, elements.trendCharts]
     .filter(Boolean)
-    .forEach((node) => node.classList.add("workspace-board-stack", "analytics-chart-surface"));
+    .forEach((node) => node.classList.add("workspace-board-stack", "analytics-chart-surface", "dashboard-panel-surface", "workspace-chart-panel"));
   const filterPanel = chartView.querySelector(".panel");
   if (filterPanel) {
-    filterPanel.classList.add("workspace-panel-emphasis", "analytics-filter-panel");
+    filterPanel.classList.add("workspace-panel-emphasis", "analytics-filter-panel", "dashboard-panel-surface", "workspace-toolbar-surface");
     injectWorkspaceSummaryStrip(filterPanel, "charts-filter", {
-      eyebrow: "Exploracion ejecutiva",
-      title: "Configura la lectura visual de tus reportes",
-      description: "Ajusta la base analitica y el tipo de grafico antes de pasar a la comparacion por indicadores, periodos y programas.",
+      eyebrow: "Barra de control",
+      title: "Configura la lectura visual antes de entrar al detalle",
+      description: "Define base analitica, periodos y tipo de grafico para moverte rapido entre comparacion, tendencia y carga reciente.",
       compact: true,
     });
     filterPanel.querySelectorAll("select, button").forEach((control) => {
       if (!(control instanceof HTMLElement)) return;
-      control.classList.add("analytics-control");
+      control.classList.add("analytics-control", "workspace-compact-control");
     });
   }
   chartView.querySelectorAll(".chart-stack, .stats-grid, .analysis-bot-list, .submission-list").forEach((node) => {
-    node.classList.add("workspace-board-stack");
+    node.classList.add("workspace-board-stack", "dashboard-density-grid");
   });
 };
 
@@ -5688,17 +5705,19 @@ renderCharts = function () {
   ];
 
   elements.chartMetricGrid.innerHTML = `
-    <article class="chart-executive-summary analytics-workspace-summary">
-      <div class="chart-executive-copy analytics-summary-copy">
-        <p class="eyebrow">Resumen ejecutivo</p>
-        <h2>${escapeHtml(executiveSummary.title)}</h2>
-        <p>${escapeHtml(executiveSummary.summary)}</p>
+    <article class="chart-executive-summary analytics-workspace-summary dashboard-workspace-summary">
+      <div class="chart-executive-copy analytics-summary-copy dashboard-summary-copy">
+        <div class="workspace-section-marker analytics-control-bar" data-dashboard-section="charts-overview">
+          <p class="eyebrow">Resumen ejecutivo</p>
+          <h2>${escapeHtml(executiveSummary.title)}</h2>
+          <p>${escapeHtml(executiveSummary.summary)}</p>
+        </div>
       </div>
-      <div class="chart-summary-grid analytics-summary-grid">
+      <div class="chart-summary-grid analytics-summary-grid dashboard-summary-grid analytics-focus-grid">
         ${executiveSummary.focus
           .map(
             (item) => `
-              <article class="chart-summary-card analytics-summary-card">
+              <article class="chart-summary-card analytics-summary-card dashboard-summary-card analytics-focus-card">
                 <span class="chart-summary-label">${escapeHtml(item.label)}</span>
                 <strong>${escapeHtml(item.value)}</strong>
                 <p class="item-meta">${escapeHtml(item.meta)}</p>
@@ -5707,13 +5726,16 @@ renderCharts = function () {
           )
           .join("")}
       </div>
-      <div class="chart-summary-action analytics-summary-action">${escapeHtml(executiveSummary.action)}</div>
+      <div class="chart-summary-action analytics-summary-action dashboard-summary-action">
+        <span class="status-pill ${chartScope === "approved" ? "good" : "info"}">${escapeHtml(scopeLabel)}</span>
+        <span>${escapeHtml(executiveSummary.action)}</span>
+      </div>
     </article>
-    <div class="analytics-metric-board workspace-metric-strip">
+    <div class="analytics-metric-board workspace-metric-strip dashboard-metric-grid analytics-metric-grid">
       ${metrics
         .map(
           (metric) => `
-            <article class="metric-card analytics-metric-card ${metric.type}">
+            <article class="metric-card analytics-metric-card dashboard-metric-card analytics-kpi-card ${metric.type}">
               <div class="dashboard-metric-head">
                 <p class="eyebrow">${escapeHtml(metric.label)}</p>
                 <span class="status-pill ${escapeHtml(metric.type)}">${escapeHtml(activityStatusCopy(metric.type))}</span>
@@ -5735,7 +5757,7 @@ renderCharts = function () {
   elements.chartStatsGrid.innerHTML = stats
     .map(
       (stat) => `
-        <article class="stat-card analytics-stat-card ${stat.tone}">
+        <article class="stat-card analytics-stat-card dashboard-panel-surface analytics-stat-tile ${stat.tone}">
           <div class="dashboard-metric-head">
             <p class="eyebrow">${escapeHtml(stat.label)}</p>
             <span class="status-pill ${escapeHtml(stat.tone)}">${escapeHtml(activityStatusCopy(stat.tone))}</span>
@@ -5750,7 +5772,7 @@ renderCharts = function () {
   elements.analysisBotList.innerHTML = botInsights
     .map(
       (insight) => `
-        <article class="analysis-bot-item analytics-insight-card ${insight.tone}">
+        <article class="analysis-bot-item analytics-insight-card dashboard-panel-surface workspace-note-card ${insight.tone}">
           <div class="analysis-bot-head">
             <strong>${escapeHtml(insight.title)}</strong>
             <span class="status-pill ${insight.tone}">${insight.tone === "danger" ? "Alta prioridad" : insight.tone === "warning" ? "Atencion" : insight.tone === "good" ? "Oportunidad" : "Analisis"}</span>
@@ -5768,7 +5790,7 @@ renderCharts = function () {
         .sort((a, b) => b.importedAt.localeCompare(a.importedAt))
         .map(
           (submission) => `
-            <article class="submission-item analytics-submission-row">
+            <article class="submission-item analytics-submission-row dashboard-panel-surface workspace-list-row">
               <div class="chart-row-head">
                 <div>
                   <h3>${escapeHtml(submission.formTitle)}</h3>
