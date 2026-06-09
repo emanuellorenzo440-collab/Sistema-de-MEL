@@ -1,8 +1,8 @@
 :root {
-  --brand-primary: #c5332f;
-  --brand-primary-dark: #972623;
-  --brand-accent: #2f85c7;
-  --brand-hero-image: url("./assets/convoy-of-hope-hero.jpg");
+  --brand-primary: #11446b;
+  --brand-primary-dark: #0a2c46;
+  --brand-accent: #27c1da;
+  --brand-hero-image: url("./assets/nexora-admin-hero.svg");
   --bg: #f4f6f9;
   --surface: #ffffff;
   --surface-strong: #eef2f7;

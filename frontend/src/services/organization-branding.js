@@ -2,23 +2,22 @@ import { getApiBaseUrl } from "./mel-api.js?v=20260601a";
 
 export const DEFAULT_ORGANIZATION_BRANDING = {
   organization: {
-    id: "org-convoy-of-hope",
-    name: "Convoy of Hope",
-    slug: "convoy-of-hope",
+    id: "org-nexora-workspace",
+    name: "Nexora Workspace",
+    slug: "nexora",
   },
   branding: {
     productName: "Nexora",
-    organizationName: "Convoy of Hope",
-    loginTagline: "Plataforma operacional personalizada para Convoy of Hope",
-    loginLead:
-      "Entra con tus credenciales institucionales para continuar con reportes, aprobaciones y seguimiento operativo de Convoy of Hope.",
-    sidebarCaption: "Convoy of Hope",
-    topbarEyebrow: "Nexora | Convoy of Hope",
-    brandLogoPath: "assets/convoy-of-hope-logo.jpg",
-    loginHeroPath: "assets/convoy-of-hope-hero.jpg",
-    primaryColor: "#c5332f",
-    primaryDarkColor: "#972623",
-    accentColor: "#2f85c7",
+    organizationName: "Nexora Workspace",
+    loginTagline: "Plataforma operacional multiorganizacional de Nexora",
+    loginLead: "Entra con tus credenciales institucionales para continuar con reportes, aprobaciones y seguimiento operativo.",
+    sidebarCaption: "Workspace base",
+    topbarEyebrow: "Nexora | Workspace base",
+    brandLogoPath: "assets/nexora-admin-logo.svg",
+    loginHeroPath: "assets/nexora-admin-hero.svg",
+    primaryColor: "#11446b",
+    primaryDarkColor: "#0a2c46",
+    accentColor: "#27c1da",
     enabledModules: ["dashboard", "report", "indicators", "design", "forms", "charts", "chat", "attendance", "concepts", "supervision", "programs", "access"],
   },
 };
@@ -71,9 +70,7 @@ export function readRequestedOrganizationContext() {
   const inferredPathSlug =
     pathname === "/admin" || pathname.startsWith("/admin/")
       ? "nexora-admin"
-      : pathname === "/convoy" || pathname.startsWith("/convoy/")
-        ? "convoy-of-hope"
-        : (pathname.match(/^\/portal\/([^/?#]+)/)?.[1] || "");
+      : (pathname.match(/^\/portal\/([^/?#]+)/)?.[1] || "");
   const organizationSlug = requestedSlug || inferredPathSlug;
   return {
     organizationId: String(organizationId || "").trim(),
@@ -176,9 +173,9 @@ export function applyOrganizationBranding(payload = DEFAULT_ORGANIZATION_BRANDIN
   updateBrandImage("sidebarBrandLogo", organization.name);
 
   const portalShortcuts = document.getElementById("portalShortcuts");
-  const convoyPortalShortcut = document.getElementById("convoyPortalShortcut");
+  const tenantPortalShortcut = document.getElementById("tenantPortalShortcut");
   const adminPortalShortcut = document.getElementById("adminPortalShortcut");
-  if (convoyPortalShortcut) convoyPortalShortcut.href = "/";
+  if (tenantPortalShortcut) tenantPortalShortcut.href = "/";
   if (adminPortalShortcut) adminPortalShortcut.href = "/admin";
   if (portalShortcuts) {
     portalShortcuts.hidden = organization.slug !== "nexora-admin";

@@ -198,8 +198,8 @@ function mergeRemoteReports(localReports = [], remoteReports = [], deletedReport
 function mapLocalReportToApi(report) {
   return {
     id: report.id,
-    companyId: report.companyId || report.organizationId || "org-convoy-of-hope",
-    organizationId: report.organizationId || report.companyId || "org-convoy-of-hope",
+    companyId: report.companyId || report.organizationId || "org-nexora-workspace",
+    organizationId: report.organizationId || report.companyId || "org-nexora-workspace",
     date: report.date,
     period: report.period,
     program: report.program,

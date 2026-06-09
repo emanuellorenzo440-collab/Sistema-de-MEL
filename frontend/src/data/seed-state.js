@@ -12,7 +12,7 @@ export const seedState = {
   },
   designProgram: "Girls Empowerment",
   formsProgram: "Girls Empowerment",
-  selectedConceptPaper: "cp-ge-2026",
+  selectedConceptPaper: "",
   attendanceProgram: "Girls Empowerment",
   attendanceCenter: "General",
   attendancePeriod: "2026-05",
@@ -73,7 +73,7 @@ export const seedState = {
   programs: [
     {
       name: "Girls Empowerment",
-      lead: "Alanna Pujols",
+      lead: "Coordinacion del programa",
       provinces: ["Centros de programa"],
       beneficiaries: 1500,
       budget: "US$ 4,369",
@@ -636,7 +636,7 @@ export const seedState = {
       id: "cp-ge-2026",
       program: "Girls Empowerment",
       title: "Girls Empowerment Concept Paper 2026",
-      presenter: "Facilitadora Alanna Pujols",
+      presenter: "Facilitacion del programa",
       fileName: "CONCEPT PAPER- 2026 (ACTU.).pdf",
       path: "assets/concept-papers/girls-empowerment-concept-paper-2026.pdf",
       year: "2026",

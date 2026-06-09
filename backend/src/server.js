@@ -579,7 +579,7 @@ function canAccessUploadPath(actor, storagePath = "") {
   if (scopedOrganizationId) {
     return scopedOrganizationId === safeSegment(actor.organizationId);
   }
-  return safeSegment(actor.organizationId) === safeSegment("org-convoy-of-hope");
+  return safeSegment(actor.organizationId) === safeSegment("org-nexora-workspace");
 }
 
 function dataUrlToFile(dataUrl = "") {
@@ -2729,9 +2729,7 @@ function organizationSelectorFrom(request, payload = {}) {
   const inferredPathSlug =
     pathname === "/admin" || pathname.startsWith("/admin/")
       ? "nexora-admin"
-      : pathname === "/convoy" || pathname.startsWith("/convoy/")
-        ? "convoy-of-hope"
-        : (pathname.match(/^\/portal\/([^/?#]+)/)?.[1] || "");
+      : (pathname.match(/^\/portal\/([^/?#]+)/)?.[1] || "");
   return {
     organizationId:
       request.headers["x-mel-organization-id"] ||

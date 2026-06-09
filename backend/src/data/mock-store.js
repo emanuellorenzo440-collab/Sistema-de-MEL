@@ -5,13 +5,15 @@ import { seedState } from "../../../frontend/src/data/seed-state.js";
 import { REPORT_STATUSES, reviewRoleForStatus } from "../../../shared/contracts/reporting.js";
 
 const STORE_VERSION = 1;
-const DEFAULT_COMPANY_ID = "org-convoy-of-hope";
-const DEFAULT_COMPANY_NAME = "Convoy of Hope";
-const LEGACY_DEFAULT_COMPANY_IDS = new Set(["org-default"]);
+const DEFAULT_COMPANY_ID = "org-nexora-workspace";
+const DEFAULT_COMPANY_NAME = "Nexora Workspace";
+const LEGACY_DEFAULT_COMPANY_IDS = new Set(["org-default", "org-convoy-of-hope"]);
+const LEGACY_DEFAULT_COMPANY_NAMES = new Set(["convoy of hope"]);
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const defaultDataDir = path.resolve(dirname, "..", "..", "data");
 const dataDir = process.env.MEL_DATA_DIR || process.env.RAILWAY_VOLUME_MOUNT_PATH || defaultDataDir;
 const melStorePath = process.env.MEL_STORE_DB_PATH || path.join(dataDir, "mel-store.json");
+const uploadsDir = process.env.MEL_UPLOAD_DIR || path.join(dataDir, "uploads");
 
 function slugify(value) {
   return String(value || "")
@@ -52,9 +54,37 @@ function hasLegacyDefaultOrganization(items = []) {
           item &&
           typeof item === "object" &&
           (LEGACY_DEFAULT_COMPANY_IDS.has(String(item.companyId || "").trim()) ||
-            LEGACY_DEFAULT_COMPANY_IDS.has(String(item.organizationId || "").trim())),
+            LEGACY_DEFAULT_COMPANY_IDS.has(String(item.organizationId || "").trim()) ||
+            LEGACY_DEFAULT_COMPANY_NAMES.has(String(item.organizationName || "").trim().toLowerCase())),
       )
     : false;
+}
+
+function isLegacyDefaultWorkspaceItem(item = {}) {
+  return (
+    item &&
+    typeof item === "object" &&
+    (LEGACY_DEFAULT_COMPANY_IDS.has(String(item.companyId || "").trim()) ||
+      LEGACY_DEFAULT_COMPANY_IDS.has(String(item.organizationId || "").trim()) ||
+      LEGACY_DEFAULT_COMPANY_NAMES.has(String(item.organizationName || "").trim().toLowerCase()))
+  );
+}
+
+function sanitizeDefaultWorkspaceOwnership(item = {}) {
+  if (!isLegacyDefaultWorkspaceItem(item)) return item;
+  return {
+    ...item,
+    companyId: DEFAULT_COMPANY_ID,
+    organizationId: DEFAULT_COMPANY_ID,
+    organizationName: DEFAULT_COMPANY_NAME,
+  };
+}
+
+function removeLegacyWorkspaceUploads() {
+  const legacyUploadsPath = path.resolve(uploadsDir, "organizations", "org-convoy-of-hope");
+  const uploadsRoot = path.resolve(uploadsDir);
+  if (!legacyUploadsPath.startsWith(uploadsRoot + path.sep) && legacyUploadsPath !== uploadsRoot) return;
+  fs.rmSync(legacyUploadsPath, { recursive: true, force: true });
 }
 
 const seededPrograms = seedState.programs.map((program) => ({
@@ -100,9 +130,6 @@ function conceptProgramFromContent(input = {}, fallbackProgram = "") {
 }
 
 function bundledConceptPaperPath(input = {}) {
-  const id = String(input.id || "");
-  if (id === "cp-ge-2026") return "assets/concept-papers/girls-empowerment-concept-paper-2026.pdf";
-  if (id === "cp-bc-2026") return "assets/concept-papers/club-de-chicos-concept-paper-2026.pdf";
   return "";
 }
 
@@ -174,7 +201,7 @@ function normalizedProgramManual(input = {}) {
   };
 }
 
-const conceptPapers = seedState.conceptPapers.map(normalizedConceptPaper);
+const conceptPapers = [];
 const programManuals = [];
 const reports = [];
 const reportStatusHistory = [];
@@ -330,6 +357,20 @@ function hydratePersistentStore() {
     return;
   }
   let shouldPersistAfterMigration = false;
+  const shouldSanitizeLegacyWorkspace =
+    hasLegacyDefaultOrganization(stored.programs) ||
+    hasLegacyDefaultOrganization(stored.indicators) ||
+    hasLegacyDefaultOrganization(stored.programCenters) ||
+    hasLegacyDefaultOrganization(stored.conceptPapers) ||
+    hasLegacyDefaultOrganization(stored.programManuals) ||
+    hasLegacyDefaultOrganization(stored.reports) ||
+    hasLegacyDefaultOrganization(stored.formSubmissions) ||
+    hasLegacyDefaultOrganization(stored.attendanceParticipants) ||
+    hasLegacyDefaultOrganization(stored.attendanceSessions) ||
+    hasLegacyDefaultOrganization(stored.platformActivity) ||
+    hasLegacyDefaultOrganization(stored.chatConversations) ||
+    hasLegacyDefaultOrganization(stored.chatParticipants) ||
+    hasLegacyDefaultOrganization(stored.chatMessages);
   if (
     hasLegacyDefaultOrganization(stored.conceptPapers) ||
     hasLegacyDefaultOrganization(stored.programManuals) ||
@@ -339,50 +380,101 @@ function hydratePersistentStore() {
     shouldPersistAfterMigration = true;
   }
 
-  if (Array.isArray(stored.programs) && stored.programs.length) replaceArray(programs, stored.programs);
-  if (Array.isArray(stored.indicators) && stored.indicators.length) replaceArray(indicators, stored.indicators);
-  if (Array.isArray(stored.conceptPapers)) {
-    replaceArray(conceptPapers, stored.conceptPapers.map(normalizedConceptPaper));
+  if (Array.isArray(stored.programs) && stored.programs.length) {
+    replaceArray(programs, stored.programs.map(sanitizeDefaultWorkspaceOwnership));
   }
-  replaceArray(programManuals, Array.isArray(stored.programManuals) ? stored.programManuals.map(normalizedProgramManual) : []);
-  replaceArray(deletedLibraryDocuments, Array.isArray(stored.deletedLibraryDocuments) ? stored.deletedLibraryDocuments : []);
+  if (Array.isArray(stored.indicators) && stored.indicators.length) {
+    replaceArray(indicators, stored.indicators.map(sanitizeDefaultWorkspaceOwnership));
+  }
+  if (Array.isArray(stored.conceptPapers)) {
+    replaceArray(
+      conceptPapers,
+      stored.conceptPapers.filter((item) => !isLegacyDefaultWorkspaceItem(item)).map(normalizedConceptPaper),
+    );
+  }
+  replaceArray(
+    programManuals,
+    Array.isArray(stored.programManuals)
+      ? stored.programManuals.filter((item) => !isLegacyDefaultWorkspaceItem(item)).map(normalizedProgramManual)
+      : [],
+  );
+  replaceArray(
+    deletedLibraryDocuments,
+    Array.isArray(stored.deletedLibraryDocuments) ? stored.deletedLibraryDocuments.filter((item) => !isLegacyDefaultWorkspaceItem(item)) : [],
+  );
   mergeMissingByKey(programs, seededPrograms, (program) => program.name);
   if (Array.isArray(stored.programCenters)) {
-    replaceArray(programCenters, stored.programCenters.map(normalizedProgramCenter));
+    replaceArray(programCenters, stored.programCenters.map((item) => normalizedProgramCenter(sanitizeDefaultWorkspaceOwnership(item))));
   } else {
     mergeMissingByKey(programCenters, seededProgramCenters, (center) => `${center.program}|${center.province}|${center.name}`);
   }
   const deletedConceptPaperIds = new Set(
     deletedLibraryDocuments.filter((item) => item.type === "concept-paper").map((item) => item.id),
   );
-  mergeMissingByKey(
-    conceptPapers,
-    seedState.conceptPapers.map(normalizedConceptPaper).filter((paper) => !deletedConceptPaperIds.has(paper.id)),
-    (paper) => paper.id,
+  if (!shouldSanitizeLegacyWorkspace && !Array.isArray(stored.conceptPapers)) {
+    mergeMissingByKey(
+      conceptPapers,
+      seedState.conceptPapers.map(normalizedConceptPaper).filter((paper) => !deletedConceptPaperIds.has(paper.id)),
+      (paper) => paper.id,
+    );
+  }
+  replaceArray(reports, Array.isArray(stored.reports) ? stored.reports.filter((item) => !isLegacyDefaultWorkspaceItem(item)).map(normalizedReport) : []);
+  replaceArray(
+    reportStatusHistory,
+    Array.isArray(stored.reportStatusHistory) ? stored.reportStatusHistory.filter((item) => !isLegacyDefaultWorkspaceItem(item)) : [],
   );
-  replaceArray(reports, Array.isArray(stored.reports) ? stored.reports.map(normalizedReport) : []);
-  replaceArray(reportStatusHistory, Array.isArray(stored.reportStatusHistory) ? stored.reportStatusHistory : []);
-  replaceArray(deletedReports, Array.isArray(stored.deletedReports) ? stored.deletedReports : []);
-  replaceArray(formSubmissions, Array.isArray(stored.formSubmissions) ? stored.formSubmissions.map(normalizedFormSubmission) : []);
+  replaceArray(deletedReports, Array.isArray(stored.deletedReports) ? stored.deletedReports.filter((item) => !isLegacyDefaultWorkspaceItem(item)) : []);
+  replaceArray(
+    formSubmissions,
+    Array.isArray(stored.formSubmissions) ? stored.formSubmissions.filter((item) => !isLegacyDefaultWorkspaceItem(item)).map(normalizedFormSubmission) : [],
+  );
   replaceArray(
     attendanceParticipants,
-    Array.isArray(stored.attendanceParticipants) ? stored.attendanceParticipants.map(normalizedAttendanceParticipant) : [],
+    Array.isArray(stored.attendanceParticipants)
+      ? stored.attendanceParticipants.filter((item) => !isLegacyDefaultWorkspaceItem(item)).map(normalizedAttendanceParticipant)
+      : [],
   );
   replaceArray(
     attendanceSessions,
-    Array.isArray(stored.attendanceSessions) ? stored.attendanceSessions.map(normalizedAttendanceSession) : [],
+    Array.isArray(stored.attendanceSessions)
+      ? stored.attendanceSessions.filter((item) => !isLegacyDefaultWorkspaceItem(item)).map(normalizedAttendanceSession)
+      : [],
   );
-  replaceArray(attendanceArchive, Array.isArray(stored.attendanceArchive) ? stored.attendanceArchive : []);
-  replaceArray(notifications, Array.isArray(stored.notifications) ? stored.notifications : []);
-  replaceArray(emailOutbox, Array.isArray(stored.emailOutbox) ? stored.emailOutbox : []);
-  replaceArray(platformActivity, Array.isArray(stored.platformActivity) ? stored.platformActivity : []);
-  replaceArray(chatConversations, Array.isArray(stored.chatConversations) ? stored.chatConversations.map(normalizedChatConversation) : []);
-  replaceArray(chatParticipants, Array.isArray(stored.chatParticipants) ? stored.chatParticipants.map(normalizedChatParticipant) : []);
-  replaceArray(chatMessages, Array.isArray(stored.chatMessages) ? stored.chatMessages.map(normalizedChatMessage) : []);
-  replaceArray(chatReads, Array.isArray(stored.chatReads) ? stored.chatReads.map(normalizedChatRead) : []);
-  replaceArray(chatNotifications, Array.isArray(stored.chatNotifications) ? stored.chatNotifications.map(normalizedChatNotification) : []);
-  replaceArray(chatPresence, Array.isArray(stored.chatPresence) ? stored.chatPresence.map(normalizedChatPresence) : []);
-  replaceArray(chatTyping, Array.isArray(stored.chatTyping) ? stored.chatTyping.map(normalizedChatTyping) : []);
+  replaceArray(attendanceArchive, Array.isArray(stored.attendanceArchive) ? stored.attendanceArchive.filter((item) => !isLegacyDefaultWorkspaceItem(item)) : []);
+  replaceArray(notifications, Array.isArray(stored.notifications) ? stored.notifications.filter((item) => !isLegacyDefaultWorkspaceItem(item)) : []);
+  replaceArray(emailOutbox, Array.isArray(stored.emailOutbox) ? stored.emailOutbox.filter((item) => !isLegacyDefaultWorkspaceItem(item)) : []);
+  replaceArray(platformActivity, Array.isArray(stored.platformActivity) ? stored.platformActivity.filter((item) => !isLegacyDefaultWorkspaceItem(item)) : []);
+  replaceArray(
+    chatConversations,
+    Array.isArray(stored.chatConversations)
+      ? stored.chatConversations.filter((item) => !isLegacyDefaultWorkspaceItem(item)).map(normalizedChatConversation)
+      : [],
+  );
+  replaceArray(
+    chatParticipants,
+    Array.isArray(stored.chatParticipants)
+      ? stored.chatParticipants.filter((item) => !isLegacyDefaultWorkspaceItem(item)).map(normalizedChatParticipant)
+      : [],
+  );
+  replaceArray(
+    chatMessages,
+    Array.isArray(stored.chatMessages)
+      ? stored.chatMessages.filter((item) => !isLegacyDefaultWorkspaceItem(item)).map(normalizedChatMessage)
+      : [],
+  );
+  replaceArray(chatReads, Array.isArray(stored.chatReads) ? stored.chatReads.filter((item) => !isLegacyDefaultWorkspaceItem(item)).map(normalizedChatRead) : []);
+  replaceArray(
+    chatNotifications,
+    Array.isArray(stored.chatNotifications)
+      ? stored.chatNotifications.filter((item) => !isLegacyDefaultWorkspaceItem(item)).map(normalizedChatNotification)
+      : [],
+  );
+  replaceArray(chatPresence, Array.isArray(stored.chatPresence) ? stored.chatPresence.filter((item) => !isLegacyDefaultWorkspaceItem(item)).map(normalizedChatPresence) : []);
+  replaceArray(chatTyping, Array.isArray(stored.chatTyping) ? stored.chatTyping.filter((item) => !isLegacyDefaultWorkspaceItem(item)).map(normalizedChatTyping) : []);
+  if (shouldSanitizeLegacyWorkspace) {
+    removeLegacyWorkspaceUploads();
+    shouldPersistAfterMigration = true;
+  }
   if (shouldPersistAfterMigration) {
     persistStore();
   }

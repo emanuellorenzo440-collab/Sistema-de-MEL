@@ -21,7 +21,7 @@ import {
   listVisibleViews,
   updateCurrentUserChatAlertSettings,
   updateManagedUserAccess,
-} from "../services/auth-service.js?v=20260602h";
+} from "../services/auth-service.js?v=20260609a";
 import {
   apiFileUrl,
   addApiChatParticipants,
@@ -83,8 +83,8 @@ import {
   updateApiProgram,
   updateApiProgramCenter,
   uploadApiFile,
-} from "../services/mel-api.js?v=20260601a";
-import { applyOrganizationBranding, brandingFromUser, readRequestedOrganizationContext } from "../services/organization-branding.js?v=20260602g";
+} from "../services/mel-api.js?v=20260609a";
+import { applyOrganizationBranding, brandingFromUser, readRequestedOrganizationContext } from "../services/organization-branding.js?v=20260609a";
 import {
   currentMonth,
   escapeHtml,
@@ -1376,13 +1376,13 @@ function canManageProgramCenters(role = activeRole()) {
 }
 
 function actorPayload() {
-  const organizationId = currentUser?.organizationId || "org-convoy-of-hope";
+  const organizationId = currentUser?.organizationId || "org-nexora-workspace";
   return {
     actorId: currentUser?.id || currentUser?.email || `local-${slugify(activeRole())}`,
     actorRole: activeRole(),
     organizationId,
     companyId: organizationId,
-    organizationName: currentUser?.organizationName || "Convoy of Hope",
+    organizationName: currentUser?.organizationName || "Nexora Workspace",
   };
 }
 
@@ -2077,9 +2077,9 @@ async function programManualDocumentFromFile(file, formData) {
   const uploadedFile = isApiConfigured() ? await uploadApiFile(file, { kind: "program-manuals" }) : null;
   return {
     id: `manual-${slugify(program || title || file.name)}-${Date.now()}`,
-    companyId: currentUser?.organizationId || "org-convoy-of-hope",
-    organizationId: currentUser?.organizationId || "org-convoy-of-hope",
-    organizationName: currentUser?.organizationName || "Convoy of Hope",
+    companyId: currentUser?.organizationId || "org-nexora-workspace",
+    organizationId: currentUser?.organizationId || "org-nexora-workspace",
+    organizationName: currentUser?.organizationName || "Nexora Workspace",
     program,
     title,
     fileName: file.name,
@@ -3346,7 +3346,7 @@ function renderAccessWorkspace(options = {}) {
                 <article class="master-portal-overview-card">
                   <p class="eyebrow">Ruta de acceso</p>
                   <div class="value">/admin</div>
-                  <p class="item-meta">Portal maestro separado del tenant de Convoy</p>
+                  <p class="item-meta">Portal maestro separado del workspace base</p>
                 </article>
               </div>
             </section>
@@ -3548,7 +3548,7 @@ function renderAccessWorkspace(options = {}) {
               </div>
               <article class="user-access-card">
                 <p class="item-meta">Estas dentro del portal maestro de Nexora. Desde aqui preparas organizaciones, branding, dominios y modulos antes de que cada cliente opere su propio portal.</p>
-                <p class="item-meta"><strong>Acceso recomendado:</strong> usa <code>/admin</code> para entrar directo al portal maestro. El tenant de Convoy queda en la raiz del mismo despliegue.</p>
+                <p class="item-meta"><strong>Acceso recomendado:</strong> usa <code>/admin</code> para entrar directo al portal maestro. El workspace base de Nexora queda en la raiz del mismo despliegue.</p>
               </article>
             </section>
           `
@@ -4654,7 +4654,7 @@ function enhanceAccessCreateForms() {
   const createManagedUserForm = elements.accessUserGrid?.querySelector("#createManagedUserForm");
   if (createManagedUserForm instanceof HTMLFormElement) {
     createManagedUserForm.querySelector('[name="fullName"]')?.setAttribute("placeholder", "Nombre y apellido");
-    createManagedUserForm.querySelector('[name="email"]')?.setAttribute("placeholder", "usuario@convoyofhope.org");
+    createManagedUserForm.querySelector('[name="email"]')?.setAttribute("placeholder", "usuario@organizacion.org");
     createManagedUserForm.querySelector('[name="password"]')?.setAttribute("placeholder", "Minimo 8 caracteres");
     ensureSelectPlaceholder(createManagedUserForm.querySelector('[name="systemRole"]'), "un rol");
     ensureSelectPlaceholder(createManagedUserForm.querySelector('[name="status"]'), "un estado");
@@ -4975,7 +4975,7 @@ function decorateOperationalCrudUi() {
 function decorateReportWorkspaceUi() {
   if (!(elements.reportForm instanceof HTMLFormElement)) return;
   ensureFieldLabelDecorations(elements.reportForm);
-  elements.reportOwner?.setAttribute("placeholder", "Ej. L Lorenzo");
+  elements.reportOwner?.setAttribute("placeholder", "Ej. Responsable del reporte");
   $("#reportValue")?.setAttribute("placeholder", "0");
   elements.reportWomen?.setAttribute("placeholder", "0");
   elements.reportMen?.setAttribute("placeholder", "0");
@@ -5504,7 +5504,7 @@ renderReports = function () {
 decorateReportWorkspaceUi = function () {
   if (!(elements.reportForm instanceof HTMLFormElement)) return;
   ensureFieldLabelDecorations(elements.reportForm);
-  elements.reportOwner?.setAttribute("placeholder", "Ej. L Lorenzo");
+  elements.reportOwner?.setAttribute("placeholder", "Ej. Responsable del reporte");
   $("#reportValue")?.setAttribute("placeholder", "0");
   elements.reportWomen?.setAttribute("placeholder", "0");
   elements.reportMen?.setAttribute("placeholder", "0");
@@ -6051,7 +6051,7 @@ function createLocalReviewNotifications(report) {
 
   return [recipient].map((stageRecipient) => ({
     id: `notif-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
-    companyId: report.companyId || report.organizationId || currentUser?.organizationId || "org-convoy-of-hope",
+    companyId: report.companyId || report.organizationId || currentUser?.organizationId || "org-nexora-workspace",
     programId: report.programId || program?.id || null,
     program: report.program,
     reportId: report.id,
@@ -8698,9 +8698,9 @@ function buildFormSubmissionRecord({
 }) {
   return {
     id: id || `sub-${Date.now()}`,
-    companyId: currentUser?.organizationId || "org-convoy-of-hope",
-    organizationId: currentUser?.organizationId || "org-convoy-of-hope",
-    organizationName: currentUser?.organizationName || "Convoy of Hope",
+    companyId: currentUser?.organizationId || "org-nexora-workspace",
+    organizationId: currentUser?.organizationId || "org-nexora-workspace",
+    organizationName: currentUser?.organizationName || "Nexora Workspace",
     fileName: fileName || "formulario.csv",
     formId,
     sourceFormId: formId,
@@ -8921,9 +8921,9 @@ async function addReport(formData) {
   }
   const newReport = {
     id: `rep-${Date.now()}`,
-    companyId: currentUser?.organizationId || "org-convoy-of-hope",
-    organizationId: currentUser?.organizationId || "org-convoy-of-hope",
-    organizationName: currentUser?.organizationName || "Convoy of Hope",
+    companyId: currentUser?.organizationId || "org-nexora-workspace",
+    organizationId: currentUser?.organizationId || "org-nexora-workspace",
+    organizationName: currentUser?.organizationName || "Nexora Workspace",
     date: new Date().toISOString().slice(0, 10),
     period,
     program: programName,

@@ -66,9 +66,7 @@ function readRequestedOrganizationContext() {
   const inferredPathSlug =
     pathname === "/admin" || pathname.startsWith("/admin/")
       ? "nexora-admin"
-      : pathname === "/convoy" || pathname.startsWith("/convoy/")
-        ? "convoy-of-hope"
-        : pathname.match(/^\/portal\/([^/?#]+)/)?.[1] || "";
+      : pathname.match(/^\/portal\/([^/?#]+)/)?.[1] || "";
   return {
     organizationId: String(organizationId || "").trim(),
     organizationSlug: String(requestedSlug || inferredPathSlug || "").trim().toLowerCase(),
@@ -80,7 +78,7 @@ function authPortalScope() {
   if (requested.organizationSlug) return requested.organizationSlug;
   if (requested.organizationId) return requested.organizationId.toLowerCase();
   const pathname = String(window.location.pathname || "/").trim();
-  if (!pathname || pathname === "/") return "convoy-of-hope";
+  if (!pathname || pathname === "/") return "nexora";
   return "default";
 }
 

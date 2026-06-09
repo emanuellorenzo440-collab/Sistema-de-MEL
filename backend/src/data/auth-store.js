@@ -3,8 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const CURRENT_AUTH_DATA_VERSION = 2;
-const PRESET_ACCOUNT_VERSION = 4;
+const CURRENT_AUTH_DATA_VERSION = 3;
+const PRESET_ACCOUNT_VERSION = 5;
 const PASSWORD_HASH_VERSION = "pbkdf2-sha512";
 const PASSWORD_ITERATIONS = 120000;
 const SESSION_DURATION_MS = 12 * 60 * 60 * 1000;
@@ -12,6 +12,11 @@ const DEFAULT_PRODUCT_NAME = "Nexora";
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const HEX_COLOR_REGEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
+const DEFAULT_WORKSPACE_ORGANIZATION_ID = "org-nexora-workspace";
+const DEFAULT_WORKSPACE_ORGANIZATION_NAME = "Nexora Workspace";
+const DEFAULT_WORKSPACE_ORGANIZATION_SLUG = "nexora";
+const LEGACY_DEFAULT_ORGANIZATION_IDS = new Set(["org-default", "org-convoy-of-hope", DEFAULT_WORKSPACE_ORGANIZATION_ID]);
+const LEGACY_DEFAULT_ORGANIZATION_SLUGS = new Set(["convoy-of-hope", DEFAULT_WORKSPACE_ORGANIZATION_SLUG]);
 const VIEW_KEYS = [
   "dashboard",
   "activity",
@@ -28,23 +33,22 @@ const VIEW_KEYS = [
   "access",
 ];
 const DEFAULT_ORGANIZATION = {
-  id: "org-convoy-of-hope",
-  name: "Convoy of Hope",
-  slug: "convoy-of-hope",
+  id: DEFAULT_WORKSPACE_ORGANIZATION_ID,
+  name: DEFAULT_WORKSPACE_ORGANIZATION_NAME,
+  slug: DEFAULT_WORKSPACE_ORGANIZATION_SLUG,
   hostnames: [],
   settings: {
     productName: DEFAULT_PRODUCT_NAME,
-    organizationName: "Convoy of Hope",
-    loginTagline: "Plataforma operacional personalizada para Convoy of Hope",
-    loginLead:
-      "Entra con tus credenciales institucionales para continuar con reportes, aprobaciones y seguimiento operativo de Convoy of Hope.",
-    sidebarCaption: "Convoy of Hope",
-    topbarEyebrow: "Nexora | Convoy of Hope",
-    brandLogoPath: "assets/convoy-of-hope-logo.jpg",
-    loginHeroPath: "assets/convoy-of-hope-hero.jpg",
-    primaryColor: "#c5332f",
-    primaryDarkColor: "#972623",
-    accentColor: "#2f85c7",
+    organizationName: DEFAULT_WORKSPACE_ORGANIZATION_NAME,
+    loginTagline: "Plataforma operacional multiorganizacional de Nexora",
+    loginLead: "Entra con tus credenciales institucionales para continuar con reportes, aprobaciones y seguimiento operativo.",
+    sidebarCaption: "Workspace base",
+    topbarEyebrow: "Nexora | Workspace base",
+    brandLogoPath: "assets/nexora-admin-logo.svg",
+    loginHeroPath: "assets/nexora-admin-hero.svg",
+    primaryColor: "#11446b",
+    primaryDarkColor: "#0a2c46",
+    accentColor: "#27c1da",
     enabledModules: VIEW_KEYS,
   },
 };
@@ -130,10 +134,10 @@ const DEFAULT_ROLE_PERMISSIONS = {
 
 const SEEDED_ACCOUNTS = [
   {
-    id: "supervision",
-    fullName: "Equipo Supervision M&E",
-    email: "supervision@pulso-me.org",
-    password: "PulsoMEL2026!",
+    id: "workspace-supervision",
+    fullName: "Supervision Nexora",
+    email: "supervision@nexora.app",
+    password: "NexoraMEL2026!",
     primaryRole: SYSTEM_ROLES.supervision,
     status: "active",
     accessNote: "Cuenta administradora base del sistema.",
@@ -142,10 +146,10 @@ const SEEDED_ACCOUNTS = [
     organizationName: DEFAULT_ORGANIZATION.name,
   },
   {
-    id: "llorenzo-supervision",
-    fullName: "L Lorenzo",
-    email: "llorenzo@convoyofhope.org",
-    password: "ConvoyHope2026!",
+    id: "workspace-admin",
+    fullName: "Workspace Admin",
+    email: "workspace.admin@nexora.app",
+    password: "WorkspaceAdmin2026!",
     primaryRole: SYSTEM_ROLES.supervision,
     status: "active",
     accessNote: "Cuenta administradora configurada para iniciar sesion directamente.",
@@ -154,9 +158,9 @@ const SEEDED_ACCOUNTS = [
     organizationName: DEFAULT_ORGANIZATION.name,
   },
   {
-    id: "apujols-facilitator",
-    fullName: "A Pujols",
-    email: "apujols@convoyofhope.org",
+    id: "workspace-facilitator",
+    fullName: "Facilitador Base",
+    email: "facilitador@nexora.app",
     password: "Facilitador2026!",
     primaryRole: SYSTEM_ROLES.facilitator,
     status: "active",
@@ -319,13 +323,21 @@ function normalizeOrganizationSettings(settings = {}, fallbackName = DEFAULT_ORG
 }
 
 function normalizeOrganization(organization = {}) {
-  const id = String(organization.id || DEFAULT_ORGANIZATION.id).trim() || DEFAULT_ORGANIZATION.id;
-  const name = String(organization.name || DEFAULT_ORGANIZATION.name).trim() || DEFAULT_ORGANIZATION.name;
+  const requestedId = String(organization.id || DEFAULT_ORGANIZATION.id).trim() || DEFAULT_ORGANIZATION.id;
+  const requestedSlug = String(organization.slug || "").trim().toLowerCase();
+  const isDefaultWorkspace =
+    LEGACY_DEFAULT_ORGANIZATION_IDS.has(requestedId) || LEGACY_DEFAULT_ORGANIZATION_SLUGS.has(requestedSlug);
+  const id = isDefaultWorkspace ? DEFAULT_ORGANIZATION.id : requestedId;
+  const name = isDefaultWorkspace
+    ? DEFAULT_ORGANIZATION.name
+    : String(organization.name || DEFAULT_ORGANIZATION.name).trim() || DEFAULT_ORGANIZATION.name;
   const hostnames = normalizeHostnameList(organization.hostnames);
   return {
     id,
     name,
-    slug: String(organization.slug || slugify(name) || DEFAULT_ORGANIZATION.slug).trim() || DEFAULT_ORGANIZATION.slug,
+    slug: isDefaultWorkspace
+      ? DEFAULT_ORGANIZATION.slug
+      : String(organization.slug || slugify(name) || DEFAULT_ORGANIZATION.slug).trim() || DEFAULT_ORGANIZATION.slug,
     hostnames,
     settings: normalizeOrganizationSettings(organization.settings || {}, name),
   };
@@ -435,7 +447,7 @@ function buildOrganizationPortalLinks(organization = {}) {
   const fallbackPortalPath =
     normalized.slug === "nexora-admin"
       ? "/admin"
-      : normalized.slug === "convoy-of-hope"
+      : normalized.slug === DEFAULT_ORGANIZATION.slug
         ? "/"
         : `/portal/${encodeURIComponent(normalized.slug)}`;
   return {
@@ -548,6 +560,18 @@ function normalizeSession(session = {}) {
 }
 
 function migrateState(state) {
+  const legacyDefaultWorkspaceDetected =
+    Array.isArray(state?.organizations) &&
+    state.organizations.some((organization) => {
+      const organizationId = String(organization?.id || "").trim();
+      const organizationSlug = String(organization?.slug || "").trim().toLowerCase();
+      const organizationName = String(organization?.name || organization?.settings?.organizationName || "").trim().toLowerCase();
+      return (
+        organizationId === "org-convoy-of-hope" ||
+        organizationSlug === "convoy-of-hope" ||
+        organizationName === "convoy of hope"
+      );
+    });
   const next = {
     ...buildInitialState(),
     ...state,
@@ -563,6 +587,25 @@ function migrateState(state) {
     authDataVersion: CURRENT_AUTH_DATA_VERSION,
     presetAccountVersion: Number(state?.presetAccountVersion || 0),
   };
+
+  if (legacyDefaultWorkspaceDetected) {
+    next.organizations = next.organizations.map((organization) =>
+      LEGACY_DEFAULT_ORGANIZATION_IDS.has(String(organization.id || "").trim()) ||
+      LEGACY_DEFAULT_ORGANIZATION_SLUGS.has(String(organization.slug || "").trim().toLowerCase())
+        ? normalizeOrganization(DEFAULT_ORGANIZATION)
+        : organization,
+    );
+    next.users = next.users.filter(
+      (user) =>
+        user.globalAdmin ||
+        !LEGACY_DEFAULT_ORGANIZATION_IDS.has(String(user.organizationId || "").trim()) ||
+        String(user.organizationId || "").trim() === MASTER_ORGANIZATION.id,
+    );
+    next.deletedUserRegistry = [];
+    next.emailOutbox = [];
+    next.auditLog = [];
+    next.activeSessions = [];
+  }
 
   if (!next.organizations.some((organization) => organization.id === DEFAULT_ORGANIZATION.id)) {
     next.organizations.unshift(normalizeOrganization(DEFAULT_ORGANIZATION));

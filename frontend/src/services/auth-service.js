@@ -1,9 +1,9 @@
-import { getApiBaseUrl } from "./mel-api.js?v=20260601a";
+import { getApiBaseUrl } from "./mel-api.js?v=20260609a";
 import {
   DEFAULT_ORGANIZATION_BRANDING,
   normalizeOrganizationBranding,
   readRequestedOrganizationContext,
-} from "./organization-branding.js?v=20260602g";
+} from "./organization-branding.js?v=20260609a";
 
 const AUTH_STORAGE_KEY_BASE = "pulso-me-auth-v1";
 const AUTH_SESSION_KEY_BASE = "pulso-me-session-v1";
@@ -56,21 +56,21 @@ const DEFAULT_VIEW_PERMISSIONS = {
 };
 
 const DEMO_SUPERVISOR = {
-  email: "supervision@pulso-me.org",
-  password: "PulsoMEL2026!",
-  fullName: "Supervision MEL",
+  email: "supervision@nexora.app",
+  password: "NexoraMEL2026!",
+  fullName: "Supervision Nexora",
 };
 
 const SEEDED_ACCESS_MANAGER = {
-  email: "llorenzo@convoyofhope.org",
-  password: "ConvoyHope2026!",
-  fullName: "L Lorenzo",
+  email: "workspace.admin@nexora.app",
+  password: "WorkspaceAdmin2026!",
+  fullName: "Workspace Admin",
 };
 
 const SEEDED_FACILITATOR_APUJOLS = {
-  email: "apujols@convoyofhope.org",
+  email: "facilitador@nexora.app",
   password: "Facilitador2026!",
-  fullName: "A Pujols",
+  fullName: "Facilitador Base",
 };
 const SEEDED_PLATFORM_ADMIN = {
   email: "admin@nexora.app",
@@ -95,8 +95,8 @@ const LEGACY_USER_PURGE_MATCHERS = [
   /applehost/i,
 ];
 const DEFAULT_ORGANIZATION = {
-  id: "org-convoy-of-hope",
-  name: "Convoy of Hope",
+  id: "org-nexora-workspace",
+  name: "Nexora Workspace",
 };
 const MASTER_ORGANIZATION = {
   id: "org-nexora-admin",
@@ -138,7 +138,7 @@ function authPortalScope() {
   if (requested.organizationSlug) return requested.organizationSlug;
   if (requested.organizationId) return requested.organizationId.toLowerCase();
   const pathname = String(window.location.pathname || "/").trim();
-  if (!pathname || pathname === "/") return "convoy-of-hope";
+  if (!pathname || pathname === "/") return "nexora";
   return "default";
 }
 
@@ -628,7 +628,7 @@ async function getPresetAccountTemplates() {
         accessNote: "Cuenta inicial para gestionar accesos del sistema.",
       },
       {
-        id: "usr-llorenzo-access",
+        id: "usr-workspace-admin",
         fullName: SEEDED_ACCESS_MANAGER.fullName,
         email: SEEDED_ACCESS_MANAGER.email,
         passwordHash: accessManagerPasswordHash,
@@ -643,7 +643,7 @@ async function getPresetAccountTemplates() {
         accessNote: "Cuenta habilitada para revisar solicitudes y administrar accesos.",
       },
       {
-        id: "usr-apujols-facilitator",
+        id: "usr-workspace-facilitator",
         fullName: SEEDED_FACILITATOR_APUJOLS.fullName,
         email: SEEDED_FACILITATOR_APUJOLS.email,
         passwordHash: apujolsPasswordHash,
