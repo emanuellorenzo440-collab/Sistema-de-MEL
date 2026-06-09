@@ -1620,7 +1620,12 @@ function renderReports() {
               <span class="item-meta">${escapeHtml(entry.moduleLabel)} - ${escapeHtml(entry.resourceMeta)}</span>
             </div>
           </td>
-          <td><strong class="activity-value">${escapeHtml(entry.valueLabel)}</strong></td>
+          <td>
+            <div class="activity-copy activity-action-copy">
+              <strong>${escapeHtml(entry.description)}</strong>
+              <span class="item-meta">${escapeHtml(entry.title)}</span>
+            </div>
+          </td>
           <td><span class="status-pill ${escapeHtml(entry.statusClass)}">${escapeHtml(entry.statusLabel)}</span></td>
           <td>
             <div class="activity-copy activity-time">
