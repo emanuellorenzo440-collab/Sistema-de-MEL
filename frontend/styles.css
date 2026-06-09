@@ -4214,3 +4214,287 @@ tbody tr:hover {
     width: 100%;
   }
 }
+
+.dashboard-workspace-summary,
+.activity-workspace-summary,
+.analytics-workspace-summary {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(249, 244, 235, 0.98)),
+    radial-gradient(circle at top right, rgba(143, 211, 76, 0.12), transparent 24%);
+}
+
+.dashboard-summary-copy,
+.analytics-summary-copy {
+  max-width: 720px;
+}
+
+.dashboard-summary-grid,
+.activity-summary-grid,
+.analytics-summary-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dashboard-summary-card,
+.analytics-summary-card {
+  background: rgba(255, 255, 255, 0.78);
+  min-height: 122px;
+}
+
+.dashboard-summary-action,
+.analytics-summary-action,
+.chart-summary-action {
+  background: rgba(31, 43, 55, 0.06);
+  border: 1px solid rgba(24, 33, 42, 0.08);
+  border-radius: 16px;
+  color: #42505c;
+  font-size: 0.92rem;
+  font-weight: 650;
+  padding: 14px 16px;
+}
+
+.dashboard-metric-grid,
+.analytics-metric-board {
+  gap: 14px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.dashboard-metric-card,
+.analytics-metric-card {
+  min-height: 154px;
+}
+
+.dashboard-metric-head {
+  align-items: start;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.dashboard-program-control-bar {
+  background: transparent;
+  border-top: 0;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+.dashboard-program-stack {
+  gap: 12px;
+}
+
+.dashboard-panel-surface {
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.82),
+    0 14px 28px rgba(24, 33, 42, 0.04);
+}
+
+.dashboard-program-row {
+  align-items: start;
+  gap: 16px;
+}
+
+.dashboard-program-identity,
+.dashboard-program-content {
+  display: grid;
+  gap: 10px;
+}
+
+.dashboard-program-bar-head,
+.dashboard-program-foot,
+.dashboard-program-actions,
+.dashboard-activity-badges,
+.analytics-submission-meta {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dashboard-program-foot {
+  color: #66707a;
+  font-size: 0.82rem;
+  justify-content: space-between;
+}
+
+.dashboard-program-actions {
+  padding-top: 4px;
+}
+
+.dashboard-program-value {
+  color: #18212a;
+  font-size: 1.2rem;
+  font-weight: 820;
+  padding-top: 2px;
+}
+
+.dashboard-risk-row {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  min-height: 88px;
+  padding-left: 24px;
+}
+
+.dashboard-risk-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.dashboard-risk-meta {
+  flex: 0 0 auto;
+}
+
+.dashboard-risk-empty {
+  align-items: center;
+  min-height: 92px;
+}
+
+.dashboard-activity-card {
+  gap: 10px;
+}
+
+.dashboard-table-copy {
+  gap: 3px;
+}
+
+.activity-table-row td {
+  background: rgba(255, 255, 255, 0.38);
+}
+
+.activity-table-row-good td:first-child,
+.activity-table-row-warning td:first-child,
+.activity-table-row-danger td:first-child,
+.activity-table-row-info td:first-child {
+  box-shadow: inset 4px 0 0 transparent;
+}
+
+.activity-table-row-good td:first-child {
+  box-shadow: inset 4px 0 0 #5aa452;
+}
+
+.activity-table-row-warning td:first-child {
+  box-shadow: inset 4px 0 0 #c3913e;
+}
+
+.activity-table-row-danger td:first-child {
+  box-shadow: inset 4px 0 0 #c04b45;
+}
+
+.activity-table-row-info td:first-child {
+  box-shadow: inset 4px 0 0 #4f85ae;
+}
+
+.workspace-report-grid {
+  align-items: start;
+}
+
+.workspace-report-control {
+  background: #fffdf8;
+}
+
+.dashboard-field-card {
+  background: linear-gradient(180deg, #fffdf8, #f5efe2);
+}
+
+.report-primary-panel {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(248, 242, 231, 0.98)),
+    radial-gradient(circle at top right, rgba(143, 211, 76, 0.08), transparent 24%);
+}
+
+.report-assistant-panel {
+  gap: 14px;
+}
+
+.report-assistant-panel .draft-list {
+  display: grid;
+  gap: 12px;
+}
+
+.report-assistant-panel .item-actions,
+.report-assistant-panel .form-actions {
+  justify-content: flex-start;
+}
+
+.analytics-view-shell {
+  gap: 18px;
+}
+
+.analytics-filter-panel {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(245, 239, 229, 0.98)),
+    radial-gradient(circle at top right, rgba(79, 133, 174, 0.08), transparent 24%);
+}
+
+.analytics-control {
+  min-height: 46px;
+}
+
+.analytics-chart-surface > * {
+  min-width: 0;
+}
+
+.analytics-stat-card,
+.analytics-insight-card,
+.analytics-submission-row {
+  background: linear-gradient(180deg, #fffdf8, #f5efe2);
+}
+
+.analytics-submission-row {
+  border: 1px solid #d8d1c2;
+  border-radius: 18px;
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.analytics-submission-row .chart-row-head {
+  align-items: start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.analytics-submission-meta span {
+  background: #efe8db;
+  border: 1px solid #d8d1c2;
+  border-radius: 999px;
+  color: #59656f;
+  font-size: 0.74rem;
+  font-weight: 760;
+  padding: 7px 10px;
+}
+
+@media (max-width: 1280px) {
+  .dashboard-metric-grid,
+  .analytics-metric-board,
+  .dashboard-summary-grid,
+  .activity-summary-grid,
+  .analytics-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .dashboard-metric-grid,
+  .analytics-metric-board,
+  .dashboard-summary-grid,
+  .activity-summary-grid,
+  .analytics-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-program-foot,
+  .dashboard-program-row,
+  .dashboard-risk-row,
+  .analytics-submission-row .chart-row-head {
+    grid-template-columns: 1fr;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .dashboard-program-value {
+    font-size: 1rem;
+  }
+}
