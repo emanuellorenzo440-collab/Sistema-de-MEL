@@ -119,6 +119,11 @@ const MAX_UPLOAD_FILE_BYTES = 200 * 1024 * 1024;
 const MAX_JSON_BODY_BYTES = 12 * 1024 * 1024;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const PERIOD_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
+const AUDITABLE_PLATFORM_ACTIVITY_RULES = [
+  { module: "forms", entityType: "form-template", title: "Formulario descargado", status: "Descargado" },
+  { module: "concepts", entityType: "concept-paper", title: "Concept Paper abierto", status: "Abierto" },
+  { module: "manuals", entityType: "program-manual", title: "Manual abierto", status: "Abierto" },
+];
 
 function sendJson(response, status, body) {
   response.writeHead(status, {
@@ -1623,6 +1628,7 @@ export async function handlePlatformActivityCreate(request, response) {
   const module = String(payload.module || "").trim().toLowerCase();
   const entityType = String(payload.entityType || "").trim().toLowerCase();
   const title = String(payload.title || "").trim();
+  const status = String(payload.status || "").trim() || "Registrado";
   if (!module || !entityType || !title) {
     sendJson(response, 400, {
       error: "Faltan campos obligatorios para registrar la actividad.",
@@ -1637,6 +1643,11 @@ export async function handlePlatformActivityCreate(request, response) {
     return;
   }
 
+  if (!isAuditablePlatformActivityPayload({ ...payload, module, entityType, title, status })) {
+    sendJson(response, 202, { data: null, ignored: true });
+    return;
+  }
+
   const activity = createPlatformActivity({
     ...payloadWithActor(request, payload),
     module,
@@ -1644,7 +1655,7 @@ export async function handlePlatformActivityCreate(request, response) {
     title,
     description: String(payload.description || "").trim(),
     resourceLabel: String(payload.resourceLabel || "").trim(),
-    status: String(payload.status || "").trim() || "Registrado",
+    status,
     actionType: String(payload.actionType || "").trim().toLowerCase() || "updated",
     metadata: payload.metadata && typeof payload.metadata === "object" ? payload.metadata : {},
   });
@@ -2767,6 +2778,16 @@ function requireAuthenticatedUser(request, response) {
   if (request.melActor?.id) return request.melActor;
   sendJson(response, 401, { error: "Necesitas iniciar sesion para usar la API." });
   return null;
+}
+
+function isAuditablePlatformActivityPayload(payload = {}) {
+  const module = String(payload.module || "").trim().toLowerCase();
+  const entityType = String(payload.entityType || "").trim().toLowerCase();
+  const title = String(payload.title || "").trim();
+  const status = String(payload.status || "").trim();
+  return AUDITABLE_PLATFORM_ACTIVITY_RULES.some(
+    (rule) => rule.module === module && rule.entityType === entityType && rule.title === title && rule.status === status,
+  );
 }
 
 function attachAuthenticatedActor(request) {

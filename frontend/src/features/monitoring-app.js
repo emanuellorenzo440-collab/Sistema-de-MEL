@@ -120,6 +120,11 @@ const CHAT_COMPOSER_EMOJIS = [
   "🎉", "🥳", "✅", "❗", "❓", "⚠️", "📌", "📣", "📢", "💡", "📝", "📊", "📈", "📎", "📁", "🗂️",
   "📄", "📅", "⏰", "⌛", "🚀", "🎯", "🏆", "🤲", "🙇", "🙂", "😇", "😌", "🤩", "😴", "😬", "😓",
 ];
+const AUDITABLE_PLATFORM_ACTIVITY_RULES = [
+  { module: "forms", entityType: "form-template", title: "Formulario descargado", status: "Descargado" },
+  { module: "concepts", entityType: "concept-paper", title: "Concept Paper abierto", status: "Abierto" },
+  { module: "manuals", entityType: "program-manual", title: "Manual abierto", status: "Abierto" },
+];
 const REMOTE_AUTHORITATIVE_STATE_KEYS = [
   "programs",
   "indicators",
@@ -5436,8 +5441,19 @@ async function refreshPlatformActivityFromApi() {
   renderReports();
 }
 
+function isAuditablePlatformActivityPayload(payload = {}) {
+  const module = String(payload.module || "").trim().toLowerCase();
+  const entityType = String(payload.entityType || "").trim().toLowerCase();
+  const title = String(payload.title || "").trim();
+  const status = String(payload.status || "").trim();
+  return AUDITABLE_PLATFORM_ACTIVITY_RULES.some(
+    (rule) => rule.module === module && rule.entityType === entityType && rule.title === title && rule.status === status,
+  );
+}
+
 async function registerPlatformActivity(payload = {}) {
   if (!isApiConfigured()) return null;
+  if (!isAuditablePlatformActivityPayload(payload)) return null;
   const savedEntry = await createApiPlatformActivity({
     ...payload,
     ...actorPayload(),
