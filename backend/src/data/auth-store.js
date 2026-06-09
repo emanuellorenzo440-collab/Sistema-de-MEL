@@ -14,6 +14,7 @@ const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const HEX_COLOR_REGEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 const VIEW_KEYS = [
   "dashboard",
+  "activity",
   "report",
   "indicators",
   "design",
@@ -82,9 +83,10 @@ const SYSTEM_ROLES = {
 };
 
 const DEFAULT_ROLE_PERMISSIONS = {
-  [SYSTEM_ROLES.facilitator]: ["dashboard", "report", "forms", "charts", "chat", "attendance"],
+  [SYSTEM_ROLES.facilitator]: ["dashboard", "activity", "report", "forms", "charts", "chat", "attendance"],
   [SYSTEM_ROLES.programCoordinator]: [
     "dashboard",
+    "activity",
     "report",
     "indicators",
     "forms",
@@ -96,6 +98,7 @@ const DEFAULT_ROLE_PERMISSIONS = {
   ],
   [SYSTEM_ROLES.programManager]: [
     "dashboard",
+    "activity",
     "report",
     "indicators",
     "design",
@@ -109,6 +112,7 @@ const DEFAULT_ROLE_PERMISSIONS = {
   ],
   [SYSTEM_ROLES.nationalDirector]: [
     "dashboard",
+    "activity",
     "report",
     "indicators",
     "design",
@@ -280,13 +284,20 @@ function validateOptionalHexColor(value, label) {
   }
 }
 
+function withActivityModule(viewIds = []) {
+  const normalized = normalizeList(viewIds, []).filter((viewId) => VIEW_KEYS.includes(viewId));
+  if (normalized.includes("dashboard") && !normalized.includes("activity")) {
+    normalized.splice(1, 0, "activity");
+  }
+  return normalized;
+}
+
 function normalizeOrganizationSettings(settings = {}, fallbackName = DEFAULT_ORGANIZATION.name) {
   const organizationName = String(settings.organizationName || fallbackName || DEFAULT_ORGANIZATION.name).trim() || DEFAULT_ORGANIZATION.name;
   const productName = String(settings.productName || DEFAULT_PRODUCT_NAME).trim() || DEFAULT_PRODUCT_NAME;
-  const enabledModules = normalizeList(
+  const enabledModules = withActivityModule(
     Array.isArray(settings.enabledModules) && settings.enabledModules.length ? settings.enabledModules : VIEW_KEYS,
-    VIEW_KEYS,
-  ).filter((viewId) => VIEW_KEYS.includes(viewId));
+  );
   return {
     productName,
     organizationName,
@@ -476,8 +487,8 @@ function safeUser(user, state = getState()) {
 
   const { passwordHash, resetTokenHash, ...publicUser } = user;
   const organization = resolveOrganizationForUser(publicUser, state);
-  const enabledModules = normalizeList(organization.settings?.enabledModules, VIEW_KEYS).filter((viewId) => VIEW_KEYS.includes(viewId));
-  const grantedViews = normalizeList(publicUser.viewPermissions, rolePermissions(publicUser.primaryRole)).filter((viewId) =>
+  const enabledModules = withActivityModule(organization.settings?.enabledModules || VIEW_KEYS);
+  const grantedViews = withActivityModule(normalizeList(publicUser.viewPermissions, rolePermissions(publicUser.primaryRole))).filter((viewId) =>
     enabledModules.includes(viewId),
   );
   return {
@@ -503,7 +514,7 @@ function normalizeUser(user) {
     email: normalizeEmail(user.email),
     primaryRole,
     enabledProfiles: normalizeList(user.enabledProfiles, [primaryRole]),
-    viewPermissions: normalizeList(user.viewPermissions, rolePermissions(primaryRole)),
+    viewPermissions: withActivityModule(normalizeList(user.viewPermissions, rolePermissions(primaryRole))),
     organizationId: String(user.organizationId || DEFAULT_ORGANIZATION.id),
     organizationName: String(user.organizationName || DEFAULT_ORGANIZATION.name),
     globalAdmin: Boolean(user.globalAdmin),
@@ -1120,7 +1131,7 @@ export function createManagedAuthUser(payload, actorOrId) {
     email,
     primaryRole,
     enabledProfiles: normalizeList(payload.enabledProfiles, [primaryRole]),
-    viewPermissions: normalizeList(payload.viewPermissions, rolePermissions(primaryRole)),
+    viewPermissions: withActivityModule(normalizeList(payload.viewPermissions, rolePermissions(primaryRole))),
     organizationId: targetOrganization?.id || actor.organizationId || DEFAULT_ORGANIZATION.id,
     organizationName: targetOrganization?.name || actor.organizationName || DEFAULT_ORGANIZATION.name,
     status: payload.status === "suspended" ? "suspended" : "active",
@@ -1169,7 +1180,7 @@ export function updateManagedAuthUser(id, updates, actorOrId) {
   user.email = nextEmail;
   user.primaryRole = primaryRole;
   user.enabledProfiles = normalizeList(updates.enabledProfiles, [primaryRole]);
-  user.viewPermissions = normalizeList(updates.viewPermissions, rolePermissions(primaryRole));
+  user.viewPermissions = withActivityModule(normalizeList(updates.viewPermissions, rolePermissions(primaryRole)));
   user.organizationId = actor.organizationId || user.organizationId || DEFAULT_ORGANIZATION.id;
   user.organizationName = actor.organizationName || user.organizationName || DEFAULT_ORGANIZATION.name;
   user.status = updates.status === "suspended" ? "suspended" : "active";

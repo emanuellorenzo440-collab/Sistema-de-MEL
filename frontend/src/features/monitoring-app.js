@@ -1263,6 +1263,7 @@ function dashboardActivityRecords() {
   const remoteActivity = Array.isArray(state.platformActivity) ? state.platformActivity.filter(Boolean) : [];
   if (remoteActivity.length) {
     return remoteActivity
+      .filter((entry) => String(entry?.module || "").trim().toLowerCase() !== "chat")
       .slice()
       .sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || "")))
       .map((entry) => normalizeDashboardActivityEntry(entry));
@@ -1438,7 +1439,7 @@ function setProgramSourceContext(programName, targetView = "dashboard") {
   switchView(targetView);
   if (targetView === "dashboard") {
     window.setTimeout(() => {
-      elements.recentReports?.closest(".panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      elements.programChart?.closest(".panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 60);
   }
 }
@@ -4542,6 +4543,7 @@ function switchView(viewName, options = {}) {
   const { persist = true, resetScroll = true } = options;
   const titles = {
     dashboard: "Resumen ejecutivo",
+    activity: "Actividad y trazabilidad",
     report: "Nuevo reporte",
     indicators: "Matriz de indicadores",
     design: "Diseño de monitoreo y evaluación",
@@ -4583,7 +4585,7 @@ function switchView(viewName, options = {}) {
   if (viewName === "charts" && isApiConfigured()) {
     window.dispatchEvent(new CustomEvent("mel:charts-refresh"));
   }
-  if (viewName === "dashboard" && isApiConfigured() && !isMasterPortal()) {
+  if (viewName === "activity" && isApiConfigured() && !isMasterPortal()) {
     void refreshPlatformActivityFromApi()
       .then(() => renderReports())
       .catch((error) => console.error("No pude abrir la actividad reciente.", error));
@@ -8260,6 +8262,26 @@ async function addReport(formData) {
 }
 
 function exportCsv() {
+  const activityRows = dashboardActivityRecords();
+  if (activityRows.length) {
+    const rows = [
+      ["fecha", "quien", "rol", "actividad", "descripcion", "modulo", "recurso", "valor", "estado"],
+      ...activityRows.map((entry) => [
+        entry.exactDate,
+        entry.actorLabel,
+        entry.actorMeta,
+        entry.title,
+        entry.description,
+        entry.moduleLabel,
+        entry.resourceLabel,
+        entry.valueLabel,
+        entry.statusLabel,
+      ]),
+    ];
+    downloadCsv(rows, "nexora-actividad.csv");
+    showToast("CSV de actividad preparado.");
+    return;
+  }
   const rows = [
     ["fecha", "periodo", "programa", "provincia", "centro", "indicador", "valor", "mujeres", "hombres", "adolescentes", "niños", "responsable", "estado"],
     ...state.reports.map((report) => [

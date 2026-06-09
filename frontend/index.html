@@ -203,6 +203,10 @@
             <span aria-hidden="true">◦</span>
             Resumen
           </button>
+          <button class="nav-item" data-view="activity" type="button">
+            <span aria-hidden="true">&#9679;</span>
+            Actividad
+          </button>
           <button class="nav-item" data-view="report" type="button">
             <span aria-hidden="true">＋</span>
             Reportar
@@ -337,16 +341,18 @@
               </div>
               <div class="risk-list" id="riskList"></div>
             </section>
-          </div>
+          </div>
+        </section>
 
+        <section class="view" id="activityView" data-view-panel="activity">
           <section class="panel activity-panel">
             <div class="panel-header">
               <div>
                 <p class="eyebrow">Actividad reciente</p>
-                <h2>Operacion y captura mas reciente</h2>
+                <h2>Operacion y trazabilidad de la plataforma</h2>
               </div>
               <button class="ghost-action" id="exportButton" type="button">
-                <span aria-hidden="true">⇩</span>
+                <span aria-hidden="true">&#8659;</span>
                 Exportar CSV
               </button>
             </div>
@@ -1161,4 +1167,6 @@
     <script type="module" src="src/main.js?v=20260604d"></script>
   </body>
 </html>
+
+
 

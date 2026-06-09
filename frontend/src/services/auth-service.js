@@ -22,6 +22,7 @@ export const SYSTEM_ROLES = [
 
 export const VIEW_DEFINITIONS = [
   { id: "dashboard", label: "Resumen" },
+  { id: "activity", label: "Actividad" },
   { id: "report", label: "Reportar" },
   { id: "indicators", label: "Indicadores" },
   { id: "design", label: "Diseño M&E" },
@@ -47,10 +48,10 @@ const ROLE_LABELS = {
 };
 
 const DEFAULT_VIEW_PERMISSIONS = {
-  Facilitador: ["dashboard", "report", "forms", "charts", "chat", "attendance"],
-  "Coordinador de programa": ["dashboard", "report", "forms", "attendance", "charts", "chat", "supervision"],
-  "Program Manager": ["dashboard", "attendance", "charts", "chat", "supervision", "programs", "concepts"],
-  "Director Nacional": ["dashboard", "attendance", "charts", "chat", "programs", "concepts"],
+  Facilitador: ["dashboard", "activity", "report", "forms", "charts", "chat", "attendance"],
+  "Coordinador de programa": ["dashboard", "activity", "report", "forms", "attendance", "charts", "chat", "supervision"],
+  "Program Manager": ["dashboard", "activity", "attendance", "charts", "chat", "supervision", "programs", "concepts"],
+  "Director Nacional": ["dashboard", "activity", "attendance", "charts", "chat", "programs", "concepts"],
   "Supervision M&E": VIEW_DEFINITIONS.map((view) => view.id),
 };
 
@@ -473,12 +474,19 @@ function normalizeRoleList(items = []) {
 
 function normalizeViewPermissions(items = []) {
   const allowedIds = new Set(VIEW_DEFINITIONS.map((view) => view.id));
-  return uniqueStrings(items.filter((item) => allowedIds.has(item)));
+  const normalized = uniqueStrings(items.filter((item) => allowedIds.has(item)));
+  if (normalized.includes("dashboard") && !normalized.includes("activity")) {
+    normalized.splice(1, 0, "activity");
+  }
+  return normalized;
 }
 
 function normalizeEnabledModules(items = []) {
   const allowedIds = new Set(VIEW_DEFINITIONS.map((view) => view.id));
   const normalized = uniqueStrings((Array.isArray(items) ? items : []).filter((item) => allowedIds.has(item)));
+  if (normalized.includes("dashboard") && !normalized.includes("activity")) {
+    normalized.splice(1, 0, "activity");
+  }
   return normalized.length ? normalized : VIEW_DEFINITIONS.map((view) => view.id);
 }
 
