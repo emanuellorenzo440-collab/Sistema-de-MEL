@@ -8734,22 +8734,6 @@ function downloadWordTemplate(formId) {
   link.download = `${slugify(form.title)}.doc`;
   link.click();
   URL.revokeObjectURL(url);
-  void registerPlatformActivity({
-    actionType: "updated",
-    module: "forms",
-    entityType: "form-template",
-    entityId: form.id,
-    title: "Formulario descargado",
-    description: `${currentUser?.fullName || "Un usuario"} descargo el formulario "${form.title}" en Word.`,
-    resourceLabel: form.program || form.title,
-    status: "Descargado",
-    metadata: {
-      formId: form.id,
-      formTitle: form.title,
-      program: form.program,
-      format: "word",
-    },
-  }).catch((error) => console.error("No pude registrar la descarga del formulario Word.", error));
   showToast("Formulario Word preparado.");
 }
 
@@ -8769,22 +8753,6 @@ function downloadPdfTemplate(formId) {
   window.setTimeout(() => {
     pdfWindow.print();
   }, 250);
-  void registerPlatformActivity({
-    actionType: "updated",
-    module: "forms",
-    entityType: "form-template",
-    entityId: form.id,
-    title: "Formulario abierto para PDF",
-    description: `${currentUser?.fullName || "Un usuario"} abrio el formulario "${form.title}" para exportarlo a PDF.`,
-    resourceLabel: form.program || form.title,
-    status: "Abierto",
-    metadata: {
-      formId: form.id,
-      formTitle: form.title,
-      program: form.program,
-      format: "pdf",
-    },
-  }).catch((error) => console.error("No pude registrar la apertura del PDF.", error));
   showToast("Se abrio la vista para guardar en PDF.");
 }
 
@@ -8799,21 +8767,6 @@ function downloadAllForms() {
   }
 
   downloadCsv(rows, `${slugify(program.name)}-formularios.csv`);
-  void registerPlatformActivity({
-    actionType: "updated",
-    module: "forms",
-    entityType: "form-template-bundle",
-    entityId: `program-${slugify(program.name)}`,
-    title: "Paquete de formularios descargado",
-    description: `${currentUser?.fullName || "Un usuario"} descargo el paquete de formularios de ${program.name}.`,
-    resourceLabel: program.name,
-    status: "Descargado",
-    metadata: {
-      program: program.name,
-      format: "csv-bundle",
-      totalForms: forms.length,
-    },
-  }).catch((error) => console.error("No pude registrar la descarga del paquete de formularios.", error));
   showToast("Formularios preparados para descarga.");
 }
 
