@@ -73,6 +73,7 @@ import {
   createManagedAuthUser,
   deleteManagedAuthUser,
   getCurrentOrganization,
+  getAuthUserActivitySummary,
   getOrganizationBranding,
   listOrganizations,
   listAuditLog,
@@ -1460,25 +1461,131 @@ export async function handleNotificationsList(_request, response, url) {
   sendJson(response, 200, { data: listNotifications(filters), filters });
 }
 
+function authAuditActionDetails(action = "", actorSummary = null, targetSummary = null, details = {}, actor = {}) {
+  const actorName = String(actorSummary?.fullName || actor.fullName || details.email || details.userId || details.actorId || "Usuario").trim();
+  const targetName = String(targetSummary?.fullName || targetSummary?.email || details.email || details.userId || "usuario").trim();
+  const organizationLabel =
+    String(targetSummary?.organizationName || actorSummary?.organizationName || actor.organizationName || details.organizationId || "Plataforma").trim();
+
+  switch (action) {
+    case "auth.organizationCreated":
+      return {
+        actionType: "created",
+        title: "Creacion de organizacion",
+        description: `${actorName} creo una nueva organizacion en la plataforma.`,
+        resourceLabel: organizationLabel,
+        status: "Creado",
+      };
+    case "auth.organizationUpdated":
+      return {
+        actionType: "updated",
+        title: "Organizacion actualizada",
+        description: `${actorName} actualizo la configuracion de una organizacion.`,
+        resourceLabel: organizationLabel,
+        status: "Actualizado",
+      };
+    case "auth.signIn":
+      return {
+        actionType: "updated",
+        title: "Inicio de sesion",
+        description: `${actorName} ingreso a la plataforma.`,
+        resourceLabel: organizationLabel,
+        status: "Ingreso",
+      };
+    case "auth.completePasswordChange":
+      return {
+        actionType: "updated",
+        title: "Contrasena actualizada",
+        description: `${actorName} cambio su contrasena de acceso.`,
+        resourceLabel: organizationLabel,
+        status: "Actualizado",
+      };
+    case "auth.passwordResetRequested":
+      return {
+        actionType: "updated",
+        title: "Recuperacion solicitada",
+        description: `${actorName} solicito recuperar su contrasena.`,
+        resourceLabel: organizationLabel,
+        status: "Solicitado",
+      };
+    case "auth.passwordResetCompleted":
+      return {
+        actionType: "updated",
+        title: "Contrasena restablecida",
+        description: `${actorName} restablecio su contrasena.`,
+        resourceLabel: organizationLabel,
+        status: "Actualizado",
+      };
+    case "auth.userCreated":
+      return {
+        actionType: "created",
+        title: "Usuario creado",
+        description: `${actorName} creo el acceso de ${targetName}.`,
+        resourceLabel: targetName,
+        status: "Creado",
+      };
+    case "auth.userUpdated":
+      return {
+        actionType: "updated",
+        title: "Usuario actualizado",
+        description: `${actorName} actualizo el perfil o permisos de ${targetName}.`,
+        resourceLabel: targetName,
+        status: "Actualizado",
+      };
+    case "auth.userPreferencesUpdated":
+      return {
+        actionType: "updated",
+        title: "Preferencias actualizadas",
+        description: `${actorName} actualizo sus preferencias de usuario.`,
+        resourceLabel: targetName,
+        status: "Actualizado",
+      };
+    case "auth.userDeleted":
+      return {
+        actionType: "deleted",
+        title: "Usuario eliminado",
+        description: `${actorName} elimino el acceso de ${targetName}.`,
+        resourceLabel: targetName,
+        status: "Eliminado",
+      };
+    default:
+      return {
+        actionType: "updated",
+        title: "Movimiento de acceso",
+        description: `${actorName} realizo un cambio de acceso en la plataforma.`,
+        resourceLabel: organizationLabel,
+        status: "Registrado",
+      };
+  }
+}
+
 function authAuditEntryToActivity(entry = {}, actor) {
   const details = entry.details || {};
   const action = String(entry.action || "").trim();
-  const actorLabel = String(details.email || details.userId || details.actorId || "Usuario").trim();
+  const actorSummary =
+    getAuthUserActivitySummary({ id: String(details.actorId || "").trim() }) ||
+    getAuthUserActivitySummary({ id: String(details.userId || "").trim() }) ||
+    getAuthUserActivitySummary({ email: String(details.email || "").trim() });
+  const targetSummary =
+    getAuthUserActivitySummary({ id: String(details.userId || "").trim() }) ||
+    getAuthUserActivitySummary({ email: String(details.email || "").trim() });
+  const actionDetails = authAuditActionDetails(action, actorSummary, targetSummary, details, actor);
+
   return {
     id: entry.id,
-    actionType: action.includes("Deleted") || action.includes("deleted") ? "deleted" : action.includes("Created") || action.includes("created") ? "created" : "updated",
+    actionType: actionDetails.actionType,
     module: "access",
     entityType: "auth",
     entityId: String(details.userId || details.organizationId || entry.id || "").trim(),
     organizationId: actor.organizationId,
     organizationName: actor.organizationName,
-    actorId: String(details.actorId || details.userId || "").trim(),
-    actorName: actorLabel,
-    actorRole: "",
-    title: action || "Movimiento de acceso",
-    description: actorLabel,
-    resourceLabel: String(details.slug || details.email || details.organizationId || "acceso").trim(),
-    status: "Registrado",
+    actorId: String(actorSummary?.id || details.actorId || details.userId || "").trim(),
+    actorName: String(actorSummary?.fullName || targetSummary?.fullName || details.email || details.userId || details.actorId || "Usuario").trim(),
+    actorRole: String(actorSummary?.primaryRole || targetSummary?.primaryRole || "").trim(),
+    title: actionDetails.title,
+    description: actionDetails.description,
+    resourceLabel: String(actionDetails.resourceLabel || details.slug || details.organizationId || "Plataforma").trim(),
+    status: actionDetails.status,
     metadata: details,
     createdAt: entry.createdAt,
   };

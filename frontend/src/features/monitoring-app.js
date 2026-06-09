@@ -1222,6 +1222,7 @@ function labelForActivityValue(entry = {}) {
 function normalizeDashboardActivityEntry(entry = {}) {
   const actorLabel = String(entry.actorName || entry.actorId || "Sistema").trim() || "Sistema";
   const moduleLabel = labelForActivityModule(entry.module, entry.entityType);
+  const actorRoleLabel = String(entry.actorRole || "").trim();
   const timestamp = String(entry.createdAt || entry.date || "").trim();
   const reportId =
     entry.module === "reports"
@@ -1242,12 +1243,12 @@ function normalizeDashboardActivityEntry(entry = {}) {
   return {
     id: String(entry.id || `${entry.module || "system"}-${entry.entityId || timestamp || Math.random()}`).trim(),
     actorLabel,
-    actorMeta: String(entry.actorRole || moduleLabel).trim() || moduleLabel,
+    actorMeta: actorRoleLabel || "Usuario del sistema",
     title: String(entry.title || `${moduleLabel} actualizado`).trim(),
     description,
     moduleLabel,
     resourceLabel,
-    resourceMeta: String(entry.organizationName || entry.entityType || "Operacion").trim(),
+    resourceMeta: String(entry.organizationName || "").trim(),
     valueLabel: labelForActivityValue(entry),
     statusLabel,
     statusClass: classForActivityEntry(entry),
@@ -1574,8 +1575,8 @@ function renderReports() {
                   <p class="item-meta">${escapeHtml(entry.description)}</p>
                 </div>
                 <div class="activity-feed-meta">
-                  <span class="activity-feed-chip">${escapeHtml(entry.moduleLabel)}</span>
                   <span class="activity-feed-chip">${escapeHtml(entry.resourceLabel)}</span>
+                  ${entry.resourceMeta ? `<span class="activity-feed-chip">${escapeHtml(entry.resourceMeta)}</span>` : ""}
                   <span class="activity-feed-chip">${escapeHtml(entry.exactDate)}</span>
                 </div>
               </article>
@@ -1617,7 +1618,7 @@ function renderReports() {
           <td>
             <div class="activity-copy">
               <strong>${escapeHtml(entry.resourceLabel)}</strong>
-              <span class="item-meta">${escapeHtml(entry.moduleLabel)} - ${escapeHtml(entry.resourceMeta)}</span>
+              <span class="item-meta">${escapeHtml(entry.resourceMeta || "Registro institucional")}</span>
             </div>
           </td>
           <td>

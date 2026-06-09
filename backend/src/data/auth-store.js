@@ -714,6 +714,19 @@ function findUserById(id) {
   return getState().users.find((user) => user.id === id) || null;
 }
 
+export function getAuthUserActivitySummary({ id = "", email = "" } = {}) {
+  const user = id ? findUserById(id) : email ? findUserByEmail(email) : null;
+  if (!user) return null;
+  return {
+    id: user.id,
+    fullName: String(user.fullName || user.email || "Usuario").trim(),
+    primaryRole: String(user.primaryRole || "").trim(),
+    email: String(user.email || "").trim(),
+    organizationId: String(user.organizationId || "").trim(),
+    organizationName: String(user.organizationName || "").trim(),
+  };
+}
+
 export function restoreAuthSession(sessionToken) {
   const tokenHash = hashToken(sessionToken);
   const state = getState();
